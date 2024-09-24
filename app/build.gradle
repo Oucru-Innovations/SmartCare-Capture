@@ -1,0 +1,38 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 30
+    buildToolsVersion "30.0.2"
+
+    defaultConfig {
+        applicationId "com.smartcare.oximetry.sample"
+        minSdkVersion 18
+        targetSdkVersion 30
+        versionCode 12
+        versionName "2.0.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    maven { url "https://maven.google.com" }
+    mavenCentral()
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation name: 'scolib-2.0.0', ext: 'aar'
+    implementation 'com.androidplot:androidplot-core:0.6.1'
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation 'com.opencsv:opencsv:4.1'
+}
+
+

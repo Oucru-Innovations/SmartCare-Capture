@@ -1,0 +1,161 @@
+<!--
+/**
+* Copyright (c) 2018, SmartCare Analytics Ltd.
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without modification, are permitted
+* provided that the following conditions are met:
+*
+* 1. Redistributions of source code must retain the above copyright notice, this list of conditions
+* and the following disclaimer.
+*
+* 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+* conditions and the following disclaimer in the documentation and/or other materials provided with
+* the distribution.
+*
+* 3. Neither the name of the copyright holder nor the names of its contributors may be used to
+* endorse or promote products derived from this software without specific prior written permission.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+* IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+* FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+* CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+* DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+* ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* NOT MEDICAL SOFTWARE. THIS SOFTWARE IS PROVIDED FOR INFORMATIONAL OR RESEARCH PURPOSES ONLY, AND
+* IS NOT FOR PROFESSIONAL MEDICAL USE, DIAGNOSIS, TREATMENT OR CARE, NOR IS IT INTENDED TO BE A
+* SUBSTITUTE THEREFOR. ALWAYS SEEK THE ADVICE OF A PHYSICIAN OR OTHER QUALIFIED HEALTH PROVIDER
+* PROPERLY LICENSED TO PRACTICE MEDICINE OR GENERAL HEALTHCARE IN YOUR JURISDICTION CONCERNING ANY
+* QUESTIONS YOU MAY HAVE REGARDING ANY HEALTH PROBLEM. NEVER DISREGARD PROFESSIONAL MEDICAL ADVICE
+* OR DELAY IN SEEKING IT BECAUSE OF SOMETHING YOU HAVE OBSERVED THROUGH THE USE OF THIS SOFTWARE.
+* ALWAYS CONSULT WITH YOUR PHYSICIAN OR OTHER QUALIFIED HEALTH CARE PROVIDER BEFORE EMBARKING ON A
+* NEW TREATMENT, DIET OR FITNESS PROGRAMME.
+*
+* Graphical charts are copyright (c) AndroidPlot (released under the Apache 2.0 licence).
+*/
+-->
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_margin="10dp"
+        android:layout_weight="40"
+        android:padding="1dp"
+        android:background="@drawable/border">
+
+        <com.androidplot.xy.XYPlot
+            android:id="@+id/plot"
+            android:layout_marginTop="30dp"
+            android:layout_marginBottom="30dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </LinearLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="40"
+        android:gravity="center">
+
+        <View
+            android:id="@+id/horizontalCenterline"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_centerHorizontal="true" />
+
+        <TextView
+            android:id="@+id/hr"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentTop="true"
+            android:layout_margin="10dp"
+            android:layout_toRightOf="@id/horizontalCenterline"
+            android:background="@drawable/border"
+            android:gravity="center"
+            android:text="--"
+            android:textSize="80sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignLeft="@id/hr"
+            android:layout_alignTop="@id/hr"
+            android:layout_marginTop="2dp"
+            android:layout_marginLeft="5dp"
+            android:text="HR"
+            android:textSize="26sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@id/hr"
+            android:layout_alignRight="@id/hr"
+            android:layout_marginBottom="2dp"
+            android:layout_marginRight="5dp"
+            android:text="bpm"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/spo2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentTop="true"
+            android:layout_margin="10dp"
+            android:layout_toLeftOf="@id/horizontalCenterline"
+            android:background="@drawable/border"
+            android:gravity="center"
+            android:text="--"
+            android:textSize="80sp" />
+
+        <TextView
+            android:id="@+id/spo2label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignLeft="@id/spo2"
+            android:layout_alignTop="@id/spo2"
+            android:layout_marginTop="2dp"
+            android:layout_marginLeft="5dp"
+            android:paddingBottom="5dp"
+            android:text="SpO2"
+            android:lineSpacingExtra="4dp"
+            android:textSize="26sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@id/spo2"
+            android:layout_alignRight="@id/spo2"
+            android:layout_marginBottom="2dp"
+            android:layout_marginRight="5dp"
+            android:text="%"
+            android:textSize="22sp" />
+    </RelativeLayout>
+
+    <Button
+        android:id="@+id/button"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginTop="20dp"
+        android:layout_weight="20"
+        android:paddingLeft="50dp"
+        android:paddingRight="50dp"
+        android:text="Connect"
+        android:textSize="22sp" />
+
+
+</LinearLayout>
