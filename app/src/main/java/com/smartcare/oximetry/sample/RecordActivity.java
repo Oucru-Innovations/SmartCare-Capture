@@ -42,20 +42,33 @@ package com.smartcare.oximetry.sample;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.net.MacAddress;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import android.text.Html;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -67,9 +80,13 @@ import com.androidplot.xy.XYPlot;
 import com.smartcare.oximetry.library.ConnectionManager;
 
 import java.lang.ref.WeakReference;
+import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 
 //new import
@@ -78,17 +95,40 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import android.os.Environment;
-import java.util.Locale;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.Locale;
+import java.util.Map;
+import java.util.Queue;
+import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+
+
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.MessageProperties;
+import android.util.Log;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 /**
  * This Activity is responsible for recording, displaying and uploading a physiological signal
  * using a SmartCare Analytics Ltd. Bluetooth pulse oximeter.
  */
 public class RecordActivity extends Activity {
-
+    private static final String TAG = "RecordActivity";
     private static final double UI_BUFFER_SIZE_SAMPLES = 1000;
     private static final int REQUEST_REQUIRED_PERMISSIONS = 17;
-
+    private static final int REQUEST_ENABLE_BT = 1;
+//    private static final int REQUEST_REQUIRED_PERMISSIONS = 17;
     private ConnectionManager connectionManager;
     private XYPlot mPlot;
     private Button mControlButton;
@@ -98,7 +138,18 @@ public class RecordActivity extends Activity {
     private SimpleXYSeries mSeries;
     private SmartCareHandler mHandler;
     //newcode
-
+    public static String MacAddress;
+    private static final String PREFS_NAME = "OximeterPrefs";
+    private static final String MAC_QUEUE_KEY = "MacAddressQueue";
+    private Queue<String> macAddressQueue;
+    private SharedPreferences sharedPreferences;
+    public static boolean isRecordingSessionActive =false;
+    private TextView device1MacTextView;
+    private TextView device2MacTextView;
+    private Button device1DeleteButton;
+    private Button device2DeleteButton;
+    private String connectedMac;
+    private boolean isQueueFull = false;
     //end
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
@@ -121,6 +172,7 @@ public class RecordActivity extends Activity {
         public void handleMessage(Message msg) {
             final RecordActivity target = mmTarget.get();
             Bundle data;
+
             // Each message contains an identification code in the Message,what field.
             switch (msg.what) {
                 case ConnectionManager.MESSAGE_PACKET:
@@ -148,28 +200,71 @@ public class RecordActivity extends Activity {
                     // The KEY_DATA_SPO2STATUS data contains an integer indicating the status of
                     // the SpO2 measurement. A value of 0 means that the device is functioning well.
                     int latestSpO2Status = data.getInt(ConnectionManager.KEY_DATA_SPO2STATUS);
+                    //new files
+                    long latestRedAdc = data.getLong(ConnectionManager.KEY_DATA_REDADC);
+                    long latestIrAdc = data.getLong(ConnectionManager.KEY_DATA_IRADC);
+                    double latestPerfusionIndexValue = data.getDouble(ConnectionManager.KEY_DATA_PERFUSIONINDEX);
+                    long latestPackageReceived = data.getLong(ConnectionManager.KEY_DATA_PACKAGE_RECEIVED);
 
-                    double latestPerfusionIndexValue = -1;
+                    int startTime= data.getInt(ConnectionManager.KEY_DATA_START_TIME);
+                    //end
+
+
+
+
+                    //double latestPerfusionIndexValue = -1;
 
                     //new code add
                     Log.d("RecordActivity", String.format(Locale.US,
-                            "Received data:" +
-                                    "\nPleth Value: %d" +
-                                    "\nHeart Rate: %d" +
-                                    "\nSpO2: %.2f" +
-                                    "\nDevice ID: %d" +
-                                    "\nBattery: %.2f" +
-                                    "\nCounter: %d" +
-                                    "\nSpO2 Status: %d",
-                            latestPlethValue, latestHeartRateValue, latestSpO2Value,
-                            deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status
+                            "Pleth Value: %d, Heart Rate: %d, SpO2: %.2f, Device ID: %d, Battery: %.2f, Counter: %d, SpO2 Status: %d, Red ADC: %d, IR ADC: %d, Perfusion Index: %.2f, Package Received: %d, Start Time: %d",
+                            latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status, latestRedAdc, latestIrAdc, latestPerfusionIndexValue, latestPackageReceived, startTime
                     ));
+                    Log.d("RecordActivity", "MAC address: "+MacAddress);
                     // After retrieving all the data from the packet
                     Log.d("RecordActivity", "Preparing to write CSV data");
+//
+
                     long timestamp = System.currentTimeMillis();
                     try {
-                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
+//                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
+                        if (!isRecordingSessionActive) {
+                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
+                            isRecordingSessionActive = true;
+                        }
+//                        OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
+                        OximeterDataWriterFunctions.writeDataPoint(
+                                latestSpO2Value,
+                                latestSpO2Status,
+                                latestRedAdc,
+                                latestBatteryValue,
+                                latestHeartRateValue,
+                                latestIrAdc,
+                                latestPerfusionIndexValue,
+                                latestCounterValue,
+                                deviceId,
+                                latestPackageReceived,
+                                latestPlethValue,
+                                timestamp
+                        );
                         Log.i("RecordActivity", "CSV data written successfully");
+                        //
+//                        JSONObject jsonData = new JSONObject();
+//                        jsonData.put("spo2Val", latestSpO2Value);
+//                        jsonData.put("spo2Status", latestSpO2Status);
+//                        jsonData.put("redAdc", latestRedAdc);
+//                        jsonData.put("battery", latestBatteryValue);
+//                        jsonData.put("hrVal", latestHeartRateValue);
+//                        jsonData.put("irAdc", latestIrAdc);
+//                        jsonData.put("perfusionIndex", latestPerfusionIndexValue);
+//                        jsonData.put("counter", latestCounterValue);
+//                        jsonData.put("deviceId", deviceId);
+//                        jsonData.put("packageReceived", latestPackageReceived);
+//                        jsonData.put("timeStamp", timestamp);
+//                        jsonData.put("plethVal", latestPlethValue);
+//                        RabbitMQProducer.sendMessage(jsonData);
+//                        target.sendDataToWebSocket(data);
+                        // Send data to RabbitMQ queue
+
                     } catch (Exception e) {
                         Log.e("RecordActivity", "Error writing CSV data", e);
                     }
@@ -183,16 +278,16 @@ public class RecordActivity extends Activity {
                         latestPerfusionIndexValue = data.getDouble(ConnectionManager.KEY_DATA_PERFUSIONINDEX);
                     }
 
-                    boolean seriesIsFull = target.mSeries.size() > UI_BUFFER_SIZE_SAMPLES;
-                    if (seriesIsFull) {
-                        target.mSeries.removeFirst();
-                    }
-                    target.mSeries.addLast(null, latestPlethValue);
-                    if (seriesIsFull) {
-                        target.mPlot.redraw();
-                    }
-                    target.mHrDisplay.setText(String.valueOf(latestHeartRateValue));
-                    target.mSpo2Display.setText(String.valueOf((int) latestSpO2Value));
+//                    boolean seriesIsFull = target.mSeries.size() > UI_BUFFER_SIZE_SAMPLES;
+//                    if (seriesIsFull) {
+//                        target.mSeries.removeFirst();
+//                    }
+//                    target.mSeries.addLast(null, latestPlethValue);
+//                    if (seriesIsFull) {
+//                        target.mPlot.redraw();
+//                    }
+//                    target.mHrDisplay.setText(String.valueOf(latestHeartRateValue));
+//                    target.mSpo2Display.setText(String.valueOf((int) latestSpO2Value));
                     break;
                 case ConnectionManager.MESSAGE_NO_DATA_AVAILABLE:
                     Toast.makeText(target, "No data available from oximeter", Toast.LENGTH_SHORT).show();
@@ -208,6 +303,7 @@ public class RecordActivity extends Activity {
                     break;
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
+                    //new
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
                     data = msg.getData();
@@ -224,9 +320,22 @@ public class RecordActivity extends Activity {
                         + " samples per second.";
 
                     Toast.makeText(target, str, Toast.LENGTH_LONG).show();
+                    //new
+
+                    //
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_ENDED:
-                    Toast.makeText(target, "Disconnected from oximeter", Toast.LENGTH_SHORT).show();
+
+                    long totalMessagesSent = RabbitMQProducer.getTotalMessagesSent();
+
+                    // Create and show the Toast
+
+//                    Toast.makeText(target, "Disconnected. " +totalMessagesSent +" messages sent", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT).show();
+                    RabbitMQProducer.resetMessageCount() ;
+                    //
+                    target.connectedMac = null;
+                    target.updateMacAddressDisplay();
                     // Device has disconnected.
                     target.mControlButton.setText(target.getString(R.string.record_start));
                     target.mControlButton.setEnabled(true);
@@ -236,8 +345,8 @@ public class RecordActivity extends Activity {
                             target.connectToPulseOximeter();
                         }
                     });
-                    target.mPlot.clear();
-                    target.mPlot.redraw();
+                    //target.mPlot.clear();
+                    //target.mPlot.redraw();
                     break;
                 case ConnectionManager.MESSAGE_CLOCATION_PERMISSION_REQUIRED:
                     Toast.makeText(target, "Coarse location permission missing", Toast.LENGTH_SHORT).show();
@@ -247,6 +356,9 @@ public class RecordActivity extends Activity {
                     break;
                 case ConnectionManager.MESSAGE_DEVICE_NOT_FOUND:
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
+                    //new
+                    // Clear the pending MAC address as the connection failed
+
                     break;
                 default:
                     Log.e(target.getString(R.string.app_name), "Unknown message ID from ConnectionManager");
@@ -260,20 +372,31 @@ public class RecordActivity extends Activity {
      * consuming and would otherwise block the UI thread, causing the app not to respond.
      */
     private class Connector extends AsyncTask<Void, Void, Boolean> {
-
+        //new
+        private String connectedMacAddress;
         @Override
         protected void onPreExecute() {
             Log.i(getString(R.string.app_name), "Connector task started");
             mControlButton.setText(getString(R.string.record_stop));
+            //new condition
             mControlButton.setEnabled(false);
         }
 
+//        @Override
+//        protected Boolean doInBackground(Void... params) {
+//            boolean success = connectionManager.connect();
+//            return success;
+//        }
+        //new implement
         @Override
         protected Boolean doInBackground(Void... params) {
             boolean success = connectionManager.connect();
+            if (success) {
+                connectedMacAddress = connectionManager.getMacAddress();
+                Log.d(TAG, "Connector: Successfully connected to MAC: " + connectedMac);
+            }
             return success;
         }
-
         @Override
         protected void onPostExecute(Boolean result) {
             mControlButton.setEnabled(true);
@@ -284,7 +407,8 @@ public class RecordActivity extends Activity {
                 mControlButton.setOnClickListener(new OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        connectToPulseOximeter();
+                        if (!isQueueFull){
+                        connectToPulseOximeter();}
                     }
                 });
                 return;
@@ -292,6 +416,10 @@ public class RecordActivity extends Activity {
 
             Log.i(getString(R.string.app_name), "Ready to start recording.");
             connectionManager.startRecording();
+            //new
+            updateMacAddressQueue(connectedMacAddress);
+            MacAddress = connectedMacAddress;
+//            MacAddress = connectionManager.getMacAddress();
             mControlButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -324,49 +452,203 @@ public class RecordActivity extends Activity {
         @Override
         protected void onPostExecute(Boolean result) {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
+            isRecordingSessionActive = false;
+            connectedMac = null;
+            updateMacAddressDisplay();
         }
     }
 
-    //new code add
-    private void writeDataToCSV(int plethValue, int heartRate, double spO2, int deviceId, double batteryValue, int counterValue, int spO2Status,long timestamp) {
-        File directory;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            // For Android 10 and above, use Downloads directory
-            directory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        } else {
-            // For older versions, use a folder in external storage
-            directory = new File(Environment.getExternalStorageDirectory(), "OximetryData");
-        }
-        if (!directory.exists()) {
-            directory.mkdirs();
-        }
-        String fileName = "oximeter_data.csv";
-        File file = new File(directory, fileName);
-        CSVWriter writer;
-        // File header
-        String[] header = {"Timestamp", "Pleth Value", "Heart Rate", "SpO2", "Device ID", "Battery Value", "Counter Value", "SpO2 Status"};
-        try {
-            // If file doesn't exist, create it and add header
-            if (!file.exists()) {
-                writer = new CSVWriter(new FileWriter(file));
-                writer.writeNext(header);
-            } else {
-                // Else, open the file in append mode
-                writer = new CSVWriter(new FileWriter(file, true));
+    //new class
+    public static class OximeterDataWriterFunctions {
+        private static final String FOLDER_NAME = "OximeterData";
+        private static File currentFile;
+        private static CSVWriter currentWriter;
+        private static long startTimestamp;
+
+        public static void startNewRecording(long packageReceivedTimestamp) {
+            closeCurrentWriter();
+            startTimestamp = packageReceivedTimestamp;
+            currentFile = createFile(packageReceivedTimestamp);
+            try {
+                currentWriter = new CSVWriter(new FileWriter(currentFile));
+                writeHeader(currentWriter);
+                Log.i("OximeterDataWriter", "New recording started: " + currentFile.getAbsolutePath());
+            } catch (IOException e) {
+                Log.e("OximeterDataWriter", "Error creating new CSV file", e);
+                currentWriter = null;
             }
-            // Write the data
-            String[] data = {String.valueOf(timestamp), String.valueOf(plethValue),
-                    String.valueOf(heartRate), String.valueOf(spO2), String.valueOf(deviceId), String.valueOf(batteryValue), String.valueOf(counterValue), String.valueOf(spO2Status)};
-            writer.writeNext(data);
-            writer.close();
-            Log.i("RecordActivity", "CSV file saved at: " + file.getAbsolutePath());
-        } catch (IOException e) {
-            Log.e("RecordActivity", "Error writing CSV file", e);
+        }
+
+        public static void writeDataPoint(double spo2Val, int spo2Status, long redAdc, double battery,
+                                          int hrVal, long irAdc, double perfusionIndex, int counter,
+                                          int deviceId, long packageReceived, int plethVal, long timestamp) {
+            if (currentWriter == null) {
+                Log.e("OximeterDataWriter", "No active recording session");
+                return;
+            }
+
+            String[] data = {
+//                    String.valueOf(packageReceived - startTimestamp),
+                    String.valueOf(packageReceived),
+                    String.valueOf(timestamp),
+                    String.valueOf(counter),
+                    String.valueOf(deviceId),
+                    String.valueOf(hrVal),
+                    String.valueOf((int)spo2Val),
+                    String.valueOf(spo2Status),
+                    String.valueOf(plethVal),
+//                    String.valueOf((int)convertBatteryToPercentage(battery)),
+                    String.valueOf(battery),
+                    String.valueOf(redAdc),
+                    String.valueOf(irAdc),
+                    String.valueOf(perfusionIndex)
+            };
+            currentWriter.writeNext(data);
+            Log.i("OximeterDataWriter", "File saved at: " + currentFile.getAbsolutePath());
+        }
+
+        public static void endRecording() {
+            closeCurrentWriter();
+            Log.i("OximeterDataWriter", "Recording ended");
+        }
+
+        private static File createFile(long timestamp) {
+            File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER_NAME);
+            if (!directory.exists()) {
+                directory.mkdirs();
+            }
+            String fileName = generateFileName(timestamp);
+            return new File(directory, fileName);
+        }
+
+        private static void writeHeader(CSVWriter writer) {
+            String[] header = {"TIMESTAMP_DV","TIMESTAMP_APP", "COUNTER", "DEVICE_ID", "PULSE_BPM", "SPO2_PCT",
+                    "SPO2_STATUS", "PLETH", "BATTERY_PCT", "RED_ADC", "IR_ADC", "PERFUSION_INDEX"};
+            writer.writeNext(header);
+        }
+
+        private static void closeCurrentWriter() {
+            if (currentWriter != null) {
+                try {
+                    currentWriter.close();
+                } catch (IOException e) {
+                    Log.e("OximeterDataWriter", "Error closing CSV writer", e);
+                }
+                currentWriter = null;
+            }
+        }
+//
+        private static String generateFileName(long timestamp) {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd'T'HHmmss.SSS", Locale.US);
+            sdf.setTimeZone(TimeZone.getDefault());
+            Date date = new Date(timestamp);
+            String formattedDate = sdf.format(date);
+
+            TimeZone tz = TimeZone.getDefault();
+            int offsetMillis = tz.getOffset(timestamp);
+            int offsetHours = offsetMillis / (60 * 60 * 1000);
+            int offsetMinutes = Math.abs((offsetMillis / (60 * 1000)) % 60);
+
+            return String.format(Locale.US, "%s%+03d%02d.csv", formattedDate, offsetHours, offsetMinutes);
+        }
+
+        private static double convertBatteryToPercentage(double rawBatteryValue) {
+            return Math.min(Math.max(rawBatteryValue - 3300.0, 0.0) / 850.0, 1.0) * 100.0;
         }
     }
+    //end
+    //new code add
+
     //
+    //new code
+    public static class RabbitMQProducer {
+        private static final String TAG = "RabbitMQProducer";
+        private static final String RABBITMQ_HOST = "10.232.79.154"; // Your RabbitMQ server IP
+        private static final int RABBITMQ_PORT = 5672;
+        private static final String QUEUE_NAME = "device_data_queue";
 
+        private static Connection connection;
+        private static Channel channel;
+        private static AtomicLong messagesSent = new AtomicLong(0);
 
+        public static void initialize() {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    Log.i(TAG, "Starting RabbitMQ Producer...");
+                    try {
+                        createChannel();
+                    } catch (IOException | TimeoutException e) {
+                        Log.e(TAG, "Failed to initialize RabbitMQ Producer: " + e.getMessage());
+                    }
+                }
+            }).start();
+        }
+
+        private static void createChannel() throws IOException, TimeoutException {
+            ConnectionFactory factory = new ConnectionFactory();
+            factory.setHost(RABBITMQ_HOST);
+            factory.setPort(RABBITMQ_PORT);
+
+            connection = factory.newConnection();
+            channel = connection.createChannel();
+
+            Map<String, Object> arguments = new HashMap<>();
+            arguments.put("x-message-ttl", 60000);  // Message TTL in milliseconds (60 seconds)
+            arguments.put("x-max-length", 10000);   // Max number of messages in the queue
+
+            channel.queueDeclare(QUEUE_NAME, true, false, false, arguments);
+            Log.i(TAG, "Queue '" + QUEUE_NAME + "' declared successfully.");
+        }
+
+        public static void sendMessage(final JSONObject message) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (channel == null || !channel.isOpen()) {
+                            createChannel();
+                        }
+                        String messageBody = message.toString();
+                        channel.basicPublish("", QUEUE_NAME, null, messageBody.getBytes(StandardCharsets.UTF_8));
+                        long totalSent = messagesSent.incrementAndGet(); // Increment the counter
+                        Log.i(TAG, "Sent message: " + messageBody + ". \nTotal messages sent: " + totalSent);
+                    } catch (IOException | TimeoutException e) {
+                        Log.e(TAG, "Failed to send message: " + e.getMessage());
+                    }
+                }
+            }).start();
+        }
+
+        public static void close() {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (channel != null && channel.isOpen()) {
+                            channel.close();
+                        }
+                        if (connection != null && connection.isOpen()) {
+                            connection.close();
+                        }
+                        Log.i(TAG, "RabbitMQ connection closed. Total messages sent: " + messagesSent.get());
+                    } catch (IOException | TimeoutException e) {
+                        Log.e(TAG, "Error closing RabbitMQ connection: " + e.getMessage());
+                    }
+                }
+            }).start();
+        }
+
+        public static long getTotalMessagesSent() {
+            return messagesSent.get();
+        }
+
+        public static void resetMessageCount() {
+            messagesSent.set(0);
+        }
+    }
+
+    //end
     /**
      * Initialises the connection to the pulse oximeter by executing the Connector task.
      */
@@ -377,6 +659,8 @@ public class RecordActivity extends Activity {
         } else {
             // Didn't have one or more required permissions, so abort connection.
         }
+        //new implement
+
     }
 
     /**
@@ -397,31 +681,196 @@ public class RecordActivity extends Activity {
 
         // Initialise the UI.
         initialiseViews();
-        initialisePlot();
-        initialiseSeries();
+        // Initialize SharedPreferences and MAC address queue
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        macAddressQueue = loadMacAddressQueue();
+
+        //initialisePlot();
+        //initialiseSeries();
+        //new code
+//        initWebSocket();
+//        RabbitMQProducer.initialize();
+//
+
 
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
         mHandler = new SmartCareHandler(this);
         if (connectionManager == null) {
             connectionManager = new ConnectionManager(this, mHandler);
         }
+        //new
+        updateMacAddressDisplay();
     }
 
     private void initialiseViews() {
-        mPlot = (XYPlot) findViewById(R.id.plot);
+//        mPlot = (XYPlot) findViewById(R.id.plot);
         mControlButton = (Button) findViewById(R.id.button);
         mHrDisplay = (TextView) findViewById(R.id.hr);
         mSpo2Display = (TextView) findViewById(R.id.spo2);
         mSpo2Label = (TextView) findViewById(R.id.spo2label);
         mSpo2Label.setText(Html.fromHtml("SpO<sub><small>2</small></sub>"));
+        //new
+        device1MacTextView = (TextView) findViewById(R.id.connectedMac);
+        device2MacTextView = (TextView) findViewById(R.id.queuedMac);
+        device1DeleteButton = (Button) findViewById(R.id.device1Delete);
+        device2DeleteButton = (Button) findViewById(R.id.device2Delete);
 
         mControlButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-                connectToPulseOximeter();
+                if(!isQueueFull){
+                    connectToPulseOximeter();}
+
+            }
+        });
+        //new button
+        device1DeleteButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                deleteDevice(0);
+            }
+        });
+
+        device2DeleteButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                deleteDevice(1);
+            }
+        });
+
+    }
+
+    //new view
+    private void deleteDevice(int index) {
+        if (index < macAddressQueue.size()) {
+            String[] macs = macAddressQueue.toArray(new String[0]);
+            String macToRemove = macs[index];
+            macAddressQueue.remove(macToRemove);
+            saveMacAddressQueue();
+            updateMacAddressDisplay();
+
+            if (macToRemove.equals(connectedMac)) {
+                // If the deleted device was connected, disconnect it
+                new Disconnector().execute();
+            }
+        }
+    }
+    private void updateMacAddressDisplay() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                String[] macs = macAddressQueue.toArray(new String[0]);
+
+                if (macs.length > 0) {
+                    device1MacTextView.setText("Device 1: " + macs[0]);
+                    device1MacTextView.setTextColor(macs[0].equals(connectedMac) ? Color.GREEN : Color.BLACK);
+                    device1MacTextView.setVisibility(View.VISIBLE);
+                    device1DeleteButton.setVisibility(View.VISIBLE);
+                } else {
+                    device1MacTextView.setVisibility(View.GONE);
+                    device1DeleteButton.setVisibility(View.GONE);
+                }
+
+                if (macs.length > 1) {
+                    device2MacTextView.setText("Device 2: " + macs[1]);
+                    device2MacTextView.setTextColor(macs[1].equals(connectedMac) ? Color.GREEN : Color.BLACK);
+                    device2MacTextView.setVisibility(View.VISIBLE);
+                    device2DeleteButton.setVisibility(View.VISIBLE);
+                } else {
+                    device2MacTextView.setVisibility(View.GONE);
+                    device2DeleteButton.setVisibility(View.GONE);
+                }
+
+                if (macs.length == 0) {
+                    device1MacTextView.setText("No devices saved");
+                    device1MacTextView.setTextColor(Color.BLACK);
+                    device1MacTextView.setVisibility(View.VISIBLE);
+                }
             }
         });
     }
+
+    private Queue<String> loadMacAddressQueue() {
+        String queueString = sharedPreferences.getString(MAC_QUEUE_KEY, "");
+        String[] macAddresses = queueString.split(",");
+        Queue<String> queue = new LinkedList<>();
+        for (String mac : macAddresses) {
+            if (!mac.isEmpty()) {
+                queue.offer(mac);
+            }
+        }
+        return queue;
+    }
+
+    private void saveMacAddressQueue() {
+        StringBuilder queueString = new StringBuilder();
+        for (String mac : macAddressQueue) {
+            queueString.append(mac).append(",");
+        }
+        sharedPreferences.edit().putString(MAC_QUEUE_KEY, queueString.toString()).apply();
+    }
+
+    private void updateMacAddressQueue(String newMac) {
+        if (macAddressQueue.size() == 2 && !macAddressQueue.contains(newMac)) {
+            // Disconnect and reset to original state
+            disconnectAndReset();
+            // Show dialog to request deletion of a device
+            showDeleteDeviceDialog();
+            return;
+        }
+        if (!macAddressQueue.contains(newMac)) {
+            macAddressQueue.offer(newMac);
+        }
+        connectedMac = newMac;
+        saveMacAddressQueue();
+        updateMacAddressDisplay();
+    }
+    private void disconnectAndReset() {
+        new AsyncTask<Void, Void, Void>() {
+            @Override
+            protected Void doInBackground(Void... params) {
+                connectionManager.disconnect();
+                return null;
+            }
+
+            @Override
+            protected void onPostExecute(Void result) {
+                isRecordingSessionActive = false;
+                connectedMac = null;
+                mControlButton.setText(getString(R.string.record_start));
+                mControlButton.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        connectToPulseOximeter();
+                    }
+                });
+                updateMacAddressDisplay();
+            }
+        }.execute();
+    }
+    private void showDeleteDeviceDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Maximum Devices Reached")
+                .setMessage("You have already saved two devices. Please delete one to add a new device.")
+                .setPositiveButton("Delete Device 1", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        deleteDevice(0);
+                    }
+                })
+                .setNegativeButton("Delete Device 2", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        deleteDevice(1);
+                    }
+                })
+                .setNeutralButton("Cancel", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        // User cancelled the dialog
+                    }
+                });
+        builder.create().show();
+    }
+    //end
+
 
     private void initialisePlot() {
         Paint transparentPaint = new Paint();
@@ -468,6 +917,12 @@ public class RecordActivity extends Activity {
         if (connectionManager.isRecording()) {
             connectionManager.disconnect();
         }
+        //new code
+
+        RabbitMQProducer.close();
+//        closeConnection();
+//
+        //
         super.onDestroy();
     }
 

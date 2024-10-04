@@ -6,7 +6,8 @@ android {
 
     defaultConfig {
         applicationId "com.smartcare.oximetry.sample"
-        minSdkVersion 18
+//        minSdkVersion 18
+        minSdkVersion 24
         targetSdkVersion 30
         versionCode 12
         versionName "2.0.0"
@@ -17,6 +18,12 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    //new
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
 }
 
 repositories {
@@ -33,6 +40,9 @@ dependencies {
     implementation 'com.androidplot:androidplot-core:0.6.1'
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
     implementation 'com.opencsv:opencsv:4.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.9.0'
+    implementation 'com.rabbitmq:amqp-client:5.5.0'
+//    implementation 'org.java-websocket:Java-WebSocket:1.5.2'
 }
 
 
