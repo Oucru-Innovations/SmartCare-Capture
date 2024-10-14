@@ -39,7 +39,7 @@
 -->
 
 <resources>
-    <string name="app_name">Oximetry Developer Module Sample</string>
+    <string name="app_name">Oximetry Developer Module</string>
     <string name="record_start">Connect</string>
     <string name="record_stop">Disconnect</string>
 </resources>
