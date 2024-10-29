@@ -50,13 +50,32 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="end">
+        android:gravity="center_vertical">
+        <TextView
+            android:id="@+id/infoTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Info: "
+            android:textColor="#FF6600"
+            android:textSize="20sp"
+            android:padding="1dp"/>
+
+        <TextView
+            android:id="@+id/patientCodeTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="-----"
+            android:textColor="#FF6600"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:padding="1dp"/>
 
         <Button
             android:id="@+id/togglePlotButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Toggle Chart"
+            android:text="Chart"
             android:textSize="12sp"
             style="?android:attr/buttonStyleSmall"/>
     </LinearLayout>
@@ -163,71 +182,37 @@
             android:text="%"
             android:textSize="22sp" />
     </RelativeLayout>
-    <!-- New LinearLayout for MAC address queue -->
-<!--    <LinearLayout-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="wrap_content"-->
-<!--        android:orientation="vertical"-->
-<!--        android:layout_marginTop="20dp"-->
-<!--        android:layout_marginBottom="10dp">-->
 
-<!--        <TextView-->
-<!--            android:layout_width="wrap_content"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:text="Connected Devices:"-->
-<!--            android:textSize="18sp"-->
-<!--            android:layout_marginBottom="5dp"/>-->
-
-<!--        <LinearLayout-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:orientation="horizontal"-->
-<!--            android:gravity="center_vertical">-->
-
-<!--            <TextView-->
-<!--                android:id="@+id/connectedMac"-->
-<!--                android:layout_width="0dp"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:layout_weight="1"-->
-<!--                android:textSize="16sp"/>-->
-
-<!--            <Button-->
-<!--                android:id="@+id/device1Delete"-->
-<!--                android:layout_width="wrap_content"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:text="Delete"-->
-<!--                style="?android:attr/buttonStyleSmall"/>-->
-<!--        </LinearLayout>-->
-
-<!--        <LinearLayout-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:orientation="horizontal"-->
-<!--            android:gravity="center_vertical"-->
-<!--            android:layout_marginTop="8dp">-->
-
-<!--            <TextView-->
-<!--                android:id="@+id/queuedMac"-->
-<!--                android:layout_width="0dp"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:layout_weight="1"-->
-<!--                android:textSize="16sp"/>-->
-
-<!--            <Button-->
-<!--                android:id="@+id/device2Delete"-->
-<!--                android:layout_width="wrap_content"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:text="Delete"-->
-<!--                style="?android:attr/buttonStyleSmall"/>-->
-<!--        </LinearLayout>-->
-<!--    </LinearLayout>-->
     <!-- New button for showing the device management dialog -->
-    <Button
-        android:id="@+id/showDevicesButton"
-        android:layout_width="wrap_content"
+<!--    <Button-->
+<!--        android:id="@+id/showDevicesButton"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="Show Connected Devices"-->
+<!--        android:layout_marginTop="20dp"/>-->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Show Connected Devices"
-        android:layout_marginTop="20dp"/>
+        android:orientation="horizontal"
+        android:layout_marginTop="20dp"
+        android:gravity="center">
+
+        <!-- Show Connected Devices button -->
+        <Button
+            android:id="@+id/showDevicesButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Connected Devices" />
+
+        <!-- Patient Info button -->
+        <Button
+            android:id="@+id/patientInfoButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Patient Info" />
+    </LinearLayout>
 
     <Button
         android:id="@+id/button"

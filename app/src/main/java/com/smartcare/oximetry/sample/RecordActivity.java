@@ -52,6 +52,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.net.MacAddress;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -62,7 +63,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.text.Html;
+import android.text.InputType;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.ArrayAdapter;
@@ -109,17 +112,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.MessageProperties;
 import android.util.Log;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
+
 /**
  * This Activity is responsible for recording, displaying and uploading a physiological signal
  * using a SmartCare Analytics Ltd. Bluetooth pulse oximeter.
@@ -142,6 +140,9 @@ public class RecordActivity extends Activity {
     public static String MacAddress;
     private static final String PREFS_NAME = "OximeterPrefs";
     private static final String MAC_QUEUE_KEY = "MacAddressQueue";
+    //new
+    private static final String DEVICE_NAMES_KEY = "DeviceNames";
+    private Map<String, String> deviceNames;
     private Queue<String> macAddressQueue;
     private SharedPreferences sharedPreferences;
     public static boolean isRecordingSessionActive =false;
@@ -157,7 +158,13 @@ public class RecordActivity extends Activity {
     private Button togglePlotButton;
     private LinearLayout plotContainer;
     private boolean isPlotVisible = true;
+    //patient
+    private Button patientInfoButton;
+    private PatientInfoPopup patientInfoPopup;
+    private TextView patientCodeTextView;
     //end
+    //class csv
+
 
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
@@ -250,7 +257,6 @@ public class RecordActivity extends Activity {
                                 latestIrAdc,
                                 latestPerfusionIndexValue,
                                 latestCounterValue,
-//                                deviceId,
                                 MacAddress,
                                 latestPackageReceived,
                                 latestPlethValue,
@@ -286,8 +292,14 @@ public class RecordActivity extends Activity {
                     if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
                         // Update UI with the latest values
                         target.runOnUiThread(() -> {
-                            target.mHrDisplay.setText(String.valueOf(latestHeartRateValue));
-                            target.mSpo2Display.setText(String.valueOf((int) latestSpO2Value));
+                            String heartRateText = String.valueOf(latestHeartRateValue);
+                            String spo2Text = String.valueOf((int) latestSpO2Value);
+                            target.mHrDisplay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50);
+                            target.mHrDisplay.setTypeface(null, Typeface.BOLD); // Set bold text
+                            target.mHrDisplay.setText(heartRateText);
+                            target.mSpo2Display.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50);
+                            target.mSpo2Display.setTypeface(null, Typeface.BOLD); // Set bold text
+                            target.mSpo2Display.setText(spo2Text);
                         });
 
                         // Update last update time
@@ -463,105 +475,8 @@ public class RecordActivity extends Activity {
         }
     }
 
-    //new class
-    public static class OximeterDataWriterFunctions {
-        private static final String FOLDER_NAME = "OximeterData";
-        private static File currentFile;
-        private static CSVWriter currentWriter;
-        private static long startTimestamp;
+    //new class OximeterDataWriterFunctions
 
-        public static void startNewRecording(long packageReceivedTimestamp) {
-            closeCurrentWriter();
-            startTimestamp = packageReceivedTimestamp;
-            currentFile = createFile(packageReceivedTimestamp);
-            try {
-                currentWriter = new CSVWriter(new FileWriter(currentFile));
-                writeHeader(currentWriter);
-                Log.i("OximeterDataWriter", "New recording started: " + currentFile.getAbsolutePath());
-            } catch (IOException e) {
-                Log.e("OximeterDataWriter", "Error creating new CSV file", e);
-                currentWriter = null;
-            }
-        }
-
-        public static void writeDataPoint(double spo2Val, int spo2Status, long redAdc, double battery,
-                                          int hrVal, long irAdc, double perfusionIndex, int counter,
-                                          String macAddress, long packageReceived, int plethVal, long timestamp) {
-            if (currentWriter == null) {
-                Log.e("OximeterDataWriter", "No active recording session");
-                return;
-            }
-
-            String[] data = {
-//                    String.valueOf(packageReceived - startTimestamp),
-                    String.valueOf(packageReceived),
-                    String.valueOf(timestamp),
-                    String.valueOf(counter),
-//                    String.valueOf(deviceId),
-                    macAddress,  // Replaced deviceId with macAddress
-                    String.valueOf(hrVal),
-                    String.valueOf((int)spo2Val),
-                    String.valueOf(spo2Status),
-                    String.valueOf(plethVal),
-//                    String.valueOf((int)convertBatteryToPercentage(battery)),
-                    String.valueOf(battery),
-                    String.valueOf(redAdc),
-                    String.valueOf(irAdc),
-                    String.valueOf(perfusionIndex)
-            };
-            currentWriter.writeNext(data);
-            Log.i("OximeterDataWriter", "File saved at: " + currentFile.getAbsolutePath());
-        }
-
-        public static void endRecording() {
-            closeCurrentWriter();
-            Log.i("OximeterDataWriter", "Recording ended");
-        }
-
-        private static File createFile(long timestamp) {
-            File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER_NAME);
-            if (!directory.exists()) {
-                directory.mkdirs();
-            }
-            String fileName = generateFileName(timestamp);
-            return new File(directory, fileName);
-        }
-
-        private static void writeHeader(CSVWriter writer) {
-            String[] header = {"TIMESTAMP_DV","TIMESTAMP_APP", "COUNTER", "MAC_ADDRESS", "PULSE_BPM", "SPO2_PCT",
-                    "SPO2_STATUS", "PLETH", "BATTERY_PCT", "RED_ADC", "IR_ADC", "PERFUSION_INDEX"};
-            writer.writeNext(header);
-        }
-
-        private static void closeCurrentWriter() {
-            if (currentWriter != null) {
-                try {
-                    currentWriter.close();
-                } catch (IOException e) {
-                    Log.e("OximeterDataWriter", "Error closing CSV writer", e);
-                }
-                currentWriter = null;
-            }
-        }
-//
-        private static String generateFileName(long timestamp) {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd'T'HHmmss.SSS", Locale.US);
-            sdf.setTimeZone(TimeZone.getDefault());
-            Date date = new Date(timestamp);
-            String formattedDate = sdf.format(date);
-
-            TimeZone tz = TimeZone.getDefault();
-            int offsetMillis = tz.getOffset(timestamp);
-            int offsetHours = offsetMillis / (60 * 60 * 1000);
-            int offsetMinutes = Math.abs((offsetMillis / (60 * 1000)) % 60);
-
-            return String.format(Locale.US, "%s%+03d%02d.csv", formattedDate, offsetHours, offsetMinutes);
-        }
-
-        private static double convertBatteryToPercentage(double rawBatteryValue) {
-            return Math.min(Math.max(rawBatteryValue - 3300.0, 0.0) / 850.0, 1.0) * 100.0;
-        }
-    }
     //end
     //new code add
 
@@ -603,7 +518,10 @@ public class RecordActivity extends Activity {
         initialiseViews();
         // Initialize SharedPreferences and MAC address queue
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        macAddressQueue = loadMacAddressQueue();
+//        macAddressQueue = loadMacAddressQueue();
+        //new
+//        deviceNames = loadDeviceNames();
+        loadMacAddressQueueAndDeviceNames();
 
         initialisePlot();
         initialiseSeries();
@@ -615,6 +533,18 @@ public class RecordActivity extends Activity {
                 showConnectedDevicesPopup();
             }
         });
+        //patient
+        initializePatientInfo();
+
+//        patientInfoButton = findViewById(R.id.patientInfoButton);
+//        patientInfoPopup = new PatientInfoPopup(this);
+//
+//        patientInfoButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                patientInfoPopup.show(findViewById(android.R.id.content));
+//            }
+//        });
 
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
         mHandler = new SmartCareHandler(this);
@@ -660,24 +590,76 @@ public class RecordActivity extends Activity {
 
 
         });
-        //new button
-//        device1DeleteButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                deleteDevice(0);
-//            }
-//        });
-//
-//        device2DeleteButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                deleteDevice(1);
-//            }
-//        });
 
     }
+    //pop up for patient input
+    private void initializePatientInfo() {
+        patientInfoButton = findViewById(R.id.patientInfoButton);
+        patientCodeTextView = findViewById(R.id.patientCodeTextView); // Make sure you have this in your layout
+        patientInfoPopup = new PatientInfoPopup(this);
 
+        // Set up the listener to update display on save
+        patientInfoPopup.setOnPatientInfoSavedListener(this::updatePatientInfoDisplay);
+
+        // Set up the patient info button
+        patientInfoButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Request edit mode before showing popup
+                patientInfoPopup.requestEdit();
+                patientInfoPopup.show(findViewById(android.R.id.content));
+            }
+        });
+
+        // Check for existing patient info and update display
+        updatePatientInfoDisplay();
+    }
+
+    private void updatePatientInfoDisplay() {
+        PatientInfoPopup.PatientInfo savedInfo = patientInfoPopup.getSavedPatientInfo();
+
+        // If we have saved patient info, format and display it
+        if (!savedInfo.getResearchCode().isEmpty()) {
+            String formattedCode = String.format("%s-%s-%s",
+                    savedInfo.getResearchCode(),
+                    savedInfo.getLocationCode(),
+                    savedInfo.getSerialNumber());
+
+            if (patientCodeTextView != null) {
+                patientCodeTextView.setText(formattedCode);
+            }
+        }
+    }
+    //end
 //    //new view
+    private void loadMacAddressQueueAndDeviceNames() {
+        String queueString = sharedPreferences.getString(MAC_QUEUE_KEY, "");
+        String[] macAddresses = queueString.split(",");
+        macAddressQueue = new LinkedList<>();
+        deviceNames = new HashMap<>();
+
+        for (String mac : macAddresses) {
+            if (!mac.isEmpty()) {
+                macAddressQueue.offer(mac);
+                // Load the device name for this MAC address
+                String name = sharedPreferences.getString(mac, "Unknown Device");
+                deviceNames.put(mac, name);
+            }
+        }
+    }
+    private void saveMacAddressQueueAndDeviceNames() {
+        StringBuilder queueString = new StringBuilder();
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        for (String mac : macAddressQueue) {
+            queueString.append(mac).append(",");
+            // Save the device name for this MAC address
+            editor.putString(mac, deviceNames.get(mac));
+        }
+
+        editor.putString(MAC_QUEUE_KEY, queueString.toString());
+        editor.apply();
+    }
     //on/off plot
     private void togglePlotVisibility() {
         isPlotVisible = !isPlotVisible;
@@ -694,27 +676,21 @@ public class RecordActivity extends Activity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         View popupView = getLayoutInflater().inflate(R.layout.popup_connected_devices, null);
 
-        TextView device1MacTextView = popupView.findViewById(R.id.connectedMac);
-        TextView device2MacTextView = popupView.findViewById(R.id.queuedMac);
-        Button device1DeleteButton = popupView.findViewById(R.id.device1Delete);
-        Button device2DeleteButton = popupView.findViewById(R.id.device2Delete);
+        device1MacTextView = popupView.findViewById(R.id.connectedMac);
+        device2MacTextView = popupView.findViewById(R.id.queuedMac);
+        device1DeleteButton = popupView.findViewById(R.id.device1Delete);
+        device2DeleteButton = popupView.findViewById(R.id.device2Delete);
 
         updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
 
-        device1DeleteButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                deleteDevice(0);
-                updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
-            }
+        device1DeleteButton.setOnClickListener(v -> {
+            deleteDevice(0);
+            updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
         });
 
-        device2DeleteButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                deleteDevice(1);
-                updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
-            }
+        device2DeleteButton.setOnClickListener(v -> {
+            deleteDevice(1);
+            updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
         });
 
         builder.setView(popupView);
@@ -729,20 +705,30 @@ public class RecordActivity extends Activity {
         String[] macs = macAddressQueue.toArray(new String[0]);
 
         if (macs.length > 0) {
-            device1TextView.setText("Device 1: " + macs[0]);
-            device1TextView.setTextColor(macs[0].equals(connectedMac) ? Color.GREEN : Color.BLACK);
+            String deviceName = deviceNames.getOrDefault(macs[0], "Unknown Device");
+            device1TextView.setText(Html.fromHtml(String.format("Device 1: %s <small>( %s )</small>", deviceName, macs[0])));
+            device1TextView.setTextColor(macs[0].equals(connectedMac) ? Color.rgb(255, 159, 41) : Color.BLACK);
             device1TextView.setVisibility(View.VISIBLE);
             device1DeleteButton.setVisibility(View.VISIBLE);
+            device1TextView.setOnLongClickListener(v -> {
+                showRenameDeviceDialog(macs[0]);
+                return true;
+            });
         } else {
             device1TextView.setVisibility(View.GONE);
             device1DeleteButton.setVisibility(View.GONE);
         }
 
         if (macs.length > 1) {
-            device2TextView.setText("Device 2: " + macs[1]);
-            device2TextView.setTextColor(macs[1].equals(connectedMac) ? Color.GREEN : Color.BLACK);
+            String deviceName = deviceNames.getOrDefault(macs[1], "Unknown Device");
+            device2TextView.setText(Html.fromHtml(String.format("Device 2: %s <small>( %s )</small>", deviceName, macs[1])));
+            device2TextView.setTextColor(macs[1].equals(connectedMac) ? Color.rgb(255, 159, 41) : Color.BLACK);
             device2TextView.setVisibility(View.VISIBLE);
             device2DeleteButton.setVisibility(View.VISIBLE);
+            device2TextView.setOnLongClickListener(v -> {
+                showRenameDeviceDialog(macs[1]);
+                return true;
+            });
         } else {
             device2TextView.setVisibility(View.GONE);
             device2DeleteButton.setVisibility(View.GONE);
@@ -757,16 +743,38 @@ public class RecordActivity extends Activity {
         }
     }
     //
+    private void showRenameDeviceDialog(String macAddress) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Rename Device");
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        input.setText(deviceNames.getOrDefault(macAddress, ""));
+        builder.setView(input);
+
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            String newName = input.getText().toString();
+            deviceNames.put(macAddress, newName);
+//            saveDeviceNames();
+            saveMacAddressQueueAndDeviceNames();
+            updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
+        });
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+
+        builder.show();
+    }
+    //
     private void deleteDevice(int index) {
         if (index < macAddressQueue.size()) {
             String[] macs = macAddressQueue.toArray(new String[0]);
             String macToRemove = macs[index];
             macAddressQueue.remove(macToRemove);
-            saveMacAddressQueue();
-//            updateMacAddressDisplay();
+            deviceNames.remove(macToRemove);
+//            saveMacAddressQueue();
+//            saveDeviceNames();
+            saveMacAddressQueueAndDeviceNames();
 
             if (macToRemove.equals(connectedMac)) {
-                // If the deleted device was connected, disconnect it
                 new Disconnector().execute();
             }
         }
@@ -825,21 +833,42 @@ public class RecordActivity extends Activity {
         }
         sharedPreferences.edit().putString(MAC_QUEUE_KEY, queueString.toString()).apply();
     }
+    //
+    private Map<String, String> loadDeviceNames() {
+        String namesString = sharedPreferences.getString(DEVICE_NAMES_KEY, "");
+        Map<String, String> names = new HashMap<>();
+        String[] pairs = namesString.split(",");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split(":");
+            if (keyValue.length == 2) {
+                names.put(keyValue[0], keyValue[1]);
+            }
+        }
+        return names;
+    }
 
+    private void saveDeviceNames() {
+        StringBuilder namesString = new StringBuilder();
+        for (Map.Entry<String, String> entry : deviceNames.entrySet()) {
+            namesString.append(entry.getKey()).append(":").append(entry.getValue()).append(",");
+        }
+        sharedPreferences.edit().putString(DEVICE_NAMES_KEY, namesString.toString()).apply();
+    }
+    //
     private void updateMacAddressQueue(String newMac) {
         if (macAddressQueue.size() == 2 && !macAddressQueue.contains(newMac)) {
-            // Disconnect and reset to original state
             disconnectAndReset();
-            // Show dialog to request deletion of a device
             showDeleteDeviceDialog();
             return;
         }
         if (!macAddressQueue.contains(newMac)) {
             macAddressQueue.offer(newMac);
+            deviceNames.putIfAbsent(newMac, "Unknown Device");
         }
         connectedMac = newMac;
-        saveMacAddressQueue();
-//        updateMacAddressDisplay();
+        saveMacAddressQueueAndDeviceNames();
+//        saveMacAddressQueue();
+//        saveDeviceNames();
     }
     private void disconnectAndReset() {
         new AsyncTask<Void, Void, Void>() {
@@ -999,3 +1028,4 @@ public class RecordActivity extends Activity {
         }
     }
 }
+
