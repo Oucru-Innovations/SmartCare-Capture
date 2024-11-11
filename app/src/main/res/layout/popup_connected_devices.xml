@@ -1,56 +1,79 @@
+    <!-- res/layout/connected_devices_layout.xml -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@drawable/popup_background"> <!-- Apply rounded background -->
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Connected Devices:"
         android:textSize="18sp"
-        android:layout_marginBottom="10dp"/>
+        android:textColor="#333333"
+        android:layout_marginBottom="12dp"
+        android:fontFamily="sans-serif-medium"/>
 
+    <!-- First device layout with drawable background for TextView -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="10dp"
+        android:padding="8dp"
+        android:background="@drawable/edit_text_background"> <!-- Adds border and rounded corners -->
 
         <TextView
             android:id="@+id/connectedMac"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textSize="16sp"/>
+            android:textSize="16sp"
+            android:padding="8dp"
+            android:textColor="#666666"
+            android:background="@drawable/edit_text_background" />
 
         <Button
             android:id="@+id/device1Delete"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Delete"
-            style="?android:attr/buttonStyleSmall"/>
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            style="?android:attr/buttonStyleSmall"
+            android:textColor="#FF4444" />
     </LinearLayout>
 
+    <!-- Second device layout with drawable background for TextView -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:padding="8dp"
+        android:background="@drawable/edit_text_background">
 
         <TextView
             android:id="@+id/queuedMac"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textSize="16sp"/>
+            android:textSize="16sp"
+            android:padding="8dp"
+            android:textColor="#666666"
+            android:background="@drawable/edit_text_background" />
 
         <Button
             android:id="@+id/device2Delete"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Delete"
-            style="?android:attr/buttonStyleSmall"/>
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            style="?android:attr/buttonStyleSmall"
+            android:textColor="#FF4444" />
     </LinearLayout>
+
 </LinearLayout>

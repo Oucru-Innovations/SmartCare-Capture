@@ -7,6 +7,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 import android.os.Environment;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -19,19 +23,34 @@ public class OximeterDataWriterFunctions {
     private static File currentFile;
     private static CSVWriter currentWriter;
     private static OximeterDataBuffer dataBuffer;
+    private static long startTimestamp;
+    private static String patientCode;
+    //model
 
-    public static void startNewRecording(long packageReceivedTimestamp) {
+
+    public static void startNewRecording(long packageReceivedTimestamp, String patientIdentifier) {
         closeCurrentWriter();
-        currentFile = createFile(packageReceivedTimestamp);
+
+
+        startTimestamp = packageReceivedTimestamp;
+        patientCode = patientIdentifier;
+
+
+        currentFile = createFileWithTempName(startTimestamp);
         dataBuffer = new OximeterDataBuffer();
 
         try {
             currentWriter = new CSVWriter(new FileWriter(currentFile));
             writeHeader(currentWriter);
+
+
+
             Log.i(TAG, "New recording started: " + currentFile.getAbsolutePath());
+
         } catch (IOException e) {
             Log.e(TAG, "Error creating new CSV file", e);
             currentWriter = null;
+
         }
     }
 
@@ -69,6 +88,8 @@ public class OximeterDataWriterFunctions {
 
             currentWriter.writeNext(csvData);
             currentWriter.flush();
+
+
         } catch (IOException e) {
             Log.e(TAG, "Error writing processed data", e);
         }
@@ -79,16 +100,20 @@ public class OximeterDataWriterFunctions {
     }
 
     public static void endRecording() {
+        long endTimestamp = System.currentTimeMillis();
         closeCurrentWriter();
+        renameFileWithEndTime(endTimestamp);
         Log.i(TAG, "Recording ended");
     }
 
-    private static File createFile(long timestamp) {
+    private static File createFileWithTempName(long startTimestamp) {
         File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER_NAME);
         if (!directory.exists()) {
             directory.mkdirs();
         }
-        String fileName = generateFileName(timestamp);
+
+        // Initial file name with "Temp" suffix
+        String fileName = generateFileName(startTimestamp, "temp");
         return new File(directory, fileName);
     }
 
@@ -118,17 +143,36 @@ public class OximeterDataWriterFunctions {
             currentWriter = null;
         }
     }
+    // sample SmartCareCsv_54EI-003-6011_26.10.2024.08.59.31_26.10.2024.10.57.59
+    private static void renameFileWithEndTime(long endTimestamp) {
+        if (currentFile == null || !currentFile.exists()) {
+            Log.e(TAG, "No file to rename");
+            return;
+        }
 
-    private static String generateFileName(long timestamp) {
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd'T'HHmmss.SSS", Locale.US);
-        sdf.setTimeZone(TimeZone.getDefault());
-        String formattedDate = sdf.format(new Date(timestamp));
+        File directory = currentFile.getParentFile();
+        String newFileName = generateFileName( startTimestamp, formatTimestamp(endTimestamp));
+        File newFile = new File(directory, newFileName);
 
-        TimeZone tz = TimeZone.getDefault();
-        int offsetMillis = tz.getOffset(timestamp);
-        int offsetHours = offsetMillis / (60 * 60 * 1000);
-        int offsetMinutes = Math.abs((offsetMillis / (60 * 1000)) % 60);
+        if (currentFile.renameTo(newFile)) {
+            Log.i(TAG, "File renamed to: " + newFile.getAbsolutePath());
+            currentFile = newFile;
+        } else {
+            Log.e(TAG, "Error renaming file");
+        }
+    }
 
-        return String.format(Locale.US, "%s%+03d%02d.csv", formattedDate, offsetHours, offsetMinutes);
+    private static String generateFileName(long startTimestamp, String endTimestampPart) {
+        String prefix = "SmartCareCsv";
+
+        String startTime = formatTimestamp(startTimestamp);
+
+        return String.format("%s_%s_%s_%s.csv", prefix, patientCode, startTime, endTimestampPart);
+    }
+
+    private static String formatTimestamp(long timestamp) {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US);
+        dateFormat.setTimeZone(TimeZone.getTimeZone("GMT+7"));
+        return dateFormat.format(new Date(timestamp));
     }
 }

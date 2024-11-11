@@ -43,6 +43,10 @@ package com.smartcare.oximetry.sample;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -59,6 +63,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+
+
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -88,8 +94,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -106,6 +114,7 @@ import org.json.JSONObject;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -122,7 +131,7 @@ import android.bluetooth.BluetoothManager;
  * This Activity is responsible for recording, displaying and uploading a physiological signal
  * using a SmartCare Analytics Ltd. Bluetooth pulse oximeter.
  */
-public class RecordActivity extends Activity {
+public class RecordActivity extends Activity  {
     private static final String TAG = "RecordActivity";
     private static final double UI_BUFFER_SIZE_SAMPLES = 500;
     private static final int REQUEST_REQUIRED_PERMISSIONS = 17;
@@ -162,8 +171,17 @@ public class RecordActivity extends Activity {
     private Button patientInfoButton;
     private PatientInfoPopup patientInfoPopup;
     private TextView patientCodeTextView;
+    private String formattedCode; //= patientIdentifier
     //end
-    //class csv
+    //auto
+    private BluetoothAdapter bluetoothAdapter;
+    private BroadcastReceiver bluetoothReceiver;
+    private static final long SCAN_INTERVAL = 3000; // 10 seconds
+    private Handler scanHandler;
+    private Runnable scanRunnable;
+    private List<String> blockedList = new ArrayList<>();
+    private boolean isConnected = false;
+//    test
 
 
     /**
@@ -231,20 +249,28 @@ public class RecordActivity extends Activity {
                     //double latestPerfusionIndexValue = -1;
 
                     //new code add
-                    Log.d("RecordActivity", String.format(Locale.US,
-                            "Pleth Value: %d, Heart Rate: %d, SpO2: %.2f, Device ID: %d, Battery: %.2f, Counter: %d, SpO2 Status: %d, Red ADC: %d, IR ADC: %d, Perfusion Index: %.2f, Package Received: %d, Start Time: %d",
-                            latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status, latestRedAdc, latestIrAdc, latestPerfusionIndexValue, latestPackageReceived, startTime
-                    ));
+//                    Log.d("RecordActivity", String.format(Locale.US,
+//                            "Pleth Value: %d, Heart Rate: %d, SpO2: %.2f, Device ID: %d, Battery: %.2f, Counter: %d, SpO2 Status: %d, Red ADC: %d, IR ADC: %d, Perfusion Index: %.2f, Package Received: %d, Start Time: %d",
+//                            latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status, latestRedAdc, latestIrAdc, latestPerfusionIndexValue, latestPackageReceived, startTime
+//                    ));
+                    Log.d("RecordActivity", String.format(Locale.US, "counter: %d", latestCounterValue));
+//                    String filePath = "D:\\DataApp\\Test\\counter_data.csv";
+//                    try (FileWriter writer = new FileWriter(filePath, true)) { // true enables append mode
+//                        writer.append(String.valueOf(latestCounterValue));
+//                        writer.append('\n'); // Write each value on a new line
+//                    } catch (IOException e) {
+//                        Log.e("RecordActivity", "Error writing to CSV file", e);
+//                    }
                     Log.d("RecordActivity", "MAC address: "+MacAddress);
                     // After retrieving all the data from the packet
-                    Log.d("RecordActivity", "Preparing to write CSV data");
+//                    Log.d("RecordActivity", "Preparing to write CSV data");
 //
 
                     long timestamp = System.currentTimeMillis();
                     try {
 //                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
                         if (!isRecordingSessionActive) {
-                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
+                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode);
                             isRecordingSessionActive = true;
                         }
 //                        OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
@@ -321,6 +347,7 @@ public class RecordActivity extends Activity {
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
                     //new
+
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
                     data = msg.getData();
@@ -350,7 +377,7 @@ public class RecordActivity extends Activity {
 //                    Toast.makeText(target, "Disconnected. " +totalMessagesSent +" messages sent", Toast.LENGTH_SHORT).show();
                     Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT).show();
 
-                    //
+                    target.isConnected = false; //new
                     target.connectedMac = null;
 //                    target.updateMacAddressDisplay();
                     // Device has disconnected.
@@ -362,6 +389,9 @@ public class RecordActivity extends Activity {
                             target.connectToPulseOximeter();
                         }
                     });
+
+//                    new
+//                    target.bluetoothAdapter.startDiscovery();
                     //target.mPlot.clear();
                     //target.mPlot.redraw();
                     break;
@@ -393,6 +423,7 @@ public class RecordActivity extends Activity {
         private String connectedMacAddress;
         @Override
         protected void onPreExecute() {
+
             Log.i(getString(R.string.app_name), "Connector task started");
             mControlButton.setText(getString(R.string.record_stop));
             //new condition
@@ -410,23 +441,28 @@ public class RecordActivity extends Activity {
             boolean success = connectionManager.connect();
             if (success) {
                 connectedMacAddress = connectionManager.getMacAddress();
-                Log.d(TAG, "Connector: Successfully connected to MAC: " + connectedMac);
-            }
+                Log.d(TAG, "User click connecttttttttttt");
+                blockedList.remove(connectedMacAddress);
+                Log.d(TAG, "Connector: Successfully connected to MAC: " + connectedMacAddress);
+            }//new
+
+
             return success;
         }
         @Override
         protected void onPostExecute(Boolean result) {
+
             mControlButton.setEnabled(true);
 
             if (!result) {
                 Log.w(getString(R.string.app_name), "Cannot connect");
                 mControlButton.setText(getString(R.string.record_start));
+
                 mControlButton.setOnClickListener(new OnClickListener() {
                     @Override
                     public void onClick(View v) {
-
-                        connectToPulseOximeter();}
-
+                        connectToPulseOximeter();
+                    }
                 });
                 return;
             }
@@ -437,10 +473,16 @@ public class RecordActivity extends Activity {
             updateMacAddressQueue(connectedMacAddress);
             MacAddress = connectedMacAddress;
 //            MacAddress = connectionManager.getMacAddress();
+            //new
+            connectedMac = connectedMacAddress;
+
             mControlButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     stopDisconnectExit();
+                    blockedList.add(connectedMac);
+                    Log.d(TAG, "List block contents: " + blockedList);
+                    Log.d(TAG, "User click buttonnnnnnnnnnnnnnnnnnnnnnnn ");
                 }
             });
         }
@@ -462,7 +504,16 @@ public class RecordActivity extends Activity {
 
         @Override
         protected Boolean doInBackground(Void... params) {
+//            connectionManager.disconnect();
+//            return true;
+            // Add current device to block list before disconnecting
+
+            Message msg = Message.obtain(null, ConnectionManager.MESSAGE_RECORDING_ENDED);
+//            Bundle data = new Bundle();
+//            data.putBoolean("user_initiated", true);
+//            msg.setData(data);
             connectionManager.disconnect();
+            mHandler.sendMessage(msg);
             return true;
         }
 
@@ -470,17 +521,21 @@ public class RecordActivity extends Activity {
         protected void onPostExecute(Boolean result) {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
             isRecordingSessionActive = false;
-            connectedMac = null;
+            OximeterDataWriterFunctions.endRecording();
+//            connectedMac = null;
 //            updateMacAddressDisplay();
+
+            connectedMac = null;
+            //new
+//
         }
     }
 
-    //new class OximeterDataWriterFunctions
-
-    //end
-    //new code add
 
     //
+    // Implement AutoConnectCallback methods
+
+
     //new code
 
     //end
@@ -490,6 +545,8 @@ public class RecordActivity extends Activity {
     private void connectToPulseOximeter() {
         boolean hasPermission = checkAppPermissions();
         if (hasPermission) {
+            // If this is a manual connect, remove from block list
+
             new Connector().execute();
         } else {
             // Didn't have one or more required permissions, so abort connection.
@@ -497,6 +554,7 @@ public class RecordActivity extends Activity {
         //new implement
 
     }
+
 
     /**
      * Sends a message to the ConnectionManager to stop recording. We will know recording has
@@ -514,12 +572,15 @@ public class RecordActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+
         // Initialise the UI.
         initialiseViews();
         // Initialize SharedPreferences and MAC address queue
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 //        macAddressQueue = loadMacAddressQueue();
         //new
+        //clear block mac
+        blockedList.clear();
 //        deviceNames = loadDeviceNames();
         loadMacAddressQueueAndDeviceNames();
 
@@ -536,33 +597,112 @@ public class RecordActivity extends Activity {
         //patient
         initializePatientInfo();
 
-//        patientInfoButton = findViewById(R.id.patientInfoButton);
-//        patientInfoPopup = new PatientInfoPopup(this);
-//
-//        patientInfoButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                patientInfoPopup.show(findViewById(android.R.id.content));
-//            }
-//        });
 
+//        initializeBluetoothScanning();
+//
+//        // Start scanning in the background
+//        startBluetoothBackgroundScan();
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
         mHandler = new SmartCareHandler(this);
         if (connectionManager == null) {
             connectionManager = new ConnectionManager(this, mHandler);
         }
         //new
+        initializeBluetoothScanning();
+
+        // Start scanning in the background
+        startBluetoothBackgroundScan();
+        // Initialize Bluetooth scanning components
+
 
 //        updateMacAddressDisplay();
     }
+    ///auto part
+    private void initializeBluetoothScanning() {
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (bluetoothAdapter == null) {
+            Log.e(TAG, "Bluetooth not supported");
+            return;
+        }
 
+        // Define and initialize the BroadcastReceiver as a class-level variable
+        bluetoothReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                    BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    String deviceMac = device.getAddress();
+
+                    // Check if device is in macAddressQueue
+                    if (macAddressQueue.contains(deviceMac) && !blockedList.contains(deviceMac) ) {
+                        Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
+                        if( isConnected == false) {
+                            connectToPulseOximeter();
+                            isConnected = true;
+                        }
+//                        bluetoothAdapter.cancelDiscovery();//
+                    } else {
+                        Log.d(TAG, "Discovered device not in queue: " + device.getName() + " [" + deviceMac + "]");
+                    }
+                }
+            }
+        };
+
+        // Register the Bluetooth device discovery receiver
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        registerReceiver(bluetoothReceiver, filter);
+    }
+
+    private void startBluetoothBackgroundScan() {
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+            Log.e(TAG, "Bluetooth is disabled or unavailable");
+            return;
+        }
+
+        // Initialize scan handler and runnable for periodic scanning
+        scanHandler = new Handler();
+        scanRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // Start discovery if not already discovering
+                if (!bluetoothAdapter.isDiscovering()) {
+                    bluetoothAdapter.startDiscovery();
+                    Log.d(TAG, "Started Bluetooth device discovery");
+                }
+//                if (connectionManager.isConnected()) {
+//                    // If connected, stop scanning to save battery
+//                    if (bluetoothAdapter.isDiscovering()) {
+//                        bluetoothAdapter.cancelDiscovery();
+//                        Log.d(TAG, "Bluetooth discovery stopped due to active connection.");
+//                    }
+//                } else {
+//                    // If not connected, start scanning for devices
+//                    if (!bluetoothAdapter.isDiscovering()) {
+//                        bluetoothAdapter.startDiscovery();
+//                        Log.d(TAG, "Started Bluetooth device discovery");
+//                    }
+//                }
+                // Schedule next scan after the interval
+                scanHandler.postDelayed(this, SCAN_INTERVAL);
+            }
+        };
+
+        // Start the first scan
+        scanHandler.post(scanRunnable);
+    }
+
+
+
+    //end
     private void initialiseViews() {
         mPlot = (XYPlot) findViewById(R.id.plot);
         mControlButton = (Button) findViewById(R.id.button);
         mHrDisplay = (TextView) findViewById(R.id.hr);
         mSpo2Display = (TextView) findViewById(R.id.spo2);
         mSpo2Label = (TextView) findViewById(R.id.spo2label);
-        mSpo2Label.setText(Html.fromHtml("SpO<sub><small>2</small></sub>"));
+//        mSpo2Label.setText(Html.fromHtml("SpO<sub><small>2</small></sub>"));
+
         //new
 //        device1MacTextView = (TextView) findViewById(R.id.connectedMac);
 //        device2MacTextView = (TextView) findViewById(R.id.queuedMac);
@@ -585,9 +725,7 @@ public class RecordActivity extends Activity {
         mControlButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-
                     connectToPulseOximeter();}
-
 
         });
 
@@ -620,7 +758,7 @@ public class RecordActivity extends Activity {
 
         // If we have saved patient info, format and display it
         if (!savedInfo.getResearchCode().isEmpty()) {
-            String formattedCode = String.format("%s-%s-%s",
+            formattedCode = String.format("%s-%s-%s",
                     savedInfo.getResearchCode(),
                     savedInfo.getLocationCode(),
                     savedInfo.getSerialNumber());
@@ -959,20 +1097,32 @@ public class RecordActivity extends Activity {
      */
     @Override
     protected void onDestroy() {
+
         if (connectionManager.isRecording()) {
             connectionManager.disconnect();
         }
         //new code
-
         //
         super.onDestroy();
+        // Stop ongoing Bluetooth discovery and remove the scan handler callback
+        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
+            bluetoothAdapter.cancelDiscovery();
+        }
+
+        if (scanHandler != null && scanRunnable != null) {
+            scanHandler.removeCallbacks(scanRunnable);
+        }
+
+        // Unregister Bluetooth receiver to prevent memory leaks
+        unregisterReceiver(bluetoothReceiver);
+
     }
 
     /**
      * Needed for Android API 23+. Check if the app has permission to use Bluetooth, and if it
      * doesn't then request it.
      */
-    private boolean checkAppPermissions() {
+    public boolean checkAppPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
         //new code add
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

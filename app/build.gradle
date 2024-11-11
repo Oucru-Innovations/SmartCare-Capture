@@ -40,6 +40,7 @@ dependencies {
     implementation 'com.androidplot:androidplot-core:0.6.1'
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
     implementation 'com.opencsv:opencsv:4.1'
+
 //    implementation 'com.squareup.okhttp3:okhttp:4.9.0'
 //    implementation 'com.rabbitmq:amqp-client:5.5.0'
 //    implementation 'com.google.android.material:material:1.12.0'
