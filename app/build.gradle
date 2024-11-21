@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 
+
 android {
     compileSdkVersion 30
     buildToolsVersion "30.0.2"
@@ -11,6 +12,9 @@ android {
         targetSdkVersion 30
         versionCode 12
         versionName "2.0.0"
+        vectorDrawables {
+            useSupportLibrary true
+        }
     }
     buildTypes {
         release {
@@ -22,7 +26,10 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+//        sourceCompatibility JavaVersion.VERSION_11
+//        targetCompatibility JavaVersion.VERSION_11
     }
+
 
 }
 
@@ -41,11 +48,26 @@ dependencies {
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
     implementation 'com.opencsv:opencsv:4.1'
 
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.9.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.9.0' //end
+//    implementation 'androidx.appcompat:appcompat:1.7.0'
+//    implementation 'com.google.android.material:material:1.12.0'
+//    implementation 'androidx.activity:activity:1.9.3'
+//    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
+
+//    implementation 'androidx.appcompat:appcompat:1.7.0'
+    //
+//    implementation 'com.google.android.material:material:1.12.0'
+//    implementation 'androidx.activity:activity:1.9.2'
 //    implementation 'com.squareup.okhttp3:okhttp:4.9.0'
 //    implementation 'com.rabbitmq:amqp-client:5.5.0'
 //    implementation 'com.google.android.material:material:1.12.0'
 //    implementation 'com.google.code.gson:gson:2.6.2'
 //    implementation 'org.java-websocket:Java-WebSocket:1.5.2'
+
 }
 
 

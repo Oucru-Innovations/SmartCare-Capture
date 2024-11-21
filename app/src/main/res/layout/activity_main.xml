@@ -244,19 +244,44 @@
             android:textColor="@android:color/white"
             android:background="@drawable/rounded_button_blue"
             android:layout_marginStart="8dp"/>
+
+        <!-- New Button to Manage Files -->
+        <Button
+            android:id="@+id/manageFilesButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Manage Files"
+            android:textColor="@android:color/white"
+            android:background="@drawable/rounded_button_orange"
+            android:layout_marginStart="8dp"/>
+
     </LinearLayout>
 
     <!-- Connect Button -->
-    <Button
-        android:id="@+id/button"
+    <FrameLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:paddingHorizontal="50dp"
-        android:text="Connect"
-        android:textSize="20sp"
-        android:textColor="@android:color/white"
-        android:background="@drawable/rounded_button_orange" />
+        android:layout_gravity="center"
+        android:layout_marginTop="20dp">
+
+        <Button
+            android:id="@+id/button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="50dp"
+            android:text="Connect"
+            android:textSize="20sp"
+            android:textColor="@android:color/white"
+            android:background="@drawable/rounded_button_orange" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+    </FrameLayout>
 
 </LinearLayout>
 

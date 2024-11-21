@@ -42,4 +42,5 @@
     <string name="app_name">Oximetry Developer Module</string>
     <string name="record_start">Connect</string>
     <string name="record_stop">Disconnect</string>
+    <string name="title_activity_file_manager">FileManagerActivity</string>
 </resources>

@@ -1,4 +1,5 @@
 package com.smartcare.oximetry.sample;
+import android.app.Activity;
 import android.util.Log;
 
 import com.opencsv.CSVWriter;
@@ -99,11 +100,15 @@ public class OximeterDataWriterFunctions {
         return list.toString();
     }
 
-    public static void endRecording() {
+    public static String endRecording() {
         long endTimestamp = System.currentTimeMillis();
         closeCurrentWriter();
         renameFileWithEndTime(endTimestamp);
+
         Log.i(TAG, "Recording ended");
+        return currentFile.getAbsolutePath();
+//        FileUploader.uploadFile(currentFile.getAbsolutePath());
+//        Log.i(TAG, "File uploaded successfully");
     }
 
     private static File createFileWithTempName(long startTimestamp) {

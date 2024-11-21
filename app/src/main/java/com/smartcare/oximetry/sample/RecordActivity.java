@@ -182,7 +182,7 @@ public class RecordActivity extends Activity  {
     private List<String> blockedList = new ArrayList<>();
     private boolean isConnected = false;
 //    test
-
+    private String filePath;
 
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
@@ -253,7 +253,7 @@ public class RecordActivity extends Activity  {
 //                            "Pleth Value: %d, Heart Rate: %d, SpO2: %.2f, Device ID: %d, Battery: %.2f, Counter: %d, SpO2 Status: %d, Red ADC: %d, IR ADC: %d, Perfusion Index: %.2f, Package Received: %d, Start Time: %d",
 //                            latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status, latestRedAdc, latestIrAdc, latestPerfusionIndexValue, latestPackageReceived, startTime
 //                    ));
-                    Log.d("RecordActivity", String.format(Locale.US, "counter: %d", latestCounterValue));
+//                    Log.d("RecordActivity", String.format(Locale.US, "counter: %d", latestCounterValue));
 //                    String filePath = "D:\\DataApp\\Test\\counter_data.csv";
 //                    try (FileWriter writer = new FileWriter(filePath, true)) { // true enables append mode
 //                        writer.append(String.valueOf(latestCounterValue));
@@ -262,6 +262,7 @@ public class RecordActivity extends Activity  {
 //                        Log.e("RecordActivity", "Error writing to CSV file", e);
 //                    }
                     Log.d("RecordActivity", "MAC address: "+MacAddress);
+                    Log.d("RecordActivity", String.format(Locale.US, "Sample: %s", target.connectionManager.getSampleRate() ));
                     // After retrieving all the data from the packet
 //                    Log.d("RecordActivity", "Preparing to write CSV data");
 //
@@ -347,7 +348,8 @@ public class RecordActivity extends Activity  {
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
                     //new
-
+                    target.isConnected = false; //new
+//                    target.bluetoothAdapter.startDiscovery(); // new
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
                     data = msg.getData();
@@ -365,7 +367,8 @@ public class RecordActivity extends Activity  {
 
                     Toast.makeText(target, str, Toast.LENGTH_LONG).show();
                     //new
-
+                    target.isConnected = true;
+                    target.bluetoothAdapter.cancelDiscovery();
                     //
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_ENDED:
@@ -375,9 +378,15 @@ public class RecordActivity extends Activity  {
                     // Create and show the Toast
 
 //                    Toast.makeText(target, "Disconnected. " +totalMessagesSent +" messages sent", Toast.LENGTH_SHORT).show();
-                    Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT).show();
+//                    Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT).show();
 
+                    final Toast toast = Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT);
+                    toast.show();
+                    new Handler().postDelayed(toast::cancel, 1000); // 1000 milliseconds = 1 second
+
+//                    FileUploader.uploadFile(target, target.filePath);
                     target.isConnected = false; //new
+                    target.bluetoothAdapter.startDiscovery(); // new
                     target.connectedMac = null;
 //                    target.updateMacAddressDisplay();
                     // Device has disconnected.
@@ -391,6 +400,8 @@ public class RecordActivity extends Activity  {
                     });
 
 //                    new
+                    target.isConnected = false; //new
+//                    target.bluetoothAdapter.startDiscovery(); // new
 //                    target.bluetoothAdapter.startDiscovery();
                     //target.mPlot.clear();
                     //target.mPlot.redraw();
@@ -404,6 +415,8 @@ public class RecordActivity extends Activity  {
                 case ConnectionManager.MESSAGE_DEVICE_NOT_FOUND:
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
                     //new
+                    target.isConnected = false;
+//                    target.bluetoothAdapter.startDiscovery();
                     // Clear the pending MAC address as the connection failed
 
                     break;
@@ -475,12 +488,16 @@ public class RecordActivity extends Activity  {
 //            MacAddress = connectionManager.getMacAddress();
             //new
             connectedMac = connectedMacAddress;
+            // new
 
             mControlButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     stopDisconnectExit();
                     blockedList.add(connectedMac);
+                    //new
+                    isConnected = false; //new
+                    bluetoothAdapter.startDiscovery(); // new
                     Log.d(TAG, "List block contents: " + blockedList);
                     Log.d(TAG, "User click buttonnnnnnnnnnnnnnnnnnnnnnnn ");
                 }
@@ -504,24 +521,22 @@ public class RecordActivity extends Activity  {
 
         @Override
         protected Boolean doInBackground(Void... params) {
-//            connectionManager.disconnect();
-//            return true;
-            // Add current device to block list before disconnecting
-
-            Message msg = Message.obtain(null, ConnectionManager.MESSAGE_RECORDING_ENDED);
-//            Bundle data = new Bundle();
-//            data.putBoolean("user_initiated", true);
-//            msg.setData(data);
             connectionManager.disconnect();
-            mHandler.sendMessage(msg);
             return true;
+            // Add current device to block list before disconnecting
         }
 
         @Override
         protected void onPostExecute(Boolean result) {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
             isRecordingSessionActive = false;
-            OximeterDataWriterFunctions.endRecording();
+            filePath = OximeterDataWriterFunctions.endRecording();
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    FileUploader.uploadFile(RecordActivity.this, filePath);
+                }
+            }, 2000); // 2-second delay
 //            connectedMac = null;
 //            updateMacAddressDisplay();
 
@@ -594,25 +609,31 @@ public class RecordActivity extends Activity  {
                 showConnectedDevicesPopup();
             }
         });
+        //show file buttton
+        Button manageFilesButton = findViewById(R.id.manageFilesButton);
+        manageFilesButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(RecordActivity.this, FileManagerActivity.class);
+                startActivity(intent);
+            }
+        });
         //patient
         initializePatientInfo();
 
 
-//        initializeBluetoothScanning();
-//
-//        // Start scanning in the background
-//        startBluetoothBackgroundScan();
+
+
+        // Start scanning in the background
+        initializeBluetoothScanning();
+        startBluetoothBackgroundScan();
+
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
         mHandler = new SmartCareHandler(this);
         if (connectionManager == null) {
             connectionManager = new ConnectionManager(this, mHandler);
         }
         //new
-        initializeBluetoothScanning();
-
-        // Start scanning in the background
-        startBluetoothBackgroundScan();
-        // Initialize Bluetooth scanning components
 
 
 //        updateMacAddressDisplay();
@@ -636,10 +657,33 @@ public class RecordActivity extends Activity  {
 
                     // Check if device is in macAddressQueue
                     if (macAddressQueue.contains(deviceMac) && !blockedList.contains(deviceMac) ) {
-                        Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
+//                        Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
                         if( isConnected == false) {
-                            connectToPulseOximeter();
-                            isConnected = true;
+                            Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
+//                            connectToPulseOximeter();
+                            boolean success = connectionManager.connect(deviceMac);
+                            if(success){
+                                bluetoothAdapter.cancelDiscovery();
+                                Log.i(getString(R.string.app_name), "Connector task started");
+                                mControlButton.setText(getString(R.string.record_stop));
+                                //
+                                Log.i(getString(R.string.app_name), "Ready to start recording.");
+                                connectionManager.startRecording();
+                                //
+                                updateMacAddressQueue(deviceMac);
+                                MacAddress = deviceMac;
+                                connectedMac = deviceMac;
+                                mControlButton.setOnClickListener(new OnClickListener() {
+                                    @Override
+                                    public void onClick(View view) {
+                                        stopDisconnectExit();
+                                        blockedList.add(deviceMac);
+                                        isConnected = false;
+                                        bluetoothAdapter.startDiscovery();
+                                    }
+                                });
+                            }
+//                            bluetoothAdapter.cancelDiscovery();
                         }
 //                        bluetoothAdapter.cancelDiscovery();//
                     } else {
