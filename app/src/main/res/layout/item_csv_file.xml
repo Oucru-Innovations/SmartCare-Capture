@@ -28,7 +28,7 @@
 
         <TextView
             android:id="@+id/fileSizeText"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="12sp"
             android:text="Size: 24 KB"
@@ -36,17 +36,21 @@
 
         <TextView
             android:id="@+id/fileDateText"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="12sp"
             android:text="Modified: 2024-01-15"
             android:textColor="@android:color/darker_gray"/>
     </LinearLayout>
 
-    <ImageView
-        android:id="@+id/openFileIcon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:src="@drawable/visible"
-        android:layout_gravity="center_vertical"/>
+    <ImageButton
+        android:id="@+id/uploadButton"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginLeft="16dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/upload" />
+
 </LinearLayout>

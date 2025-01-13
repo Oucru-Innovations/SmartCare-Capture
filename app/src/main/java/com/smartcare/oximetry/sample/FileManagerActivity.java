@@ -2,13 +2,16 @@ package com.smartcare.oximetry.sample;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -30,10 +33,17 @@ public class FileManagerActivity extends Activity {
     private ArrayList<CsvFile> csvFiles = new ArrayList<>();
     private CsvFileAdapter adapter;
 
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_file_manager);
+
+        // Hide the action bar
+        if (getActionBar() != null) {
+            getActionBar().hide();
+        }
 
         // Initialize views
         fileListView = findViewById(R.id.fileListView);
@@ -47,6 +57,14 @@ public class FileManagerActivity extends Activity {
         // Load and display CSV files
         loadCsvFiles();
     }
+
+//    @Override
+//    protected void onResume()
+//    {
+//        super.onResume();
+//        loadCsvFiles();
+//        adapter.notifyDataSetChanged();
+//    }
 
     private void loadCsvFiles() {
         // Clear previous files
@@ -68,6 +86,9 @@ public class FileManagerActivity extends Activity {
                 file.isFile() && file.getName().toLowerCase().endsWith(".csv")
         );
 
+        // Log the number of files found
+        Log.d("FileManagerActivity", "Number of CSV files found: " + (files != null ? files.length : 0));
+
         // Check if any CSV files exist
         if (files == null || files.length == 0) {
             emptyTextView.setText("No CSV files found in OximeterData folder");
@@ -86,6 +107,10 @@ public class FileManagerActivity extends Activity {
         // Update the UI
         updateFileList();
     }
+
+
+
+
 
     private void updateFileList() {
         adapter.notifyDataSetChanged();
@@ -165,11 +190,49 @@ public class FileManagerActivity extends Activity {
             TextView fileSizeText = convertView.findViewById(R.id.fileSizeText);
             TextView fileDateText = convertView.findViewById(R.id.fileDateText);
             ImageView fileIcon = convertView.findViewById(R.id.fileIcon);
-
+//            ImageView openFileIcon = convertView.findViewById(R.id.openFileIcon);
+            ImageButton uploadButton = convertView.findViewById(R.id.uploadButton);
             // Set data
             fileNameText.setText(csvFile.getName());
             fileSizeText.setText(String.format("Size: %s", csvFile.getFormattedSize()));
             fileDateText.setText(String.format("Modified: %s", csvFile.getFormattedDate()));
+
+            // Set click listener for upload button
+            uploadButton.setOnClickListener(v -> {
+                // Handle upload
+//                uploadFile(csvFile.getFile());
+                Log.d("FileManagerActivity", "Uploading file: " + csvFile.getFile().getAbsolutePath());
+//                FileUploader.uploadFile(FileManagerActivity.this, csvFile.getFile().getAbsolutePath());
+                boolean success = true;
+                if (success) {
+                    // Move the file to another folder
+                    File newLocation = new File(csvFile.getFile().getParentFile(), "Uploaded");
+                    if (!newLocation.exists()) {
+                        newLocation.mkdirs();
+                    }
+                    File newFile = new File(newLocation, csvFile.getFile().getName());
+                    if (csvFile.getFile().renameTo(newFile)) {
+                        // Remove the file from the list and update the UI
+                        csvFiles.remove(position);
+                        notifyDataSetChanged();
+                        Toast.makeText(FileManagerActivity.this, "File uploaded successfully", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(FileManagerActivity.this, "Failed to move the file", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Toast.makeText(FileManagerActivity.this, "File upload failed", Toast.LENGTH_SHORT).show();
+                }
+                // Prevent click event from propagating to the ListView item
+                v.setPressed(true);
+            });
+
+            // Set click listener for open file icon
+            fileNameText.setOnClickListener(v -> {
+                // Open file
+                openCsvFile(csvFile.getFile());
+                // Prevent click event from propagating to the ListView item
+                v.setPressed(true);
+            });
 
             return convertView;
         }

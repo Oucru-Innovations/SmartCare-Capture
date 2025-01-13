@@ -39,19 +39,14 @@ public class OximeterDataWriterFunctions {
 
         currentFile = createFileWithTempName(startTimestamp);
         dataBuffer = new OximeterDataBuffer();
-
         try {
             currentWriter = new CSVWriter(new FileWriter(currentFile));
             writeHeader(currentWriter);
-
-
-
             Log.i(TAG, "New recording started: " + currentFile.getAbsolutePath());
 
         } catch (IOException e) {
             Log.e(TAG, "Error creating new CSV file", e);
             currentWriter = null;
-
         }
     }
 
@@ -175,7 +170,7 @@ public class OximeterDataWriterFunctions {
         return String.format("%s_%s_%s_%s.csv", prefix, patientCode, startTime, endTimestampPart);
     }
 
-    private static String formatTimestamp(long timestamp) {
+    public static String formatTimestamp(long timestamp) {
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US);
         dateFormat.setTimeZone(TimeZone.getTimeZone("GMT+7"));
         return dateFormat.format(new Date(timestamp));

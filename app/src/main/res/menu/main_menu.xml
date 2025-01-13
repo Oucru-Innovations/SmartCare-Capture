@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+<item
+    android:id="@+id/action_show_devices"
+
+    android:title="@string/menu_show_devices"
+    android:orderInCategory="100"
+    android:showAsAction="never" />
+<item
+    android:id="@+id/action_manage_files"
+
+    android:title="@string/menu_manage_files"
+    android:orderInCategory="200"
+    android:showAsAction="never" />
+<item
+    android:id="@+id/action_patient_info"
+
+    android:title="@string/menu_patient_info"
+    android:orderInCategory="300"
+    android:showAsAction="never" />
+</menu>

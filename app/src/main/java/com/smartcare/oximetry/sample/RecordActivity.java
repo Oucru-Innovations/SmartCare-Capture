@@ -43,10 +43,6 @@ package com.smartcare.oximetry.sample;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.bluetooth.le.BluetoothLeScanner;
-import android.bluetooth.le.ScanCallback;
-import android.bluetooth.le.ScanResult;
-import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -55,9 +51,9 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.net.MacAddress;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -66,19 +62,20 @@ import android.os.Message;
 
 
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
 import android.text.Html;
 import android.text.InputType;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -87,46 +84,29 @@ import com.androidplot.xy.LineAndPointFormatter;
 import com.androidplot.xy.PointLabelFormatter;
 import com.androidplot.xy.SimpleXYSeries;
 import com.androidplot.xy.XYPlot;
+import com.github.psambit9791.jdsp.signal.Detrend;
 import com.smartcare.oximetry.library.ConnectionManager;
 
 import java.lang.ref.WeakReference;
-import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
 //new import
-import com.opencsv.CSVWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import android.os.Environment;
-
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicLong;
 
 
-
-import android.util.Log;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothManager;
 
+import com.github.psambit9791.jdsp.signal.Detrend;
 /**
  * This Activity is responsible for recording, displaying and uploading a physiological signal
  * using a SmartCare Analytics Ltd. Bluetooth pulse oximeter.
@@ -164,7 +144,8 @@ public class RecordActivity extends Activity  {
     private Button showDevicesButton;
     private AlertDialog devicesDialog;
     //turn on/off plot
-    private Button togglePlotButton;
+//    private Button togglePlotButton;
+    private ImageButton togglePlotButton;
     private LinearLayout plotContainer;
     private boolean isPlotVisible = true;
     //patient
@@ -176,13 +157,15 @@ public class RecordActivity extends Activity  {
     //auto
     private BluetoothAdapter bluetoothAdapter;
     private BroadcastReceiver bluetoothReceiver;
-    private static final long SCAN_INTERVAL = 3000; // 10 seconds
+    private static final long SCAN_INTERVAL = 5000; // 10 seconds
     private Handler scanHandler;
     private Runnable scanRunnable;
     private List<String> blockedList = new ArrayList<>();
     private boolean isConnected = false;
 //    test
     private String filePath;
+    //trend line
+    private SimpleXYSeries mTrendSeries;  // Trendline data
 
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
@@ -272,6 +255,7 @@ public class RecordActivity extends Activity  {
 //                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
                         if (!isRecordingSessionActive) {
                             OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode);
+                            ShowAnnotate.startAnnotationSession(latestPackageReceived, target.formattedCode);
                             isRecordingSessionActive = true;
                         }
 //                        OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
@@ -310,7 +294,36 @@ public class RecordActivity extends Activity  {
                         target.mSeries.removeFirst();
                     }
                     target.mSeries.addLast(null, latestPlethValue);
+
+                    //detrend data
+
+//                    Detrend detrend = new Detrend(new double[]{latestPlethValue}, "constant");
+//                    double[] trendLine = detrend.getTrendLine();
+//                    Log.d(TAG, "Detrended data: " + Arrays.toString(trendLine));
+//                    target.mTrendSeries.addLast(null, trendLine[0]);
+
+
+
                     if (seriesIsFull) {
+                        // Detrend mSeries and calculate the trend line
+                        double[] plethValues = new double[(int) UI_BUFFER_SIZE_SAMPLES];
+                        for (int i = 0; i < UI_BUFFER_SIZE_SAMPLES; i++) {
+                            plethValues[i] = target.mSeries.getY(i).doubleValue();
+                        }
+//                        Log.d(TAG, "Pleth Values: " + Arrays.toString(plethValues));
+
+                        Detrend detrend = new Detrend(plethValues,"linear");
+                        double[] detrendedData = detrend.detrendSignal();
+//                        Log.d(TAG, "Detrended data: " + Arrays.toString(detrendedData));
+
+                        double[] trendLine = detrend.getTrendLine();
+//                        Log.d(TAG, "Trend line data: " + Arrays.toString(trendLine));
+
+                        // Clear mTrendSeries and add the new trend line values
+                        target.mTrendSeries.setModel(new LinkedList<>(), SimpleXYSeries.ArrayFormat.Y_VALS_ONLY);
+                        for (double value : trendLine) {
+                            target.mTrendSeries.addLast(null, value);
+                        }
                         target.mPlot.redraw();
                     }
 //                    target.mHrDisplay.setText(String.valueOf(latestHeartRateValue));
@@ -368,7 +381,12 @@ public class RecordActivity extends Activity  {
                     Toast.makeText(target, str, Toast.LENGTH_LONG).show();
                     //new
                     target.isConnected = true;
-                    target.bluetoothAdapter.cancelDiscovery();
+//                    target.bluetoothAdapter.cancelDiscovery();
+                    if (ActivityCompat.checkSelfPermission(target, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        target.bluetoothAdapter.cancelDiscovery();
+                    } else {
+                        target.requestBluetoothPermissions();
+                    }
                     //
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_ENDED:
@@ -401,7 +419,7 @@ public class RecordActivity extends Activity  {
 
 //                    new
                     target.isConnected = false; //new
-//                    target.bluetoothAdapter.startDiscovery(); // new
+                    target.bluetoothAdapter.startDiscovery(); // new
 //                    target.bluetoothAdapter.startDiscovery();
                     //target.mPlot.clear();
                     //target.mPlot.redraw();
@@ -497,7 +515,11 @@ public class RecordActivity extends Activity  {
                     blockedList.add(connectedMac);
                     //new
                     isConnected = false; //new
-                    bluetoothAdapter.startDiscovery(); // new
+//                    bluetoothAdapter.startDiscovery(); // new
+                    if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                            ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        bluetoothAdapter.startDiscovery(); // new
+                    }
                     Log.d(TAG, "List block contents: " + blockedList);
                     Log.d(TAG, "User click buttonnnnnnnnnnnnnnnnnnnnnnnn ");
                 }
@@ -531,6 +553,8 @@ public class RecordActivity extends Activity  {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
             isRecordingSessionActive = false;
             filePath = OximeterDataWriterFunctions.endRecording();
+            //end annotation
+            ShowAnnotate.stopAnnotationSession();
             new Handler().postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -548,8 +572,6 @@ public class RecordActivity extends Activity  {
 
 
     //
-    // Implement AutoConnectCallback methods
-
 
     //new code
 
@@ -587,6 +609,11 @@ public class RecordActivity extends Activity  {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        //hide action bar
+//        if (getActionBar() != null) {
+//            getActionBar().hide();
+//        }
+        // Restore state if available
 
         // Initialise the UI.
         initialiseViews();
@@ -601,23 +628,32 @@ public class RecordActivity extends Activity  {
 
         initialisePlot();
         initialiseSeries();
-        //new code
-        showDevicesButton = (Button) findViewById(R.id.showDevicesButton);
-        showDevicesButton.setOnClickListener(new View.OnClickListener() {
+        //show drop down annotate
+        Button annotateButton = findViewById(R.id.annotateButton);
+        annotateButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showConnectedDevicesPopup();
+
+                new ShowAnnotate(RecordActivity.this).showAnnotateMenu(v);
             }
         });
+        //show devices button
+//        showDevicesButton = (Button) findViewById(R.id.showDevicesButton);
+//        showDevicesButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                showConnectedDevicesPopup();
+//            }
+//        });
         //show file buttton
-        Button manageFilesButton = findViewById(R.id.manageFilesButton);
-        manageFilesButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(RecordActivity.this, FileManagerActivity.class);
-                startActivity(intent);
-            }
-        });
+//        Button manageFilesButton = findViewById(R.id.manageFilesButton);
+//        manageFilesButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                Intent intent = new Intent(RecordActivity.this, FileManagerActivity.class);
+//                startActivity(intent);
+//            }
+//        });
         //patient
         initializePatientInfo();
 
@@ -634,10 +670,45 @@ public class RecordActivity extends Activity  {
             connectionManager = new ConnectionManager(this, mHandler);
         }
         //new
+        if(connectionManager.isRecording()){
 
+        }
 
 //        updateMacAddressDisplay();
     }
+
+
+    //menu
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.action_show_devices:
+                showConnectedDevicesPopup();
+                return true;
+            case R.id.action_manage_files:
+                if(isRecordingSessionActive){
+                    Toast.makeText(this, "Please stop recording before managing files", Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                Intent manageFilesIntent = new Intent(this, FileManagerActivity.class);
+                startActivity(manageFilesIntent);
+                return true;
+            case R.id.action_patient_info:
+                patientInfoPopup.requestEdit();
+                patientInfoPopup.show(findViewById(android.R.id.content));
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
     ///auto part
     private void initializeBluetoothScanning() {
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -659,11 +730,16 @@ public class RecordActivity extends Activity  {
                     if (macAddressQueue.contains(deviceMac) && !blockedList.contains(deviceMac) ) {
 //                        Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
                         if( isConnected == false) {
-                            Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
+//                            Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]"); //old
+                            Log.i(TAG, "Device found in queue: " + " [" + deviceMac + "]");
 //                            connectToPulseOximeter();
+                            ProgressBar progressBar = RecordActivity.this.findViewById(R.id.progressBar);
+                            progressBar.setVisibility(View.VISIBLE);
                             boolean success = connectionManager.connect(deviceMac);
                             if(success){
-                                bluetoothAdapter.cancelDiscovery();
+                                isConnected = true;
+//                                bluetoothAdapter.cancelDiscovery();
+                                progressBar.setVisibility(View.GONE);
                                 Log.i(getString(R.string.app_name), "Connector task started");
                                 mControlButton.setText(getString(R.string.record_stop));
                                 //
@@ -679,7 +755,13 @@ public class RecordActivity extends Activity  {
                                         stopDisconnectExit();
                                         blockedList.add(deviceMac);
                                         isConnected = false;
-                                        bluetoothAdapter.startDiscovery();
+//                                        bluetoothAdapter.startDiscovery(); //old
+                                        //new
+                                        if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                                            bluetoothAdapter.startDiscovery();
+                                        } else {
+                                            requestBluetoothPermissions();
+                                        }
                                     }
                                 });
                             }
@@ -688,6 +770,7 @@ public class RecordActivity extends Activity  {
 //                        bluetoothAdapter.cancelDiscovery();//
                     } else {
                         Log.d(TAG, "Discovered device not in queue: " + device.getName() + " [" + deviceMac + "]");
+//                        Log.d(TAG, "Discovered device not in queue: " + " [" + deviceMac + "]");
                     }
                 }
             }
@@ -709,10 +792,20 @@ public class RecordActivity extends Activity  {
         scanRunnable = new Runnable() {
             @Override
             public void run() {
+                //old code
                 // Start discovery if not already discovering
-                if (!bluetoothAdapter.isDiscovering()) {
-                    bluetoothAdapter.startDiscovery();
-                    Log.d(TAG, "Started Bluetooth device discovery");
+//                if (!bluetoothAdapter.isDiscovering()) {
+//                    bluetoothAdapter.startDiscovery();
+//                    Log.d(TAG, "Started Bluetooth device discovery");
+//                }
+                //new code
+                if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                    if (!bluetoothAdapter.isDiscovering()) {
+                        bluetoothAdapter.startDiscovery();
+                        Log.d(TAG, "Started Bluetooth device discovery");
+                    }
+                } else {
+                    requestBluetoothPermissions();
                 }
 //                if (connectionManager.isConnected()) {
 //                    // If connected, stop scanning to save battery
@@ -736,6 +829,7 @@ public class RecordActivity extends Activity  {
         scanHandler.post(scanRunnable);
     }
 
+    //trend line
 
 
     //end
@@ -754,7 +848,7 @@ public class RecordActivity extends Activity  {
 //        device2DeleteButton = (Button) findViewById(R.id.device2Delete);
         //
         //on/off plot
-        togglePlotButton = (Button) findViewById(R.id.togglePlotButton);
+        togglePlotButton = (ImageButton) findViewById(R.id.togglePlotButton);
         plotContainer = (LinearLayout) findViewById(R.id.plotContainer);
 
         togglePlotButton.setOnClickListener(new View.OnClickListener() {
@@ -776,7 +870,7 @@ public class RecordActivity extends Activity  {
     }
     //pop up for patient input
     private void initializePatientInfo() {
-        patientInfoButton = findViewById(R.id.patientInfoButton);
+//        patientInfoButton = findViewById(R.id.patientInfoButton);
         patientCodeTextView = findViewById(R.id.patientCodeTextView); // Make sure you have this in your layout
         patientInfoPopup = new PatientInfoPopup(this);
 
@@ -784,14 +878,14 @@ public class RecordActivity extends Activity  {
         patientInfoPopup.setOnPatientInfoSavedListener(this::updatePatientInfoDisplay);
 
         // Set up the patient info button
-        patientInfoButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // Request edit mode before showing popup
-                patientInfoPopup.requestEdit();
-                patientInfoPopup.show(findViewById(android.R.id.content));
-            }
-        });
+//        patientInfoButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                // Request edit mode before showing popup
+//                patientInfoPopup.requestEdit();
+//                patientInfoPopup.show(findViewById(android.R.id.content));
+//            }
+//        });
 
         // Check for existing patient info and update display
         updatePatientInfoDisplay();
@@ -801,16 +895,19 @@ public class RecordActivity extends Activity  {
         PatientInfoPopup.PatientInfo savedInfo = patientInfoPopup.getSavedPatientInfo();
 
         // If we have saved patient info, format and display it
-        if (!savedInfo.getResearchCode().isEmpty()) {
-            formattedCode = String.format("%s-%s-%s",
-                    savedInfo.getResearchCode(),
-                    savedInfo.getLocationCode(),
-                    savedInfo.getSerialNumber());
-
-            if (patientCodeTextView != null) {
-                patientCodeTextView.setText(formattedCode);
-            }
-        }
+//        if (!savedInfo.getResearchCode().isEmpty()) {
+//            formattedCode = String.format("%s-%s-%s",
+//                    savedInfo.getResearchCode(),
+//                    savedInfo.getLocationCode(),
+//                    savedInfo.getSerialNumber());
+//
+//            if (patientCodeTextView != null) {
+//                patientCodeTextView.setText(formattedCode);
+//            }
+//        }
+        //new update combie all in one
+        formattedCode = savedInfo.getResearchCode();
+        patientCodeTextView.setText(savedInfo.getResearchCode());
     }
     //end
 //    //new view
@@ -847,14 +944,19 @@ public class RecordActivity extends Activity  {
         isPlotVisible = !isPlotVisible;
         if (isPlotVisible) {
             plotContainer.setVisibility(View.VISIBLE);
-            togglePlotButton.setText("Hide PPG");
+//            togglePlotButton.setText("Hide PPG");
+            togglePlotButton.setImageResource(R.drawable.ic_zoom_in);
         } else {
             plotContainer.setVisibility(View.GONE);
-            togglePlotButton.setText("Show PPG");
+            togglePlotButton.setImageResource(R.drawable.ic_chart);
         }
     }
     //popup
     private void showConnectedDevicesPopup() {
+        //new
+//        if (devicesDialog != null && devicesDialog.isShowing()) {
+//            devicesDialog.dismiss();
+//        }
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         View popupView = getLayoutInflater().inflate(R.layout.popup_connected_devices, null);
 
@@ -1133,6 +1235,13 @@ public class RecordActivity extends Activity  {
         mSeries = new SimpleXYSeries("pleth");
         mSeries.useImplicitXVals();
         mPlot.addSeries(mSeries, new LineAndPointFormatter(Color.RED, null, null, new PointLabelFormatter(Color.TRANSPARENT)));
+        mTrendSeries = new SimpleXYSeries("trend");
+        mTrendSeries.useImplicitXVals();
+//        mPlot.addSeries(mTrendSeries, new LineAndPointFormatter(Color.YELLOW, null, null, new PointLabelFormatter(Color.TRANSPARENT)));
+        LineAndPointFormatter formatter = new LineAndPointFormatter(Color.parseColor("#FFC100"), null, null, new PointLabelFormatter(Color.TRANSPARENT));
+        formatter.getLinePaint().setPathEffect(new DashPathEffect(new float[]{10, 20}, 0));
+        mPlot.addSeries(mTrendSeries, formatter);
+
     }
 
     /**
@@ -1149,8 +1258,16 @@ public class RecordActivity extends Activity  {
         //
         super.onDestroy();
         // Stop ongoing Bluetooth discovery and remove the scan handler callback
-        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
-            bluetoothAdapter.cancelDiscovery();
+//        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
+//            bluetoothAdapter.cancelDiscovery();
+//        }
+        //new code
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+            if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
+                bluetoothAdapter.cancelDiscovery();
+            }
+        } else {
+            requestBluetoothPermissions();
         }
 
         if (scanHandler != null && scanRunnable != null) {
@@ -1166,6 +1283,33 @@ public class RecordActivity extends Activity  {
      * Needed for Android API 23+. Check if the app has permission to use Bluetooth, and if it
      * doesn't then request it.
      */
+//    private boolean hasBluetoothPermissions() {
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//            return ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+//                    ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+//        } else {
+//            return ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
+//                    ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED;
+//        }
+//    }
+//
+    private void requestBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_SCAN}, REQUEST_REQUIRED_PERMISSIONS);
+            } else if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_REQUIRED_PERMISSIONS);
+            }
+        } else {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, REQUEST_REQUIRED_PERMISSIONS);
+            } else if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_ADMIN}, REQUEST_REQUIRED_PERMISSIONS);
+            }
+        }
+    }
+
+    //end new code
     public boolean checkAppPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
         //new code add
@@ -1173,6 +1317,24 @@ public class RecordActivity extends Activity  {
             int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
             if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
                 permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+        }
+        //end
+        //new code
+        // Check Bluetooth permissions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN);
+            }
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
+            }
+        } else {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.BLUETOOTH);
+            }
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADMIN);
             }
         }
         //end

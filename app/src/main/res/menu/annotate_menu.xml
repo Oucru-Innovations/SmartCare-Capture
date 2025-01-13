@@ -1,0 +1,6 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/category1" android:title="Category 1" />
+    <item android:id="@+id/category2" android:title="Category 2" />
+    <item android:id="@+id/category3" android:title="Category 3" />
+    <item android:id="@+id/category_other" android:title="Other" />
+</menu>

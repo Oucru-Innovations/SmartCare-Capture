@@ -39,8 +39,11 @@
 -->
 
 <resources>
-    <string name="app_name">Oximetry Developer Module</string>
+    <string name="app_name">SmartCare Capture</string>
     <string name="record_start">Connect</string>
     <string name="record_stop">Disconnect</string>
     <string name="title_activity_file_manager">FileManagerActivity</string>
+    <string name="menu_show_devices">Show Devices</string>
+    <string name="menu_manage_files">Manage Files</string>
+    <string name="menu_patient_info">Patient Info</string>
 </resources>

@@ -39,17 +39,18 @@
         android:id="@+id/researchCodeEditText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="00EIa"
+        android:hint="00EIa-003-001"
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
         android:inputType="text"
         android:layout_marginBottom="12dp"/>
 
     <!-- Location Code Field -->
+    <!-- Change location to Name -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Mã địa điểm"
+        android:text="Tên Viết Tắt"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
         android:paddingBottom="4dp" />
@@ -58,17 +59,18 @@
         android:id="@+id/locationCodeEditText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="003"
+        android:hint="NVA"
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
-        android:inputType="number"
+        android:inputType="text"
         android:layout_marginBottom="12dp"/>
 
     <!-- Serial Number Field -->
+    <!-- Change to Vị trí ( số giường )-->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="STT trong NC"
+        android:text="Vị trí (số giường)"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
         android:paddingBottom="4dp" />
@@ -77,7 +79,7 @@
         android:id="@+id/serialNumberEditText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="0000"
+        android:hint="01"
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
         android:inputType="text"

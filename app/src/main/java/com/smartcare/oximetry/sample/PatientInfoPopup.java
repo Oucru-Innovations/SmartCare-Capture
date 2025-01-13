@@ -80,6 +80,59 @@ public class PatientInfoPopup {
         locationCodeEditText = popupView.findViewById(R.id.locationCodeEditText);
         serialNumberEditText = popupView.findViewById(R.id.serialNumberEditText);
         submitButton = popupView.findViewById(R.id.submitButton);
+
+        //
+        researchCodeEditText.addTextChangedListener(new TextWatcher() {
+            private boolean isFormatting;
+            private int prevLength;
+
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                if (!isFormatting) {
+                    prevLength = s.length();
+                }
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (!isFormatting) {
+                    isFormatting = true;
+                    StringBuilder formatted = new StringBuilder(s);
+
+                    // Remove all dashes
+                    for (int i = formatted.length() - 1; i >= 0; i--) {
+                        if (formatted.charAt(i) == '-') {
+                            formatted.deleteCharAt(i);
+                        }
+                    }
+
+                    // Insert dashes at the correct positions
+                    if (formatted.length() > 5) {
+                        formatted.insert(5, '-');
+                    }
+                    if (formatted.length() > 9) {
+                        formatted.insert(9, '-');
+                    }
+
+                    // Calculate the new cursor position
+                    int cursorPosition = researchCodeEditText.getSelectionStart();
+                    if (prevLength <= cursorPosition && cursorPosition < formatted.length()) {
+                        cursorPosition++;
+                    }
+
+                    // Set the formatted text
+                    researchCodeEditText.setText(formatted.toString());
+                    researchCodeEditText.setSelection(Math.min(formatted.length(), cursorPosition));
+
+                    isFormatting = false;
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                // No action needed here
+            }
+        });
     }
 
     private boolean isFirstRun() {
@@ -147,18 +200,21 @@ public class PatientInfoPopup {
 
     // Validation methods remain the same
     private boolean isResearchCodeValid(String researchCode) {
-        Pattern pattern = Pattern.compile("^\\d{2}[A-Z]{2}[a-z]?$");
-        return pattern.matcher(researchCode).matches();
+//        Pattern pattern = Pattern.compile("^\\d{2}[A-Z]{2}[a-z]?$");
+//        return pattern.matcher(researchCode).matches();
+        return true;
     }
 
     private boolean isLocationCodeValid(String locationCode) {
-        Pattern pattern = Pattern.compile("^\\d{3}$");
-        return pattern.matcher(locationCode).matches();
+//        Pattern pattern = Pattern.compile("^\\d{3}$");
+//        return pattern.matcher(locationCode).matches();
+        return true;
     }
 
     private boolean isSerialNumberValid(String serialNumber) {
-        Pattern pattern = Pattern.compile("^\\w{3,6}$");
-        return pattern.matcher(serialNumber).matches() && !serialNumber.contains("-");
+//        Pattern pattern = Pattern.compile("^\\w{3,6}$");
+//        return pattern.matcher(serialNumber).matches() && !serialNumber.contains("-");
+        return true;
     }
 
     // Helper class to hold patient info
@@ -225,10 +281,10 @@ public class PatientInfoPopup {
         }
         researchCodeEditText.setError(null);
     }
-
+    //location -> ten benh nha
     private void validateLocationCode(String code) {
         if (code.isEmpty()) {
-            locationCodeEditText.setError("Location code is required");
+            locationCodeEditText.setError("Name is required");
             return;
         }
         if (!isLocationCodeValid(code)) {
@@ -237,10 +293,10 @@ public class PatientInfoPopup {
         }
         locationCodeEditText.setError(null);
     }
-
+    //Serial -> vi tri so giuong
     private void validateSerialNumber(String number) {
         if (number.isEmpty()) {
-            serialNumberEditText.setError("Serial number is required");
+            serialNumberEditText.setError("Location is required");
             return;
         }
         if (!isSerialNumberValid(number)) {

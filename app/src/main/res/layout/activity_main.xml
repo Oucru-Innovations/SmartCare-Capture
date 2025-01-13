@@ -44,6 +44,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:androind="http://schemas.android.com/apk/res-auto"
     android:gravity="center"
     android:orientation="vertical"
     android:padding="16dp"
@@ -66,15 +67,15 @@
             android:padding="8dp"
             android:background="@drawable/edit_text_background"> <!-- Background drawable for boxed look -->
 
-            <TextView
-                android:id="@+id/infoTextView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Info: "
-                android:textColor="#FF6600"
-                android:textStyle="bold"
-                android:textSize="18sp"
-                android:paddingEnd="4dp"/>
+<!--            <TextView-->
+<!--                android:id="@+id/infoTextView"-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:text="Patient Code:"        -->
+<!--                android:textColor="#FF6600"-->
+<!--                android:textStyle="bold"-->
+<!--                android:textSize="18sp"-->
+<!--                android:paddingEnd="4dp"/>-->
 
             <TextView
                 android:id="@+id/patientCodeTextView"
@@ -88,36 +89,61 @@
         </LinearLayout>
 
         <!-- Toggle Plot Button -->
-        <Button
-            android:id="@+id/togglePlotButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Chart"
-            android:background="@drawable/rounded_button_blue"
-            android:textColor="@android:color/white"
-            style="?android:attr/buttonStyleSmall"
-            android:layout_marginStart="8dp"/> <!-- Space between text box and button -->
+<!--        <Button-->
+<!--            android:id="@+id/togglePlotButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Chart"-->
+<!--            android:background="@drawable/rounded_button_blue"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            style="?android:attr/buttonStyleSmall"-->
+<!--            android:layout_marginStart="8dp"/> &lt;!&ndash; Space between text box and button &ndash;&gt;-->
 
     </LinearLayout>
 
 
     <!-- Plot Section with Border Background -->
-    <LinearLayout
-        android:id="@+id/plotContainer"
+    <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="2"
-        android:layout_margin="12dp"
-        android:padding="8dp"
-        android:background="@drawable/border_background"> <!-- Background with border -->
+        android:layout_height="wrap_content">
 
-        <com.androidplot.xy.XYPlot
-            android:id="@+id/plot"
+        <LinearLayout
+            android:id="@+id/plotContainer"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="10dp"/>
-    </LinearLayout>
+            android:layout_height="200dp"
+            android:layout_margin="12dp"
+            android:padding="8dp"
+            android:background="@drawable/border_background">
+
+            <com.androidplot.xy.XYPlot
+                android:id="@+id/plot"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
+
+        </LinearLayout>
+            <ImageButton
+                android:id="@+id/togglePlotButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:padding="8dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_zoom_in"
+                android:layout_alignTop="@id/plotContainer"
+                android:layout_alignEnd="@id/plotContainer">
+            </ImageButton>
+<!--        <Button-->
+<!--            android:id="@+id/togglePlotButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Chart"-->
+<!--            android:layout_gravity="top|end"-->
+<!--            android:layout_marginTop="16dp"-->
+<!--            android:layout_marginEnd="16dp"-->
+<!--            android:background="@drawable/rounded_button_blue"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            style="?android:attr/buttonStyleSmall"/>-->
+    </RelativeLayout>
 
     <!-- HR and SpO2 Section with Labels and Borders -->
     <RelativeLayout
@@ -226,35 +252,44 @@
         android:paddingHorizontal="16dp">
 
         <Button
-            android:id="@+id/showDevicesButton"
-            android:layout_width="0dp"
+            android:id="@+id/annotateButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Connected Devices"
+            android:paddingHorizontal="50dp"
+            android:text="Annotate"
+            android:textSize="20sp"
             android:textColor="@android:color/white"
-            android:background="@drawable/rounded_button_green"
-            android:layout_marginEnd="8dp"/>
+            android:background="@drawable/rounded_button_blue" />
+<!--        <Button-->
+<!--            android:id="@+id/showDevicesButton"-->
+<!--            android:layout_width="0dp"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_weight="1"-->
+<!--            android:text="Connected Devices"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            android:background="@drawable/rounded_button_green"-->
+<!--            android:layout_marginEnd="8dp"/>-->
 
-        <Button
-            android:id="@+id/patientInfoButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Patient Info"
-            android:textColor="@android:color/white"
-            android:background="@drawable/rounded_button_blue"
-            android:layout_marginStart="8dp"/>
+<!--        <Button-->
+<!--            android:id="@+id/patientInfoButton"-->
+<!--            android:layout_width="0dp"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_weight="1"-->
+<!--            android:text="Patient Info"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            android:background="@drawable/rounded_button_blue"-->
+<!--            android:layout_marginStart="8dp"/>-->
 
-        <!-- New Button to Manage Files -->
-        <Button
-            android:id="@+id/manageFilesButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Manage Files"
-            android:textColor="@android:color/white"
-            android:background="@drawable/rounded_button_orange"
-            android:layout_marginStart="8dp"/>
+<!--        &lt;!&ndash; New Button to Manage Files &ndash;&gt;-->
+<!--        <Button-->
+<!--            android:id="@+id/manageFilesButton"-->
+<!--            android:layout_width="0dp"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_weight="1"-->
+<!--            android:text="Manage Files"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            android:background="@drawable/rounded_button_orange"-->
+<!--            android:layout_marginStart="8dp"/>-->
 
     </LinearLayout>
 
