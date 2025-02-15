@@ -166,6 +166,7 @@ public class RecordActivity extends Activity  {
     private String filePath;
     //trend line
     private SimpleXYSeries mTrendSeries;  // Trendline data
+    //chunk file config
 
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
@@ -654,6 +655,8 @@ public class RecordActivity extends Activity  {
 //                startActivity(intent);
 //            }
 //        });
+        //chunk file config
+
         //patient
         initializePatientInfo();
 
@@ -704,6 +707,9 @@ public class RecordActivity extends Activity  {
                 patientInfoPopup.requestEdit();
                 patientInfoPopup.show(findViewById(android.R.id.content));
                 return true;
+            case R.id.action_config_info:
+                ChunkFileConfigPopup chunkFileConfigPopup = new ChunkFileConfigPopup(this);
+                chunkFileConfigPopup.show(findViewById(android.R.id.content));
             default:
                 return super.onOptionsItemSelected(item);
         }

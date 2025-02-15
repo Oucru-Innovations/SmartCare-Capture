@@ -260,6 +260,11 @@
             android:textSize="20sp"
             android:textColor="@android:color/white"
             android:background="@drawable/rounded_button_blue" />
+<!--        <Switch-->
+<!--            android:id="@+id/switchButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Switch Button" />-->
 <!--        <Button-->
 <!--            android:id="@+id/showDevicesButton"-->
 <!--            android:layout_width="0dp"-->

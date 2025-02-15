@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -27,7 +28,25 @@ public class OximeterDataWriterFunctions {
     private static long startTimestamp;
     private static String patientCode;
     //model
+    // Chunking related fields
+    private static final int CHUNK_SIZE = 10;
+    private static List<String[]> tempBuffer = new ArrayList<>();
+    private static final String CHUNK_FILE_NAME = "chunk_file.csv";
+    private static boolean enableChunkFile = true;
+    private static int timeInterval = 3;
 
+    public static void initialize(boolean enable, int interval) {
+        enableChunkFile = enable;
+        timeInterval = interval;
+    }
+
+    public static void setEnableChunkFile(boolean enable) {
+        enableChunkFile = enable;
+    }
+
+    public static void setTimeInterval(int interval) {
+        timeInterval = interval;
+    }
 
     public static void startNewRecording(long packageReceivedTimestamp, String patientIdentifier) {
         closeCurrentWriter();
@@ -85,6 +104,16 @@ public class OximeterDataWriterFunctions {
             currentWriter.writeNext(csvData);
             currentWriter.flush();
 
+            // Write to temporary buffer
+            // Check on/off chunk file creation
+            if (enableChunkFile) {
+                tempBuffer.add(csvData);
+                if (tempBuffer.size() >= timeInterval*60) {
+                    writeChunkToFile();
+                    tempBuffer.clear();
+                }
+            }
+
 
         } catch (IOException e) {
             Log.e(TAG, "Error writing processed data", e);
@@ -131,6 +160,26 @@ public class OximeterDataWriterFunctions {
                 "perfusion"
         };
         writer.writeNext(header);
+    }
+    // Create chunk file from temporary buffer
+    private static void writeChunkToFile() {
+        try {
+            File chunkDirectory = new File(currentFile.getParentFile().getParentFile(), "StreamModel");
+            if (!chunkDirectory.exists()) {
+                chunkDirectory.mkdirs();
+            }
+
+            File chunkFile = new File(chunkDirectory, CHUNK_FILE_NAME);
+            try (CSVWriter chunkWriter = new CSVWriter(new FileWriter(chunkFile))) {
+                writeHeader(chunkWriter);
+                for (String[] row : tempBuffer) {
+                    chunkWriter.writeNext(row);
+                }
+                Log.i(TAG, "Chunk file created: " + chunkFile.getAbsolutePath());
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error writing chunk to file", e);
+        }
     }
 
     private static void closeCurrentWriter() {
