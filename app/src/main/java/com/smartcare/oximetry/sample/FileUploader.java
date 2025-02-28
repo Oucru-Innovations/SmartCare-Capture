@@ -9,6 +9,11 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
@@ -25,14 +30,20 @@ import retrofit2.http.Part;
 
 public class FileUploader {
 
-    private static final String BASE_URL = "http://13.250.243.25:8080/";
+//    private static final String BASE_URL = "http://13.250.243.25:8080/";
+    private static final String BASE_URL = "http://vital-ei.oucru.org/";
     private static final int RETRY_DELAY_MS = 10000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
 
     private static int retryCount = 0;
 
-    public static void uploadFile(Activity activity, String filePath) {
+    // Interface for handling upload results
+    public interface UploadCallback {
+        void onUploadComplete(boolean success, String message);
+    }
+
+    public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
         File file = new File(filePath);
 //        String accessToken = "";
         String ownerName = "Vyyy";
@@ -43,8 +54,10 @@ public class FileUploader {
         ProgressBar progressBar = activity.findViewById(R.id.progressBar);
         progressBar.setVisibility(View.VISIBLE);
 
+        String checksum = calculateMD5(file);
+
         ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, body, owner);
+        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
         call.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -53,10 +66,11 @@ public class FileUploader {
                     Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
                     Log.i("FileUploader", "File upload successful");
                     retryCount = 0;
+                    callback.onUploadComplete(true, "File upload successful");
                 } else {
                     Toast.makeText(activity, "File upload failed: " + response.message(), Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "File upload failed: " + response.message());
-                    scheduleRetry(activity, filePath);
+                    scheduleRetry(activity, filePath, callback);
                 }
             }
 
@@ -65,19 +79,40 @@ public class FileUploader {
                 progressBar.setVisibility(View.GONE);
                 Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                 Log.e("FileUploader", "Error uploading file", t);
-                scheduleRetry(activity, filePath);
+                scheduleRetry(activity, filePath, callback);
             }
         });
     }
 
-    private static void scheduleRetry(Activity activity, String filePath) {
+    private static String calculateMD5(File file) {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[1024];
+            int numRead;
+            while ((numRead = fis.read(buffer)) != -1) {
+                digest.update(buffer, 0, numRead);
+            }
+            byte[] md5Bytes = digest.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : md5Bytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (IOException | NoSuchAlgorithmException e) {
+            Log.e("FileUploader", "Error calculating MD5 checksum", e);
+            return null;
+        }
+    }
+
+    private static void scheduleRetry(Activity activity, String filePath, UploadCallback callback) {
         if (retryCount < MAX_RETRY_ATTEMPTS) {
             retryCount++;
             Handler handler = new Handler(Looper.getMainLooper());
-            handler.postDelayed(() -> uploadFile(activity, filePath), RETRY_DELAY_MS);
+            handler.postDelayed(() -> uploadFile(activity, filePath, callback), RETRY_DELAY_MS);
         } else {
             Toast.makeText(activity, "Max retry attempts reached. Upload failed.", Toast.LENGTH_SHORT).show();
             Log.e("FileUploader", "Max retry attempts reached. Upload failed.");
+            callback.onUploadComplete(false, "File upload successful");
         }
     }
 
@@ -100,6 +135,7 @@ public class FileUploader {
         @POST("api/v1/file/smapp/upload")
         Call<ResponseBody> uploadFile(
                 @Header("x-static-token") String staticToken,
+                @Header("x-content-md5") String checksum,
                 @Part MultipartBody.Part file,
                 @Part("owner") RequestBody owner
         );

@@ -212,8 +212,8 @@
             android:layout_toLeftOf="@id/horizontalCenterline"
             android:background="@drawable/border_background"
             android:gravity="center"
-            android:text="--"
-            android:textSize="70sp"
+            android:text="SpO₂: --%\nPI: --"
+            android:textSize="35sp"
             android:textColor="#333333"/>
 
         <!-- SpO2 Label -->
@@ -225,7 +225,7 @@
             android:layout_alignTop="@id/spo2"
             android:layout_marginTop="6dp"
             android:layout_marginLeft="8dp"
-            android:text="SpO₂"
+            android:text="SpO₂/Perfusion"
             android:textSize="20sp"
             android:textColor="#888888"/>
 
@@ -237,9 +237,10 @@
             android:layout_alignRight="@id/spo2"
             android:layout_marginBottom="6dp"
             android:layout_marginRight="8dp"
-            android:text="%"
+            android:text=""
             android:textSize="20sp"
             android:textColor="#888888"/>
+
     </RelativeLayout>
 
     <!-- Buttons Section with Equal Weight -->

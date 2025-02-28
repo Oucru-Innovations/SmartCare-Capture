@@ -199,29 +199,46 @@ public class FileManagerActivity extends Activity {
 
             // Set click listener for upload button
             uploadButton.setOnClickListener(v -> {
-                // Handle upload
-//                uploadFile(csvFile.getFile());
-                Log.d("FileManagerActivity", "Uploading file: " + csvFile.getFile().getAbsolutePath());
-//                FileUploader.uploadFile(FileManagerActivity.this, csvFile.getFile().getAbsolutePath());
-                boolean success = true;
-                if (success) {
-                    // Move the file to another folder
-                    File newLocation = new File(csvFile.getFile().getParentFile(), "Uploaded");
-                    if (!newLocation.exists()) {
-                        newLocation.mkdirs();
+                FileUploader.uploadFile(FileManagerActivity.this, csvFile.getFile().getAbsolutePath(), new FileUploader.UploadCallback() {
+                    @Override
+                    public void onUploadComplete(boolean success, String message) {
+                        // Run on UI thread since we're updating UI
+                        runOnUiThread(() -> {
+                            if (success) {
+                                // Create Uploaded directory if it doesn't exist
+                                File newLocation = new File(csvFile.getFile().getParentFile(), "Uploaded");
+                                if (!newLocation.exists()) {
+                                    newLocation.mkdirs();
+                                }
+
+                                // Move file to Uploaded directory
+                                File newFile = new File(newLocation, csvFile.getFile().getName());
+                                if (csvFile.getFile().renameTo(newFile)) {
+                                    // Remove the file from the list and update the UI
+                                    csvFiles.remove(position);
+                                    notifyDataSetChanged();
+                                    Toast.makeText(FileManagerActivity.this,
+                                            "File uploaded successfully and moved to Uploaded folder",
+                                            Toast.LENGTH_SHORT).show();
+
+                                    // Notify media scanner about the file move
+                                    MediaScannerConnection.scanFile(FileManagerActivity.this,
+                                            new String[] { newFile.getAbsolutePath() },
+                                            null, null);
+                                } else {
+                                    Toast.makeText(FileManagerActivity.this,
+                                            "Upload successful but failed to move file",
+                                            Toast.LENGTH_SHORT).show();
+                                }
+                            } else {
+                                // If upload failed, file stays in place
+                                Toast.makeText(FileManagerActivity.this,
+                                        "Upload failed: " + message,
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                        });
                     }
-                    File newFile = new File(newLocation, csvFile.getFile().getName());
-                    if (csvFile.getFile().renameTo(newFile)) {
-                        // Remove the file from the list and update the UI
-                        csvFiles.remove(position);
-                        notifyDataSetChanged();
-                        Toast.makeText(FileManagerActivity.this, "File uploaded successfully", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(FileManagerActivity.this, "Failed to move the file", Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    Toast.makeText(FileManagerActivity.this, "File upload failed", Toast.LENGTH_SHORT).show();
-                }
+                });
                 // Prevent click event from propagating to the ListView item
                 v.setPressed(true);
             });

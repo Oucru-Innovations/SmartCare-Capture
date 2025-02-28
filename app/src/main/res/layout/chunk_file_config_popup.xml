@@ -54,7 +54,7 @@
         android:id="@+id/timeEditText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter time in seconds"
+        android:hint="Enter time in minutes"
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
         android:inputType="number"

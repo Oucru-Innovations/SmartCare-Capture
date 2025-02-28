@@ -76,7 +76,7 @@ public class ChunkFileConfigPopup {
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean(KEY_ENABLE_CHUNK_FILE, enableChunkFile);
         editor.putInt(KEY_TIME_INTERVAL, timeInterval);
-        editor.apply();
+        editor.commit();
     }
 
     private void validateAndSubmit() {
@@ -97,7 +97,7 @@ public class ChunkFileConfigPopup {
     // Methods to retrieve the state
     // default is true
     public boolean isChunkFileEnabled() {
-        return preferences.getBoolean(KEY_ENABLE_CHUNK_FILE, true);
+        return preferences.getBoolean(KEY_ENABLE_CHUNK_FILE, false);
     }
 
     // default time interval is 3 minutes

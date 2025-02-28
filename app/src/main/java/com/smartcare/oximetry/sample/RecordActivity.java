@@ -167,7 +167,8 @@ public class RecordActivity extends Activity  {
     //trend line
     private SimpleXYSeries mTrendSeries;  // Trendline data
     //chunk file config
-
+    private boolean isEnabled ;
+    private int interval;
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
      * contain data or error messages.
@@ -226,7 +227,7 @@ public class RecordActivity extends Activity  {
 
                     int startTime= data.getInt(ConnectionManager.KEY_DATA_START_TIME);
                     //end
-
+                    final double perfusionIndex = latestPerfusionIndexValue;
 
 
 
@@ -253,10 +254,15 @@ public class RecordActivity extends Activity  {
 
                     long timestamp = System.currentTimeMillis();
                     try {
+                        SharedPreferences chunkFileConfigPrefs = target.getSharedPreferences("ChunkFileConfigPrefs", MODE_PRIVATE);
+                        target.isEnabled = chunkFileConfigPrefs.getBoolean("enable_chunk_file", false);
+                        target.interval = chunkFileConfigPrefs.getInt("time_interval", 3);
+
+                        Log.i(TAG, "Chunk file: " + target.isEnabled + " ---- Interval: " + target.interval);
 //                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
                         if (!isRecordingSessionActive) {
-                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode);
-                            ShowAnnotate.startAnnotationSession(latestPackageReceived, target.formattedCode);
+                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode, target.isEnabled, target.interval);
+//                          ShowAnnotate.startAnnotationSession();
                             isRecordingSessionActive = true;
                         }
 //                        OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
@@ -274,7 +280,7 @@ public class RecordActivity extends Activity  {
                                 latestPlethValue,
                                 timestamp
                         );
-                        Log.i("RecordActivity", "CSV data written successfully");
+//                        Log.i("RecordActivity", "CSV data written successfully");
 
 
                     } catch (Exception e) {
@@ -334,7 +340,8 @@ public class RecordActivity extends Activity  {
                         // Update UI with the latest values
                         target.runOnUiThread(() -> {
                             String heartRateText = String.valueOf(latestHeartRateValue);
-                            String spo2Text = String.valueOf((int) latestSpO2Value);
+//                            String spo2Text = String.valueOf((int) latestSpO2Value);
+                            String spo2Text = String.format(Locale.US, "SpO₂: %d%%\nPI: %.1f", (int) latestSpO2Value, perfusionIndex);
                             target.mHrDisplay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50);
                             target.mHrDisplay.setTypeface(null, Typeface.BOLD); // Set bold text
                             target.mHrDisplay.setText(heartRateText);
@@ -555,11 +562,22 @@ public class RecordActivity extends Activity  {
             isRecordingSessionActive = false;
             filePath = OximeterDataWriterFunctions.endRecording();
             //end annotation
-            ShowAnnotate.stopAnnotationSession();
+//            ShowAnnotate.stopAnnotationSession();
             new Handler().postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    FileUploader.uploadFile(RecordActivity.this, filePath);
+                    FileUploader.uploadFile(RecordActivity.this, filePath, new FileUploader.UploadCallback() {
+                        @Override
+                        public void onUploadComplete(boolean success, String message) {
+                            if (success) {
+//                                Toast.makeText(RecordActivity.this, "File upload successful", Toast.LENGTH_SHORT).show();
+                                Log.i("FileUploader-RA", "File upload successful");
+                            } else {
+//                                Toast.makeText(RecordActivity.this, "File upload failed: " + message, Toast.LENGTH_SHORT).show();
+                                Log.e("FileUploader-RA", "File upload failed: " + message);
+                            }
+                        }
+                    });
                 }
             }, 2000); // 2-second delay
 //            connectedMac = null;
@@ -584,7 +602,7 @@ public class RecordActivity extends Activity  {
         boolean hasPermission = checkAppPermissions();
         if (hasPermission) {
             // If this is a manual connect, remove from block list
-
+            //
             new Connector().execute();
         } else {
             // Didn't have one or more required permissions, so abort connection.
@@ -627,6 +645,9 @@ public class RecordActivity extends Activity  {
 //        deviceNames = loadDeviceNames();
         loadMacAddressQueueAndDeviceNames();
 
+        // Initialize the annotation session
+//        ShowAnnotate.startAnnotationSession();
+
         initialisePlot();
         initialiseSeries();
         //show drop down annotate
@@ -634,8 +655,8 @@ public class RecordActivity extends Activity  {
         annotateButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
-                new ShowAnnotate(RecordActivity.this).showAnnotateMenu(v);
+                // Pass the current patient code to ShowAnnotate
+                new ShowAnnotate(RecordActivity.this, formattedCode).showAnnotateMenu(v);
             }
         });
         //show devices button
@@ -708,6 +729,10 @@ public class RecordActivity extends Activity  {
                 patientInfoPopup.show(findViewById(android.R.id.content));
                 return true;
             case R.id.action_config_info:
+                if(isRecordingSessionActive){
+                    Toast.makeText(this, "Please stop recording before change configuration", Toast.LENGTH_SHORT).show();
+                    return true;
+                }
                 ChunkFileConfigPopup chunkFileConfigPopup = new ChunkFileConfigPopup(this);
                 chunkFileConfigPopup.show(findViewById(android.R.id.content));
             default:
@@ -1261,7 +1286,9 @@ public class RecordActivity extends Activity  {
             connectionManager.disconnect();
         }
         //new code
-        //
+        // Stop the annotation session
+        ShowAnnotate.stopAllSessions();
+        //en
         super.onDestroy();
         // Stop ongoing Bluetooth discovery and remove the scan handler callback
 //        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {

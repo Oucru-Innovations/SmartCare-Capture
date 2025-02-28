@@ -9,6 +9,7 @@ import java.io.IOException;
 import android.os.Environment;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -32,29 +33,37 @@ public class OximeterDataWriterFunctions {
     private static final int CHUNK_SIZE = 10;
     private static List<String[]> tempBuffer = new ArrayList<>();
     private static final String CHUNK_FILE_NAME = "chunk_file.csv";
-    private static boolean enableChunkFile = true;
-    private static int timeInterval = 3;
+    private static boolean enableChunkFile1 = false;
+    private static int timeInterval1 = 1;
+    //Holds the last chunk file created
+    private static File lastChunkFile = null;
+    private static final String STREAM_MODEL_FOLDER = "StreamModel";
+    // New fields for file splitting
+    private static final long DEFAULT_SPLIT_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in milliseconds 6 * 60 * 60 * 1000;
+    private static long splitInterval = DEFAULT_SPLIT_INTERVAL;
+    private static long nextSplitTime;
 
-    public static void initialize(boolean enable, int interval) {
-        enableChunkFile = enable;
-        timeInterval = interval;
+    // Add setter for split interval
+    public static void setSplitInterval(int hours) {
+        splitInterval = hours * 60 * 60 * 1000L; // Convert hours to milliseconds
+        if (startTimestamp > 0) {
+            // Update next split time if recording is active
+            nextSplitTime = startTimestamp + splitInterval;
+        }
     }
 
-    public static void setEnableChunkFile(boolean enable) {
-        enableChunkFile = enable;
-    }
 
-    public static void setTimeInterval(int interval) {
-        timeInterval = interval;
-    }
 
-    public static void startNewRecording(long packageReceivedTimestamp, String patientIdentifier) {
+    public static void startNewRecording(long packageReceivedTimestamp, String patientIdentifier, boolean enableChunkFile, int timeInterval) {
         closeCurrentWriter();
 
 
         startTimestamp = packageReceivedTimestamp;
         patientCode = patientIdentifier;
+        nextSplitTime = startTimestamp + splitInterval;
 
+        enableChunkFile1 = enableChunkFile;
+        timeInterval1 = timeInterval;
 
         currentFile = createFileWithTempName(startTimestamp);
         dataBuffer = new OximeterDataBuffer();
@@ -101,14 +110,22 @@ public class OximeterDataWriterFunctions {
                     data.perfusion.toString()   // Save as array
             };
 
+            // Check if it's time to split the file
+
+            if (convertFromISOTimestamp(data.timestamp) >= nextSplitTime) {
+                splitFile(convertFromISOTimestamp(data.timestamp));
+            }
+
             currentWriter.writeNext(csvData);
             currentWriter.flush();
 
             // Write to temporary buffer
             // Check on/off chunk file creation
-            if (enableChunkFile) {
+//            Log.i(TAG, "Chunk file creation: " + enableChunkFile1);
+            if (enableChunkFile1) {
+//                Log.i(TAG, "test 1111111");
                 tempBuffer.add(csvData);
-                if (tempBuffer.size() >= timeInterval*60) {
+                if (tempBuffer.size() >= timeInterval1*60) {
                     writeChunkToFile();
                     tempBuffer.clear();
                 }
@@ -161,24 +178,101 @@ public class OximeterDataWriterFunctions {
         };
         writer.writeNext(header);
     }
+    // Break the current file and start a new one
+    private static long convertFromISOTimestamp(String isoTimestamp) {
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
+            OffsetDateTime offsetDateTime = OffsetDateTime.parse(isoTimestamp, formatter);
+            return offsetDateTime.toInstant().toEpochMilli();
+        } catch (Exception e) {
+            Log.e(TAG, "Error converting ISO format to timestamp", e);
+            return System.currentTimeMillis(); // Fallback to current time
+        }
+    }
+    private static void splitFile(long timestamp) {
+        try {
+            // Close current writer
+            currentWriter.flush();
+            currentWriter.close();
+
+            // Rename the current file with its end time
+            File completedFile = new File(currentFile.getParentFile(),
+                    generateFileName(startTimestamp, formatTimestamp(timestamp)));
+            currentFile.renameTo(completedFile);
+
+            // Start new file
+            startTimestamp = timestamp;
+            nextSplitTime = timestamp + splitInterval;
+            currentFile = createFileWithTempName(timestamp);
+            currentWriter = new CSVWriter(new FileWriter(currentFile));
+            writeHeader(currentWriter);
+
+            Log.i(TAG, "File split successful. New file: " + currentFile.getAbsolutePath());
+
+        } catch (IOException e) {
+            Log.e(TAG, "Error during file split", e);
+            // If split fails, try to reopen the current file
+            try {
+                currentWriter = new CSVWriter(new FileWriter(currentFile, true));
+            } catch (IOException reopenError) {
+                Log.e(TAG, "Critical error: Failed to reopen file after split attempt", reopenError);
+                currentWriter = null;
+            }
+        }
+    }
     // Create chunk file from temporary buffer
     private static void writeChunkToFile() {
         try {
-            File chunkDirectory = new File(currentFile.getParentFile().getParentFile(), "StreamModel");
+            // Get current timestamp for end time
+            long currentTime = System.currentTimeMillis();
+            // Calculate start time (3 minutes ago)
+            long startTime = currentTime - (timeInterval1 * 60 * 1000);
+
+            // Create StreamModel directory inside OximeterData
+            File baseDirectory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER_NAME);
+            File chunkDirectory = new File(baseDirectory, STREAM_MODEL_FOLDER);
             if (!chunkDirectory.exists()) {
-                chunkDirectory.mkdirs();
+                boolean created = chunkDirectory.mkdirs();
+                if (!created) {
+                    Log.e(TAG, "Failed to create StreamModel directory");
+                    return;
+                }
             }
 
-            File chunkFile = new File(chunkDirectory, CHUNK_FILE_NAME);
-            try (CSVWriter chunkWriter = new CSVWriter(new FileWriter(chunkFile))) {
+            // Generate new chunk file name
+            String chunkFileName = String.format("SmartCareCsvChunk_%s_%s_%s.csv",
+                    patientCode,
+                    formatTimestamp(startTime),
+                    formatTimestamp(currentTime));
+
+            // Create new chunk file
+            File newChunkFile = new File(chunkDirectory, chunkFileName);
+
+            // Delete the previous chunk file if it exists
+            if (lastChunkFile != null && lastChunkFile.exists()) {
+                boolean deleted = lastChunkFile.delete();
+                if (!deleted) {
+                    Log.w(TAG, "Failed to delete previous chunk file: " + lastChunkFile.getAbsolutePath());
+                } else {
+                    Log.i(TAG, "Deleted previous chunk file: " + lastChunkFile.getAbsolutePath());
+                }
+            }
+
+            // Write data to new chunk file
+            try (CSVWriter chunkWriter = new CSVWriter(new FileWriter(newChunkFile))) {
                 writeHeader(chunkWriter);
                 for (String[] row : tempBuffer) {
                     chunkWriter.writeNext(row);
                 }
-                Log.i(TAG, "Chunk file created: " + chunkFile.getAbsolutePath());
+                Log.i(TAG, "New chunk file created: " + newChunkFile.getAbsolutePath());
             }
+
+            // Update reference to current chunk file
+            lastChunkFile = newChunkFile;
+
         } catch (IOException e) {
             Log.e(TAG, "Error writing chunk to file", e);
+            e.printStackTrace();
         }
     }
 
@@ -186,6 +280,7 @@ public class OximeterDataWriterFunctions {
         if (currentWriter != null) {
             try {
                 currentWriter.close();
+                
             } catch (IOException e) {
                 Log.e(TAG, "Error closing CSV writer", e);
             }
