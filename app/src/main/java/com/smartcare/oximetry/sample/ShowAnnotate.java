@@ -77,7 +77,11 @@ public class ShowAnnotate {
             directory.mkdirs();
         }
 
-        String fileName = String.format("Annotation_%s.csv", patientCode);
+//        String fileName = String.format("Annotation_%s.csv", patientCode);
+        //crete file for each patient every day
+        String currentDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        String fileName = String.format("Annotation_%s_%s.csv", patientCode, currentDate);
+
         File file = new File(directory, fileName);
         boolean isNewFile = !file.exists();
 

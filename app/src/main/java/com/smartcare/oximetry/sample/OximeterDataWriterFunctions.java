@@ -1,5 +1,6 @@
 package com.smartcare.oximetry.sample;
 import android.app.Activity;
+import android.content.Context;
 import android.util.Log;
 
 import com.opencsv.CSVWriter;
@@ -43,6 +44,12 @@ public class OximeterDataWriterFunctions {
     private static long splitInterval = DEFAULT_SPLIT_INTERVAL;
     private static long nextSplitTime;
 
+    private static Activity currentActivity; // Add this field to store the Activity reference
+
+    // Add this method to set the Activity reference
+    public static void setActivity(Activity activity) {
+        currentActivity = activity;
+    }
     // Add setter for split interval
     public static void setSplitInterval(int hours) {
         splitInterval = hours * 60 * 60 * 1000L; // Convert hours to milliseconds
@@ -208,6 +215,21 @@ public class OximeterDataWriterFunctions {
             writeHeader(currentWriter);
 
             Log.i(TAG, "File split successful. New file: " + currentFile.getAbsolutePath());
+            if (currentActivity != null) {
+                FileUploader.uploadFile(currentActivity, completedFile.getAbsolutePath(),
+                        new FileUploader.UploadCallback() {
+                            @Override
+                            public void onUploadComplete(boolean success, String message) {
+                                if (success) {
+                                    Log.i(TAG, "Split file uploaded successfully: " + completedFile.getName());
+                                } else {
+                                    Log.e(TAG, "Failed to upload split file: " + completedFile.getName());
+                                }
+                            }
+                        });
+            } else {
+                Log.w(TAG, "Activity context not available, skipping file upload");
+            }
 
         } catch (IOException e) {
             Log.e(TAG, "Error during file split", e);

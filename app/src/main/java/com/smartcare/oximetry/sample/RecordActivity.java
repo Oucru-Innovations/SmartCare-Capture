@@ -154,6 +154,8 @@ public class RecordActivity extends Activity  {
     private TextView patientCodeTextView;
     private String formattedCode; //= patientIdentifier
     //end
+    //battery
+    private TextView batteryText;
     //auto
     private BluetoothAdapter bluetoothAdapter;
     private BroadcastReceiver bluetoothReceiver;
@@ -342,12 +344,19 @@ public class RecordActivity extends Activity  {
                             String heartRateText = String.valueOf(latestHeartRateValue);
 //                            String spo2Text = String.valueOf((int) latestSpO2Value);
                             String spo2Text = String.format(Locale.US, "SpO₂: %d%%\nPI: %.1f", (int) latestSpO2Value, perfusionIndex);
+                            //convert battery to persentage
+                            double percentage = Math.min(Math.max((latestBatteryValue - 3300.0) / 850.0, 0.0), 1.0) * 100.0;
+                            String batteryString = String.valueOf(Math.ceil(percentage));
+                            String battery = String.format(Locale.US, "Battery: %s%%", batteryString );
+                            target.batteryText.setText(battery);
+
                             target.mHrDisplay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50);
                             target.mHrDisplay.setTypeface(null, Typeface.BOLD); // Set bold text
                             target.mHrDisplay.setText(heartRateText);
                             target.mSpo2Display.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50);
                             target.mSpo2Display.setTypeface(null, Typeface.BOLD); // Set bold text
                             target.mSpo2Display.setText(spo2Text);
+
                         });
 
                         // Update last update time
@@ -645,8 +654,8 @@ public class RecordActivity extends Activity  {
 //        deviceNames = loadDeviceNames();
         loadMacAddressQueueAndDeviceNames();
 
-        // Initialize the annotation session
-//        ShowAnnotate.startAnnotationSession();
+        // Set the activity reference when initializing
+        OximeterDataWriterFunctions.setActivity(this);
 
         initialisePlot();
         initialiseSeries();
@@ -688,6 +697,7 @@ public class RecordActivity extends Activity  {
         initializeBluetoothScanning();
         startBluetoothBackgroundScan();
 
+        AnnotationUploadScheduler.scheduleDailyUpload(this);
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
         mHandler = new SmartCareHandler(this);
         if (connectionManager == null) {
@@ -871,7 +881,7 @@ public class RecordActivity extends Activity  {
         mSpo2Display = (TextView) findViewById(R.id.spo2);
         mSpo2Label = (TextView) findViewById(R.id.spo2label);
 //        mSpo2Label.setText(Html.fromHtml("SpO<sub><small>2</small></sub>"));
-
+        batteryText = (TextView) findViewById(R.id.batteryText);
         //new
 //        device1MacTextView = (TextView) findViewById(R.id.connectedMac);
 //        device2MacTextView = (TextView) findViewById(R.id.queuedMac);
@@ -1287,6 +1297,7 @@ public class RecordActivity extends Activity  {
         }
         //new code
         // Stop the annotation session
+        OximeterDataWriterFunctions.setActivity(null);
         ShowAnnotate.stopAllSessions();
         //en
         super.onDestroy();
