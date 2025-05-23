@@ -222,13 +222,25 @@ public class OximeterDataWriterFunctions {
                             public void onUploadComplete(boolean success, String message) {
                                 if (success) {
                                     Log.i(TAG, "Split file uploaded successfully: " + completedFile.getName());
+                                    FileUploader.moveFileToUploadedFolder(completedFile);
                                 } else {
                                     Log.e(TAG, "Failed to upload split file: " + completedFile.getName());
                                 }
                             }
                         });
             } else {
-                Log.w(TAG, "Activity context not available, skipping file upload");
+//                Log.w(TAG, "Activity context not available, skipping file upload");
+                FileUploader.uploadFile(completedFile.getAbsolutePath(), new FileUploader.UploadCallback() {
+                    @Override
+                    public void onUploadComplete(boolean success, String message) {
+                        if (success) {
+                            Log.i("Upload", "File uploaded successfully");
+                            FileUploader.moveFileToUploadedFolder(completedFile);
+                        } else {
+                            Log.e("Upload", "File upload failed: " + message);
+                        }
+                    }
+                });
             }
 
         } catch (IOException e) {
@@ -269,16 +281,34 @@ public class OximeterDataWriterFunctions {
 
             // Create new chunk file
             File newChunkFile = new File(chunkDirectory, chunkFileName);
-
+            //now app don't need to upload chunk file to server at the moment
+            // Send the chunk file to the server then delete it
+//            FileUploader.uploadFile(newChunkFile.getAbsolutePath(), new FileUploader.UploadCallback() {
+//                @Override
+//                public void onUploadComplete(boolean success, String message) {
+//                    if (success) {
+//                        Log.i(TAG, "Chunk file uploaded successfully: " + newChunkFile.getName());
+//                        // Delete the chunk file after successful upload
+//                        boolean deleted = newChunkFile.delete();
+//                        if (!deleted) {
+//                            Log.w(TAG, "Failed to delete chunk file: " + newChunkFile.getAbsolutePath());
+//                        } else {
+//                            Log.i(TAG, "Deleted chunk file: " + newChunkFile.getAbsolutePath());
+//                        }
+//                    } else {
+//                        Log.e(TAG, "Failed to upload chunk file: " + newChunkFile.getName());
+//                    }
+//                }
+//            });
             // Delete the previous chunk file if it exists
-            if (lastChunkFile != null && lastChunkFile.exists()) {
-                boolean deleted = lastChunkFile.delete();
-                if (!deleted) {
-                    Log.w(TAG, "Failed to delete previous chunk file: " + lastChunkFile.getAbsolutePath());
-                } else {
-                    Log.i(TAG, "Deleted previous chunk file: " + lastChunkFile.getAbsolutePath());
-                }
-            }
+//            if (lastChunkFile != null && lastChunkFile.exists()) {
+//                boolean deleted = lastChunkFile.delete();
+//                if (!deleted) {
+//                    Log.w(TAG, "Failed to delete previous chunk file: " + lastChunkFile.getAbsolutePath());
+//                } else {
+//                    Log.i(TAG, "Deleted previous chunk file: " + lastChunkFile.getAbsolutePath());
+//                }
+//            }
 
             // Write data to new chunk file
             try (CSVWriter chunkWriter = new CSVWriter(new FileWriter(newChunkFile))) {

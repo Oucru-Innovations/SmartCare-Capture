@@ -153,6 +153,7 @@ public class FileManagerActivity extends Activity {
 
     private void navigateToRecordActivity() {
         Intent intent = new Intent(this, RecordActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(intent);
         finish();
     }
@@ -205,7 +206,8 @@ public class FileManagerActivity extends Activity {
                         // Run on UI thread since we're updating UI
                         runOnUiThread(() -> {
                             if (success) {
-                                // Create Uploaded directory if it doesn't exist
+//                                FileUploader.moveFileToUploadedFolder(csvFile.getFile());
+//                                // Create Uploaded directory if it doesn't exist
                                 File newLocation = new File(csvFile.getFile().getParentFile(), "Uploaded");
                                 if (!newLocation.exists()) {
                                     newLocation.mkdirs();

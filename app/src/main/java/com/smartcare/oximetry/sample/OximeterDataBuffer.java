@@ -89,7 +89,7 @@ public class OximeterDataBuffer {
                              int hrVal, long irAdc, double perfusionIndex, int counter,
                              String macAddress, long packageReceived, int plethVal, long timestamp) {
         DataPoint point = new DataPoint(spo2Val, spo2Status, redAdc, battery, hrVal,
-                irAdc, perfusionIndex, plethVal, macAddress, timestamp);
+                irAdc, perfusionIndex, plethVal, macAddress, packageReceived);
         dataQueue.offer(point);
         processQueueIfNeeded();
     }

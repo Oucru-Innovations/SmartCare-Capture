@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -45,6 +46,42 @@
         android:inputType="text"
         android:layout_marginBottom="12dp"/>
 
+    <!-- Recent Codes with dropdown button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+        
+        <TextView
+            android:id="@+id/recentCodesLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Recent Codes"
+            android:textColor="#000000"
+            android:textSize="14sp"
+            android:layout_marginTop="8dp"
+            android:visibility="visible"/>
+            
+        <ImageButton
+            android:id="@+id/dropdownButton"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/arrow_down_float"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Toggle code history" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/codeHistoryContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        android:maxHeight="120dp"/>
+
     <!-- Location Code Field -->
     <!-- Change location to Name -->
     <TextView
@@ -53,7 +90,8 @@
         android:text="Tên Viết Tắt"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
-        android:paddingBottom="4dp" />
+        android:paddingBottom="4dp"
+        android:visibility="gone"/>
 
     <EditText
         android:id="@+id/locationCodeEditText"
@@ -63,7 +101,8 @@
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
         android:inputType="text"
-        android:layout_marginBottom="12dp"/>
+        android:layout_marginBottom="12dp"
+        android:visibility="gone"/>
 
     <!-- Serial Number Field -->
     <!-- Change to Vị trí ( số giường )-->
@@ -73,7 +112,8 @@
         android:text="Vị trí (số giường)"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
-        android:paddingBottom="4dp" />
+        android:paddingBottom="4dp"
+        android:visibility="gone"/>
 
     <EditText
         android:id="@+id/serialNumberEditText"
@@ -83,7 +123,8 @@
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
         android:inputType="text"
-        android:layout_marginBottom="20dp"/>
+        android:layout_marginBottom="20dp"
+        android:visibility="gone"/>
 
     <!-- Submit Button -->
     <Button

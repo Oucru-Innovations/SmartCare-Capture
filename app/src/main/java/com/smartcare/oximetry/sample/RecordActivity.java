@@ -65,6 +65,7 @@ import androidx.core.app.ActivityCompat;
 
 import android.text.Html;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Menu;
@@ -87,6 +88,7 @@ import com.androidplot.xy.XYPlot;
 import com.github.psambit9791.jdsp.signal.Detrend;
 import com.smartcare.oximetry.library.ConnectionManager;
 
+import java.io.File;
 import java.lang.ref.WeakReference;
 import java.text.DateFormat;
 import java.util.ArrayList;
@@ -106,12 +108,21 @@ import java.util.Queue;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 
+//service
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.net.Uri;
+import android.os.IBinder;
+import android.os.PowerManager;
+import android.provider.Settings;
 import com.github.psambit9791.jdsp.signal.Detrend;
 /**
  * This Activity is responsible for recording, displaying and uploading a physiological signal
  * using a SmartCare Analytics Ltd. Bluetooth pulse oximeter.
  */
-public class RecordActivity extends Activity  {
+public class RecordActivity extends Activity {
     private static final String TAG = "RecordActivity";
     private static final double UI_BUFFER_SIZE_SAMPLES = 500;
     private static final int REQUEST_REQUIRED_PERMISSIONS = 17;
@@ -171,6 +182,11 @@ public class RecordActivity extends Activity  {
     //chunk file config
     private boolean isEnabled ;
     private int interval;
+    //service space
+    private OximeterDataService dataService;
+    private boolean isServiceBound = false;
+    private Intent serviceIntent;
+    private static final int REQUEST_STORAGE_PERMISSION = 200;
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
      * contain data or error messages.
@@ -232,7 +248,6 @@ public class RecordActivity extends Activity  {
                     final double perfusionIndex = latestPerfusionIndexValue;
 
 
-
                     //double latestPerfusionIndexValue = -1;
 
                     //new code add
@@ -255,6 +270,12 @@ public class RecordActivity extends Activity  {
 //
 
                     long timestamp = System.currentTimeMillis();
+                    //new data pass to service
+                    // Send data to service if connected
+
+
+
+
                     try {
                         SharedPreferences chunkFileConfigPrefs = target.getSharedPreferences("ChunkFileConfigPrefs", MODE_PRIVATE);
                         target.isEnabled = chunkFileConfigPrefs.getBoolean("enable_chunk_file", false);
@@ -263,27 +284,46 @@ public class RecordActivity extends Activity  {
                         Log.i(TAG, "Chunk file: " + target.isEnabled + " ---- Interval: " + target.interval);
 //                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
                         if (!isRecordingSessionActive) {
-                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode, target.isEnabled, target.interval);
+//                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode, target.isEnabled, target.interval);
+                            target.dataService.startDataCollection(latestPackageReceived,target.formattedCode, target.isEnabled, target.interval);
 //                          ShowAnnotate.startAnnotationSession();
                             isRecordingSessionActive = true;
                         }
 //                        OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
-                        OximeterDataWriterFunctions.writeDataPoint(
-                                latestSpO2Value,
-                                latestSpO2Status,
-                                latestRedAdc,
-                                latestBatteryValue,
-                                latestHeartRateValue,
-                                latestIrAdc,
-                                latestPerfusionIndexValue,
-                                latestCounterValue,
-                                MacAddress,
-                                latestPackageReceived,
-                                latestPlethValue,
-                                timestamp
-                        );
+                        // Write data to CSV file by activity
+//                        OximeterDataWriterFunctions.writeDataPoint(
+//                                latestSpO2Value,
+//                                latestSpO2Status,
+//                                latestRedAdc,
+//                                latestBatteryValue,
+//                                latestHeartRateValue,
+//                                latestIrAdc,
+//                                latestPerfusionIndexValue,
+//                                latestCounterValue,
+//                                MacAddress,
+//                                latestPackageReceived,
+//                                latestPlethValue,
+//                                timestamp
+//                        );
 //                        Log.i("RecordActivity", "CSV data written successfully");
-
+                        //write data to CSV file by service
+                        if (target.isServiceBound && target.dataService != null) {
+                            target.dataService.addDataPoint(
+                                    latestSpO2Value,
+                                    latestSpO2Status,
+                                    latestRedAdc,
+                                    latestBatteryValue,
+                                    latestHeartRateValue,
+                                    latestIrAdc,
+                                    latestPerfusionIndexValue,
+                                    latestCounterValue,
+                                    MacAddress,
+                                    latestPackageReceived,
+                                    latestPlethValue,
+                                    timestamp
+                            );
+                        }
+                        Log.i("RecordActivity", "CSV data written successfully");
 
                     } catch (Exception e) {
                         Log.e("RecordActivity", "Error writing CSV data", e);
@@ -569,7 +609,27 @@ public class RecordActivity extends Activity  {
         protected void onPostExecute(Boolean result) {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
             isRecordingSessionActive = false;
-            filePath = OximeterDataWriterFunctions.endRecording();
+//            filePath = OximeterDataWriterFunctions.endRecording(); //old path from activity
+                    // First attempt to stop the service directly
+        Intent serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
+        stopService(serviceIntent);
+
+        // Then clean up the binding if it exists
+        if (isServiceBound) {
+            try {
+                if (dataService != null) {
+                    dataService.stopDataCollection();
+                }
+                unbindService(serviceConnection);
+            } catch (IllegalArgumentException e) {
+                // This happens if the service wasn't bound
+                Log.w(TAG, "Service wasn't bound when trying to unbind");
+            }
+            isServiceBound = false;
+        }
+            //get path from service
+            filePath = dataService.endRecordFilePath;
+            Log.i("RecordActivity", "File path: " + filePath);
             //end annotation
 //            ShowAnnotate.stopAnnotationSession();
             new Handler().postDelayed(new Runnable() {
@@ -581,6 +641,7 @@ public class RecordActivity extends Activity  {
                             if (success) {
 //                                Toast.makeText(RecordActivity.this, "File upload successful", Toast.LENGTH_SHORT).show();
                                 Log.i("FileUploader-RA", "File upload successful");
+                                FileUploader.moveFileToUploadedFolder(new File(filePath));
                             } else {
 //                                Toast.makeText(RecordActivity.this, "File upload failed: " + message, Toast.LENGTH_SHORT).show();
                                 Log.e("FileUploader-RA", "File upload failed: " + message);
@@ -607,17 +668,60 @@ public class RecordActivity extends Activity  {
     /**
      * Initialises the connection to the pulse oximeter by executing the Connector task.
      */
+//    private void connectToPulseOximeter() {
+//        boolean hasPermission = checkAppPermissions();
+//        if (hasPermission) {
+//            // If this is a manual connect, remove from block list
+//            //
+//            new Connector().execute();
+//        } else {
+//            // Didn't have one or more required permissions, so abort connection.
+//        }
+//        //new implement
+//
+//    }
+    //service foreground, new connection
     private void connectToPulseOximeter() {
+
+
         boolean hasPermission = checkAppPermissions();
         if (hasPermission) {
-            // If this is a manual connect, remove from block list
-            //
-            new Connector().execute();
-        } else {
-            // Didn't have one or more required permissions, so abort connection.
-        }
-        //new implement
+            Log.d(TAG, "Attempting to start OximeterDataService");
 
+            // Initialize service intent
+            serviceIntent = new Intent(this, OximeterDataService.class);
+
+            // Set service parameters
+            serviceIntent.putExtra("patientCode", formattedCode);
+
+            // Get chunk file configuration
+            ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(this);
+            boolean enableChunk = configPopup.isChunkFileEnabled();
+            int timeInterval = configPopup.getTimeInterval();
+
+            serviceIntent.putExtra("enableChunkFile", enableChunk);
+            serviceIntent.putExtra("timeInterval", timeInterval);
+
+            Log.d(TAG, "Service params: patientCode=" + formattedCode +
+                    ", enableChunkFile=" + enableChunk +
+                    ", timeInterval=" + timeInterval);
+
+            // Start the service
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.d(TAG, "Starting foreground service for Android O+");
+                startForegroundService(serviceIntent);
+            } else {
+                Log.d(TAG, "Starting regular service for pre-Android O");
+                startService(serviceIntent);
+            }
+
+            // Bind to the service
+            bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+            Log.d(TAG, "Service binding requested");
+
+            // Continue with connection to oximeter
+            new Connector().execute();
+        }
     }
 
 
@@ -626,6 +730,25 @@ public class RecordActivity extends Activity  {
      * finished and resources are tidied up when we receive the relevant message in the Handler.
      */
     private void stopDisconnectExit() {
+//        move to Disconnector
+//        // First attempt to stop the service directly
+//        Intent serviceIntent = new Intent(this, OximeterDataService.class);
+//        stopService(serviceIntent);
+//
+//        // Then clean up the binding if it exists
+//        if (isServiceBound) {
+//            try {
+//                if (dataService != null) {
+//                    dataService.stopDataCollection();
+//                }
+//                unbindService(serviceConnection);
+//            } catch (IllegalArgumentException e) {
+//                // This happens if the service wasn't bound
+//                Log.w(TAG, "Service wasn't bound when trying to unbind");
+//            }
+//            isServiceBound = false;
+//        }
+
         new Disconnector().execute();
     }
 
@@ -668,34 +791,22 @@ public class RecordActivity extends Activity  {
                 new ShowAnnotate(RecordActivity.this, formattedCode).showAnnotateMenu(v);
             }
         });
-        //show devices button
-//        showDevicesButton = (Button) findViewById(R.id.showDevicesButton);
-//        showDevicesButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                showConnectedDevicesPopup();
-//            }
-//        });
-        //show file buttton
-//        Button manageFilesButton = findViewById(R.id.manageFilesButton);
-//        manageFilesButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                Intent intent = new Intent(RecordActivity.this, FileManagerActivity.class);
-//                startActivity(intent);
-//            }
-//        });
-        //chunk file config
+
 
         //patient
         initializePatientInfo();
 
-
-
+        // run it before auto connect to prevent connect without code
+        checkAndRequestPatientCode();
 
         // Start scanning in the background
         initializeBluetoothScanning();
-        startBluetoothBackgroundScan();
+//        startBluetoothBackgroundScan(); // move to checkAndRequestPatientCode()
+        //service foreground
+        // Request battery optimization exemption
+        requestBatteryOptimizationExemption();
+        // Initialize service intent
+
 
         AnnotationUploadScheduler.scheduleDailyUpload(this);
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
@@ -708,9 +819,59 @@ public class RecordActivity extends Activity  {
 
         }
 
+        patientInfoPopup.resetPatientCode();
+
+
+
 //        updateMacAddressDisplay();
     }
+    @Override
+    protected void onResume() {
+        super.onResume();
 
+    }
+    private void checkAndRequestPatientCode() {
+        // Always show the popup on app startup, regardless of whether a code exists
+        Handler handler = new Handler();
+        handler.post(() -> {
+            // Make the popup non-cancelable
+            patientInfoPopup.setCancelable(false);
+            // Show the popup with the content view
+            try {
+                View contentView = findViewById(android.R.id.content);
+                if (contentView != null && contentView.getWindowToken() != null) {
+
+
+                    patientInfoPopup.show(contentView);
+
+                    // Disable app functions until code is confirmed
+                    mControlButton.setEnabled(false);
+                    if (findViewById(R.id.annotateButton) != null) {
+                        findViewById(R.id.annotateButton).setEnabled(false);
+                    }
+
+                    // Set red color to indicate no code is active yet
+                    patientCodeTextView.setTextColor(Color.RED);
+
+                    // Set listener to enable functions when code is confirmed
+                    patientInfoPopup.setOnPatientInfoSavedListener(() -> {
+                        startBluetoothBackgroundScan();
+                        updatePatientInfoDisplay();
+                        mControlButton.setEnabled(true);
+                        if (findViewById(R.id.annotateButton) != null) {
+                            findViewById(R.id.annotateButton).setEnabled(true);
+                        }
+                        patientCodeTextView.setTextColor(Color.BLACK);
+                    });
+                } else {
+                    // Try again later if the window token isn't ready
+                    handler.postDelayed(this::checkAndRequestPatientCode, 100);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error showing patient info popup", e);
+            }
+        });
+    }
 
     //menu
     @Override
@@ -776,6 +937,30 @@ public class RecordActivity extends Activity  {
 //                            connectToPulseOximeter();
                             ProgressBar progressBar = RecordActivity.this.findViewById(R.id.progressBar);
                             progressBar.setVisibility(View.VISIBLE);
+
+                            // Start the service before connecting
+                            serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
+                            serviceIntent.putExtra("patientCode", formattedCode);
+
+                            // Get chunk file configuration
+                            ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(RecordActivity.this);
+                            boolean enableChunk = configPopup.isChunkFileEnabled();
+                            int timeInterval = configPopup.getTimeInterval();
+
+                            serviceIntent.putExtra("enableChunkFile", enableChunk);
+                            serviceIntent.putExtra("timeInterval", timeInterval);
+
+                            // Start foreground service
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(serviceIntent);
+                            } else {
+                                startService(serviceIntent);
+                            }
+
+                            // Bind to service
+                            bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+
+
                             boolean success = connectionManager.connect(deviceMac);
                             if(success){
                                 isConnected = true;
@@ -927,12 +1112,20 @@ public class RecordActivity extends Activity  {
 //                patientInfoPopup.show(findViewById(android.R.id.content));
 //            }
 //        });
-
+        patientCodeTextView.setOnClickListener(v -> {
+            if(isRecordingSessionActive){
+                Toast.makeText(this, "Please stop recording before change code", Toast.LENGTH_SHORT).show();
+                return ;
+            }
+            patientInfoPopup.show(findViewById(android.R.id.content));
+        });
         // Check for existing patient info and update display
         updatePatientInfoDisplay();
     }
 
     private void updatePatientInfoDisplay() {
+
+
         PatientInfoPopup.PatientInfo savedInfo = patientInfoPopup.getSavedPatientInfo();
 
         // If we have saved patient info, format and display it
@@ -951,6 +1144,8 @@ public class RecordActivity extends Activity  {
         patientCodeTextView.setText(savedInfo.getResearchCode());
     }
     //end
+
+
 //    //new view
     private void loadMacAddressQueueAndDeviceNames() {
         String queueString = sharedPreferences.getString(MAC_QUEUE_KEY, "");
@@ -1031,7 +1226,7 @@ public class RecordActivity extends Activity  {
 
         if (macs.length > 0) {
             String deviceName = deviceNames.getOrDefault(macs[0], "Unknown Device");
-            device1TextView.setText(Html.fromHtml(String.format("Device 1: %s <small>( %s )</small>", deviceName, macs[0])));
+            device1TextView.setText(Html.fromHtml(String.format("%s <small>( %s )</small>", deviceName, macs[0])));
             device1TextView.setTextColor(macs[0].equals(connectedMac) ? Color.rgb(255, 159, 41) : Color.BLACK);
             device1TextView.setVisibility(View.VISIBLE);
             device1DeleteButton.setVisibility(View.VISIBLE);
@@ -1046,7 +1241,7 @@ public class RecordActivity extends Activity  {
 
         if (macs.length > 1) {
             String deviceName = deviceNames.getOrDefault(macs[1], "Unknown Device");
-            device2TextView.setText(Html.fromHtml(String.format("Device 2: %s <small>( %s )</small>", deviceName, macs[1])));
+            device2TextView.setText(Html.fromHtml(String.format("%s <small>( %s )</small>", deviceName, macs[1])));
             device2TextView.setTextColor(macs[1].equals(connectedMac) ? Color.rgb(255, 159, 41) : Color.BLACK);
             device2TextView.setVisibility(View.VISIBLE);
             device2DeleteButton.setVisibility(View.VISIBLE);
@@ -1195,6 +1390,8 @@ public class RecordActivity extends Activity  {
 //        saveMacAddressQueue();
 //        saveDeviceNames();
     }
+
+
     private void disconnectAndReset() {
         new AsyncTask<Void, Void, Void>() {
             @Override
@@ -1220,14 +1417,25 @@ public class RecordActivity extends Activity  {
     }
     private void showDeleteDeviceDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        String[] macs = macAddressQueue.toArray(new String[0]);
+
+        // Get device names or use MAC addresses as fallback
+        String device1Label = deviceNames.containsKey(macs[0]) && !deviceNames.get(macs[0]).equals("Unknown Device")
+                ? deviceNames.get(macs[0])
+                : "Device " + macs[0];
+
+        String device2Label = deviceNames.containsKey(macs[1]) && !deviceNames.get(macs[1]).equals("Unknown Device")
+                ? deviceNames.get(macs[1])
+                : "Device " + macs[1];
+
         builder.setTitle("Maximum Devices Reached")
                 .setMessage("You have already saved two devices. Please delete one to add a new device.")
-                .setPositiveButton("Delete Device 1", new DialogInterface.OnClickListener() {
+                .setPositiveButton("Delete " + device1Label, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         deleteDevice(0);
                     }
                 })
-                .setNegativeButton("Delete Device 2", new DialogInterface.OnClickListener() {
+                .setNegativeButton("Delete " + device2Label, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         deleteDevice(1);
                     }
@@ -1284,7 +1492,39 @@ public class RecordActivity extends Activity  {
         mPlot.addSeries(mTrendSeries, formatter);
 
     }
+    // service foreground
 
+    private void requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            String packageName = getPackageName();
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Intent intent = new Intent();
+                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + packageName));
+                startActivity(intent);
+            }
+        }
+    }
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            OximeterDataService.LocalBinder binder = (OximeterDataService.LocalBinder) service;
+            dataService = binder.getService();
+            isServiceBound = true;
+            Log.i(TAG, "Successfully bound to OximeterDataService");
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isServiceBound = false;
+            dataService = null;
+            Log.w(TAG, "OximeterDataService disconnected unexpectedly");
+        }
+    };
+
+    //end
     /**
      * Called when the Activity is destroyed. Where possible, the Bluetooth connection should be
      * shut down gracefully by the ConnectionManager.
@@ -1299,8 +1539,27 @@ public class RecordActivity extends Activity  {
         // Stop the annotation session
         OximeterDataWriterFunctions.setActivity(null);
         ShowAnnotate.stopAllSessions();
-        //en
+
+//        if (isServiceBound) {
+//            unbindService(serviceConnection);
+//            isServiceBound = false;
+//        }
+        // Stop the service if it's running
+        Intent serviceIntent = new Intent(this, OximeterDataService.class);
+        stopService(serviceIntent);
+
+        if (isServiceBound) {
+            try {
+                unbindService(serviceConnection);
+            } catch (IllegalArgumentException e) {
+                Log.w(TAG, "Service wasn't bound when trying to unbind");
+            }
+            isServiceBound = false;
+        }
+
         super.onDestroy();
+
+
         // Stop ongoing Bluetooth discovery and remove the scan handler callback
 //        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
 //            bluetoothAdapter.cancelDiscovery();
@@ -1354,26 +1613,78 @@ public class RecordActivity extends Activity  {
     }
 
     //end new code
+//    public boolean checkAppPermissions() {
+//        List<String> permissionsToRequest = new ArrayList<>();
+//        //new code add
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+//            if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
+//                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+//            }
+//        }
+//        //end
+//        //new code
+//        // Check Bluetooth permissions
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+//                permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN);
+//            }
+//            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+//                permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
+//            }
+//        } else {
+//            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+//                permissionsToRequest.add(Manifest.permission.BLUETOOTH);
+//            }
+//            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+//                permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADMIN);
+//            }
+//        }
+//        //end
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+//            int hasFineLocPermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
+//            if (PackageManager.PERMISSION_GRANTED != hasFineLocPermission) {
+//                permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+//            }
+//        } else {
+//            int hasCoarseLocPermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION);
+//            if (PackageManager.PERMISSION_GRANTED != hasCoarseLocPermission) {
+//                permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+//            }
+//        }
+//        if (permissionsToRequest.size() < 1) {
+//            // We have all required permissions.
+//            return true;
+//        }
+//
+//        // Request the relevant permissions.
+//        ActivityCompat.requestPermissions(this, permissionsToRequest.toArray(new String[0]), REQUEST_REQUIRED_PERMISSIONS);
+//        return false;
+//    }
     public boolean checkAppPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
         //new code add
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
-                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            }
-        }
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            // Note: WRITE_EXTERNAL_STORAGE has limited effect on Android 11+ for apps targeting API 30+
+//            // and is further restricted on Android 13+ for apps targeting API 33+.
+//            // Consider using Scoped Storage or SAF.
+//            int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+//            if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
+//                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+//            }
+//        }
+
         //end
         //new code
         // Check Bluetooth permissions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // API 31+
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN);
             }
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
             }
-        } else {
+        } else { // Below API 31
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(Manifest.permission.BLUETOOTH);
             }
@@ -1382,17 +1693,26 @@ public class RecordActivity extends Activity  {
             }
         }
         //end
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // Location permissions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { // API 29+
             int hasFineLocPermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
             if (PackageManager.PERMISSION_GRANTED != hasFineLocPermission) {
                 permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
             }
-        } else {
+        } else { // Below API 29 (ACCESS_COARSE_LOCATION is sufficient for Bluetooth on older versions)
             int hasCoarseLocPermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION);
             if (PackageManager.PERMISSION_GRANTED != hasCoarseLocPermission) {
                 permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION);
             }
         }
+
+        // Notification permission for Android 13 (API 33) and higher
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // API 33
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+
         if (permissionsToRequest.size() < 1) {
             // We have all required permissions.
             return true;
@@ -1402,30 +1722,64 @@ public class RecordActivity extends Activity  {
         ActivityCompat.requestPermissions(this, permissionsToRequest.toArray(new String[0]), REQUEST_REQUIRED_PERMISSIONS);
         return false;
     }
-
-
-    // Handle the result of the Bluetooth permission request.
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
         switch (requestCode) {
             case REQUEST_REQUIRED_PERMISSIONS:
                 if (0 == grantResults.length) {
                     // Request was cancelled.
+                    Log.w(TAG, "Permission request cancelled by user.");
+                    Toast.makeText(this, "Permissions request cancelled.", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                int nGranted = 0;
-                for (int iRes = 0; iRes < grantResults.length; iRes++) {
-                    if (PackageManager.PERMISSION_GRANTED == grantResults[iRes]) {
-                        nGranted++;
+                boolean allPermissionsGranted = true;
+                List<String> deniedPermissions = new ArrayList<>();
+                for (int i = 0; i < permissions.length; i++) {
+                    if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                        allPermissionsGranted = false;
+                        deniedPermissions.add(permissions[i]);
+                        Log.w(TAG, "Permission denied: " + permissions[i]);
                     }
                 }
-                if (nGranted == grantResults.length) {
+
+                if (allPermissionsGranted) {
                     // We were granted all the requested permissions, so we can connect.
+                    Log.i(TAG, "All required permissions granted.");
                     connectToPulseOximeter();
                 } else {
-                    Toast.makeText(this, "Not all permissions granted - can't connect.", Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Not all permissions granted. Denied permissions: " + TextUtils.join(", ", deniedPermissions));
+                    Toast.makeText(this, "Not all permissions granted - can't connect. Denied: " + TextUtils.join(", ", deniedPermissions), Toast.LENGTH_LONG).show();
                 }
+                break;
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         }
     }
+
+
+//     Handle the result of the Bluetooth permission request.
+//    @Override
+//    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+//        switch (requestCode) {
+//            case REQUEST_REQUIRED_PERMISSIONS:
+//                if (0 == grantResults.length) {
+//                    // Request was cancelled.
+//                    return;
+//                }
+//                int nGranted = 0;
+//                for (int iRes = 0; iRes < grantResults.length; iRes++) {
+//                    if (PackageManager.PERMISSION_GRANTED == grantResults[iRes]) {
+//                        nGranted++;
+//                    }
+//                }
+//                if (nGranted == grantResults.length) {
+//                    // We were granted all the requested permissions, so we can connect.
+//                    connectToPulseOximeter();
+//                } else {
+//                    Toast.makeText(this, "Not all permissions granted - can't connect.", Toast.LENGTH_SHORT).show();
+//                }
+//        }
+//    }
+
 }
 
