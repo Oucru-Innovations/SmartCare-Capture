@@ -250,10 +250,10 @@ public class PatientInfoPopup {
             (code, position) -> {
                 // Show confirmation dialog before deleting
                 new AlertDialog.Builder(context)
-                    .setTitle("Delete Code")
-                    .setMessage("Are you sure you want to delete this code?")
-                    .setPositiveButton("Yes", (dialog, which) -> deleteCodeFromHistory(code, position))
-                    .setNegativeButton("No", null)
+                    .setTitle("Xóa mã")
+                    .setMessage("Bạn có chắc chắn muốn xóa mã")
+                    .setPositiveButton("Đồng ý", (dialog, which) -> deleteCodeFromHistory(code, position))
+                    .setNegativeButton("Hủy", null)
                     .show();
             }
         );
@@ -278,7 +278,7 @@ public class PatientInfoPopup {
 
         //
         researchCodeEditText.addTextChangedListener(new TextWatcher() {
-            private boolean isFormatting;
+            private boolean isFormatting = true;
             private int prevLength;
 
             @Override

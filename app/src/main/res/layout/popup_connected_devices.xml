@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Connected Devices:"
+        android:text="Danh sách thiết bị"
         android:textSize="18sp"
         android:textColor="#333333"
         android:layout_marginBottom="12dp"
@@ -35,15 +35,14 @@
             android:textColor="#666666"
             android:background="@drawable/edit_text_background" />
 
-        <Button
+        <ImageButton
             android:id="@+id/device1Delete"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Delete"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="6dp"
-            style="?android:attr/buttonStyleSmall"
-            android:textColor="#FF4444" />
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_menu_delete"
+            android:background="@null"
+            android:tint="@android:color/holo_red_dark"
+            android:contentDescription="Delete device 1" />
     </LinearLayout>
 
     <!-- Second device layout with drawable background for TextView -->
@@ -65,15 +64,14 @@
             android:textColor="#666666"
             android:background="@drawable/edit_text_background" />
 
-        <Button
+        <ImageButton
             android:id="@+id/device2Delete"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Delete"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="6dp"
-            style="?android:attr/buttonStyleSmall"
-            android:textColor="#FF4444" />
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_menu_delete"
+            android:background="@null"
+            android:tint="@android:color/holo_red_dark"
+            android:contentDescription="Delete device 2" />
     </LinearLayout>
 
 </LinearLayout>

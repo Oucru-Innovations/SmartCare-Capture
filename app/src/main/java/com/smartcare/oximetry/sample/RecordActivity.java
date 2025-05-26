@@ -40,6 +40,8 @@ package com.smartcare.oximetry.sample;
 
 
 
+import static com.smartcare.oximetry.sample.AnnotationHistory.showAnnotationHistory;
+
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -148,8 +150,8 @@ public class RecordActivity extends Activity {
     public static boolean isRecordingSessionActive =false;
     private TextView device1MacTextView;
     private TextView device2MacTextView;
-    private Button device1DeleteButton;
-    private Button device2DeleteButton;
+    private ImageButton device1DeleteButton;
+    private ImageButton device2DeleteButton;
     private String connectedMac;
     //popup
     private Button showDevicesButton;
@@ -382,8 +384,9 @@ public class RecordActivity extends Activity {
                         // Update UI with the latest values
                         target.runOnUiThread(() -> {
                             String heartRateText = String.valueOf(latestHeartRateValue);
-//                            String spo2Text = String.valueOf((int) latestSpO2Value);
-                            String spo2Text = String.format(Locale.US, "SpO₂: %d%%\nPI: %.1f", (int) latestSpO2Value, perfusionIndex);
+                            String spo2Text = String.valueOf((int) latestSpO2Value);
+//                            String spo2Text = String.format(Locale.US, "SpO₂: %d%%\nPI: %.1f", (int) latestSpO2Value, perfusionIndex);
+
                             //convert battery to persentage
                             double percentage = Math.min(Math.max((latestBatteryValue - 3300.0) / 850.0, 0.0), 1.0) * 100.0;
                             String batteryString = String.valueOf(Math.ceil(percentage));
@@ -906,6 +909,10 @@ public class RecordActivity extends Activity {
                 }
                 ChunkFileConfigPopup chunkFileConfigPopup = new ChunkFileConfigPopup(this);
                 chunkFileConfigPopup.show(findViewById(android.R.id.content));
+            case R.id.action_show_history:
+                ShowAnnotate showAnnotate = new ShowAnnotate(this, "");
+                showAnnotate.showAnnotationHistory(null);
+                return true;
             default:
                 return super.onOptionsItemSelected(item);
         }
@@ -1214,18 +1221,18 @@ public class RecordActivity extends Activity {
         });
 
         builder.setView(popupView);
-        builder.setTitle("Connected Devices");
-        builder.setPositiveButton("Close", null);
+//        builder.setTitle("Connected Devices");
+        builder.setPositiveButton("Đóng", null);
 
         devicesDialog = builder.create();
         devicesDialog.show();
     }
     private void updatePopupMacAddressDisplay(TextView device1TextView, TextView device2TextView,
-                                              Button device1DeleteButton, Button device2DeleteButton) {
+                                              ImageButton device1DeleteButton, ImageButton device2DeleteButton) {
         String[] macs = macAddressQueue.toArray(new String[0]);
 
         if (macs.length > 0) {
-            String deviceName = deviceNames.getOrDefault(macs[0], "Unknown Device");
+            String deviceName = deviceNames.getOrDefault(macs[0], getString(R.string.unknown_device));
             device1TextView.setText(Html.fromHtml(String.format("%s <small>( %s )</small>", deviceName, macs[0])));
             device1TextView.setTextColor(macs[0].equals(connectedMac) ? Color.rgb(255, 159, 41) : Color.BLACK);
             device1TextView.setVisibility(View.VISIBLE);
@@ -1240,7 +1247,7 @@ public class RecordActivity extends Activity {
         }
 
         if (macs.length > 1) {
-            String deviceName = deviceNames.getOrDefault(macs[1], "Unknown Device");
+            String deviceName = deviceNames.getOrDefault(macs[1], getString(R.string.unknown_device));
             device2TextView.setText(Html.fromHtml(String.format("%s <small>( %s )</small>", deviceName, macs[1])));
             device2TextView.setTextColor(macs[1].equals(connectedMac) ? Color.rgb(255, 159, 41) : Color.BLACK);
             device2TextView.setVisibility(View.VISIBLE);
@@ -1255,7 +1262,7 @@ public class RecordActivity extends Activity {
         }
 
         if (macs.length == 0) {
-            device1TextView.setText("No devices saved");
+            device1TextView.setText("Không có thiết bị");
             device1TextView.setTextColor(Color.BLACK);
             device1TextView.setVisibility(View.VISIBLE);
             device1DeleteButton.setVisibility(View.GONE);
@@ -1265,21 +1272,21 @@ public class RecordActivity extends Activity {
     //
     private void showRenameDeviceDialog(String macAddress) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Rename Device");
+        builder.setTitle("Đổi tên thiết bị");
 
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         input.setText(deviceNames.getOrDefault(macAddress, ""));
         builder.setView(input);
 
-        builder.setPositiveButton("OK", (dialog, which) -> {
+        builder.setPositiveButton("Đồng ý", (dialog, which) -> {
             String newName = input.getText().toString();
             deviceNames.put(macAddress, newName);
 //            saveDeviceNames();
             saveMacAddressQueueAndDeviceNames();
             updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
         });
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.setNegativeButton("Huỷ", (dialog, which) -> dialog.cancel());
 
         builder.show();
     }
@@ -1664,15 +1671,15 @@ public class RecordActivity extends Activity {
     public boolean checkAppPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
         //new code add
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-//            // Note: WRITE_EXTERNAL_STORAGE has limited effect on Android 11+ for apps targeting API 30+
-//            // and is further restricted on Android 13+ for apps targeting API 33+.
-//            // Consider using Scoped Storage or SAF.
-//            int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-//            if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
-//                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-//            }
-//        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Note: WRITE_EXTERNAL_STORAGE has limited effect on Android 11+ for apps targeting API 30+
+            // and is further restricted on Android 13+ for apps targeting API 33+.
+            // Consider using Scoped Storage or SAF.
+            int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
+                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+        }
 
         //end
         //new code

@@ -14,7 +14,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Patient Information"
+        android:text="Thông tin người dùng"
         android:textSize="@dimen/title_text_size"
         android:textStyle="bold"
         android:textColor="@android:color/black"
@@ -31,7 +31,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Mã nghiên cứu"
+        android:text="Tên"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
         android:paddingBottom="4dp" />
@@ -58,7 +58,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Recent Codes"
+            android:text="Danh sách"
             android:textColor="#000000"
             android:textSize="14sp"
             android:layout_marginTop="8dp"
@@ -131,7 +131,7 @@
         android:id="@+id/submitButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Confirm"
+        android:text="Chọn"
         android:backgroundTint="#00FF9C"
         android:textColor="@android:color/white"
         android:padding="@dimen/button_padding"

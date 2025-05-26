@@ -32,16 +32,16 @@ public class ShowAnnotate {
 
     public void showAnnotateMenu(View anchorView) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Add Note");
+        builder.setTitle("Thêm ghi chú");
 
         final EditText input = new EditText(context);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        input.setHint("Enter your note here");
+        input.setHint("Nhập ghi chú tại đây");
         input.setMinLines(3);
         input.setMaxLines(5);
         builder.setView(input);
 
-        builder.setPositiveButton("Save", new DialogInterface.OnClickListener() {
+        builder.setPositiveButton("Lưu", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 String noteContent = input.getText().toString();
@@ -51,7 +51,7 @@ public class ShowAnnotate {
             }
         });
 
-        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+        builder.setNegativeButton("Hủy", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 dialog.cancel();
@@ -80,8 +80,9 @@ public class ShowAnnotate {
 //        String fileName = String.format("Annotation_%s.csv", patientCode);
         //crete file for each patient every day
         String currentDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-        String fileName = String.format("Annotation_%s_%s.csv", patientCode, currentDate);
-
+//        String fileName = String.format("Annotation_%s_%s.csv", patientCode, currentDate);
+//      temporary save all annotation in one file
+        String fileName = "Annotation.csv";
         File file = new File(directory, fileName);
         boolean isNewFile = !file.exists();
 
@@ -139,5 +140,9 @@ public class ShowAnnotate {
             e.printStackTrace();
             Toast.makeText(context, "Failed to save note", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    public void showAnnotationHistory(View view) {
+        AnnotationHistory.showAnnotationHistory(context, patientCode);
     }
 }
