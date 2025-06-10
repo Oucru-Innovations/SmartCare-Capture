@@ -90,7 +90,7 @@ public class ShowAnnotate {
 
         // Write header if it's a new file
         if (isNewFile) {
-            writer.writeNext(new String[]{"Timestamp", "Patient Code", "Note"});
+            writer.writeNext(new String[]{"Timestamp", "Patient Code", "Note", "Heart Rate", "SpO2"});
         }
 
         writerMap.put(patientCode, writer);
@@ -132,7 +132,12 @@ public class ShowAnnotate {
         try {
             CSVWriter writer = getWriterForPatient(patientCode);
             String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date());
-            String[] csvData = {timeStamp, patientCode, noteContent};
+            String[] csvData = {
+                    timeStamp,
+                    patientCode,
+                    noteContent,
+                    String.valueOf(RecordActivity.annotationHeartRate),
+                    String.valueOf(RecordActivity.annotationSpO2)};
             writer.writeNext(csvData);
             writer.flush();
             Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show();

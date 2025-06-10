@@ -1,6 +1,7 @@
 package com.smartcare.oximetry.sample;
 
 import android.app.Activity;
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -27,7 +28,14 @@ import retrofit2.http.Header;
 import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.Part;
-
+//move file with MediaStore
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.MediaStore;
+import java.io.InputStream;
+import java.io.OutputStream;
 public class FileUploader {
 
 //    private static final String BASE_URL = "http://13.250.243.25:8080/";
@@ -37,6 +45,13 @@ public class FileUploader {
     private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
 
     private static int retryCount = 0;
+
+    private static Context appContext;
+
+    // to non activity context
+    public static void setAppContext(Context context) {
+        appContext = context.getApplicationContext();
+    }
 
     // Interface for handling upload results
     public interface UploadCallback {
@@ -54,29 +69,232 @@ public class FileUploader {
         File newFile = new File(uploadedDir, file.getName());
         return file.renameTo(newFile);
     }
+    // move file with MediaStore
+    public static boolean moveFileToUploadedFolderFromUri(Context context, String uriPath) {
+        try {
+            // Get the content resolver
+            ContentResolver contentResolver = context.getContentResolver();
+
+            // Parse the URI string
+            Uri sourceUri = Uri.parse(uriPath);
+
+            // Extract file details from source URI
+            String fileName = null;
+            try (Cursor cursor = contentResolver.query(sourceUri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME);
+                    fileName = cursor.getString(nameIndex);
+                }
+            }
+
+            if (fileName == null) {
+                Log.e("FileUploader", "Could not retrieve file name from URI: " + uriPath);
+                return false;
+            }
+
+            // Create the destination URI in the "Uploaded" subfolder
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+            values.put(MediaStore.Downloads.MIME_TYPE, "text/csv");
+            values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/OximeterData/Uploaded");
+
+            // Insert the new file
+            Uri destinationUri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+
+            if (destinationUri != null) {
+                // Copy the content from source to destination
+                try (InputStream is = contentResolver.openInputStream(sourceUri);
+                     OutputStream os = contentResolver.openOutputStream(destinationUri)) {
+
+                    if (is == null || os == null) {
+                        Log.e("FileUploader", "Could not open streams for copy operation");
+                        return false;
+                    }
+
+                    byte[] buffer = new byte[1024];
+                    int length;
+                    while ((length = is.read(buffer)) > 0) {
+                        os.write(buffer, 0, length);
+                    }
+
+                    // Delete the original file
+                    contentResolver.delete(sourceUri, null, null);
+
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            Log.e("FileUploader", "Error moving file: " + e.getMessage(), e);
+            return false;
+        }
+    }
 
 
     //upload with activity
-    public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
+//    public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
+//        File file = new File(filePath);
+//
+//
+////        String accessToken = "";
+//        String ownerName = "Vyyy";
+//        RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+//        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+//        RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+//
+////        ProgressBar progressBar = activity.findViewById(R.id.progressBar);
+////        progressBar.setVisibility(View.VISIBLE);
+//
+//        String checksum = calculateMD5(file);
+//
+//        ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+////        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
+//        Call<ResponseBody> call = apiService.uploadFile(body, owner); // test route
+//        call.enqueue(new Callback<ResponseBody>() {
+//            @Override
+//            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+////                progressBar.setVisibility(View.GONE);
+//                if (response.isSuccessful()) {
+//                    Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
+//                    Log.i("FileUploader", "File upload successful");
+//                    retryCount = 0;
+//                    callback.onUploadComplete(true, "File upload successful");
+//                } else {
+//                    Toast.makeText(activity, "File upload failed: " + response.message(), Toast.LENGTH_SHORT).show();
+//                    Log.e("FileUploader", "File upload failed: " + response.message());
+//                    scheduleRetry(activity, filePath, callback);
+//                }
+//            }
+//
+//            @Override
+//            public void onFailure(Call<ResponseBody> call, Throwable t) {
+////                progressBar.setVisibility(View.GONE);
+//                Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
+//                Log.e("FileUploader", "Error uploading file", t);
+//                scheduleRetry(activity, filePath, callback);
+//            }
+//        });
+//    }
+
+//    private static String calculateMD5(File file) {
+//        try (FileInputStream fis = new FileInputStream(file)) {
+//            MessageDigest digest = MessageDigest.getInstance("MD5");
+//            byte[] buffer = new byte[1024];
+//            int numRead;
+//            while ((numRead = fis.read(buffer)) != -1) {
+//                digest.update(buffer, 0, numRead);
+//            }
+//            byte[] md5Bytes = digest.digest();
+//            StringBuilder sb = new StringBuilder();
+//            for (byte b : md5Bytes) {
+//                sb.append(String.format("%02x", b));
+//            }
+//            return sb.toString();
+//        } catch (IOException | NoSuchAlgorithmException e) {
+//            Log.e("FileUploader", "Error calculating MD5 checksum", e);
+//            return null;
+//        }
+//    }
+public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
+    // Check if this is a content URI
+    if (filePath.startsWith("content://")) {
+        Uri sourceUri = Uri.parse(filePath);
+        ContentResolver contentResolver = activity.getContentResolver();
+        String fileName = null;
+
+        // Get the file name from URI
+        try (Cursor cursor = contentResolver.query(sourceUri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int nameIndex = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME);
+                fileName = cursor.getString(nameIndex);
+            }
+        } catch (Exception e) {
+            Log.e("FileUploader", "Error getting file name from URI", e);
+            callback.onUploadComplete(false, "Error getting file name: " + e.getMessage());
+            return;
+        }
+
+        if (fileName == null) {
+            Log.e("FileUploader", "Could not get file name from URI: " + filePath);
+            callback.onUploadComplete(false, "Could not get file name from URI");
+            return;
+        }
+
+        String ownerName = "Vyyy";
+
+        try {
+            // Get file content
+            InputStream inputStream = contentResolver.openInputStream(sourceUri);
+            if (inputStream == null) {
+                Log.e("FileUploader", "Failed to open input stream for URI: " + filePath);
+                callback.onUploadComplete(false, "Failed to open file");
+                return;
+            }
+
+            // Create a temporary file for upload
+            File tempFile = File.createTempFile("upload_", fileName, activity.getCacheDir());
+            try (OutputStream outputStream = new java.io.FileOutputStream(tempFile)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+            }
+            inputStream.close();
+
+            // Continue with upload process
+            RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), tempFile);
+            MultipartBody.Part body = MultipartBody.Part.createFormData("file", fileName, requestFile);
+            RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+            String checksum = calculateMD5(activity, filePath);
+
+            ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+            Call<ResponseBody> call = apiService.uploadFile(body, owner);
+            call.enqueue(new Callback<ResponseBody>() {
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    tempFile.delete(); // Clean up temp file
+                    if (response.isSuccessful()) {
+                        Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
+                        Log.i("FileUploader", "File upload successful");
+                        retryCount = 0;
+                        callback.onUploadComplete(true, "File upload successful");
+                    } else {
+                        Toast.makeText(activity, "File upload failed: " + response.message(), Toast.LENGTH_SHORT).show();
+                        Log.e("FileUploader", "File upload failed: " + response.message());
+                        scheduleRetry(activity, filePath, callback);
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    tempFile.delete(); // Clean up temp file
+                    Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
+                    Log.e("FileUploader", "Error uploading file", t);
+                    scheduleRetry(activity, filePath, callback);
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e("FileUploader", "Error preparing file for upload", e);
+            callback.onUploadComplete(false, "Error: " + e.getMessage());
+        }
+    } else {
+        // Original code for regular files
         File file = new File(filePath);
-//        String accessToken = "";
         String ownerName = "Vyyy";
         RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
         MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
         RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
 
-//        ProgressBar progressBar = activity.findViewById(R.id.progressBar);
-//        progressBar.setVisibility(View.VISIBLE);
-
-        String checksum = calculateMD5(file);
+        String checksum = calculateMD5(activity, filePath);
 
         ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-//        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
-        Call<ResponseBody> call = apiService.uploadFile(body, owner); // test route
+        Call<ResponseBody> call = apiService.uploadFile(body, owner);
         call.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-//                progressBar.setVisibility(View.GONE);
                 if (response.isSuccessful()) {
                     Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
                     Log.i("FileUploader", "File upload successful");
@@ -91,33 +309,48 @@ public class FileUploader {
 
             @Override
             public void onFailure(Call<ResponseBody> call, Throwable t) {
-//                progressBar.setVisibility(View.GONE);
                 Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                 Log.e("FileUploader", "Error uploading file", t);
                 scheduleRetry(activity, filePath, callback);
             }
         });
     }
+}
+public static String calculateMD5(Context context, String filePath) {
+    try {
+        MessageDigest digest = MessageDigest.getInstance("MD5");
+        InputStream inputStream;
 
-    private static String calculateMD5(File file) {
-        try (FileInputStream fis = new FileInputStream(file)) {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[1024];
-            int numRead;
-            while ((numRead = fis.read(buffer)) != -1) {
-                digest.update(buffer, 0, numRead);
-            }
-            byte[] md5Bytes = digest.digest();
-            StringBuilder sb = new StringBuilder();
-            for (byte b : md5Bytes) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (IOException | NoSuchAlgorithmException e) {
-            Log.e("FileUploader", "Error calculating MD5 checksum", e);
+        // Check if this is a content URI
+        if (filePath.startsWith("content://")) {
+            inputStream = context.getContentResolver().openInputStream(Uri.parse(filePath));
+        } else {
+            inputStream = new FileInputStream(new File(filePath));
+        }
+
+        if (inputStream == null) {
+            Log.e("FileUploader", "Failed to open input stream for MD5 calculation");
             return null;
         }
+
+        byte[] buffer = new byte[1024];
+        int numRead;
+        while ((numRead = inputStream.read(buffer)) != -1) {
+            digest.update(buffer, 0, numRead);
+        }
+        inputStream.close();
+
+        byte[] md5Bytes = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : md5Bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    } catch (IOException | NoSuchAlgorithmException e) {
+        Log.e("FileUploader", "Error calculating MD5 checksum", e);
+        return null;
     }
+}
     // schedule retry for upload (activity)
     private static void scheduleRetry(Activity activity, String filePath, UploadCallback callback) {
         if (retryCount < MAX_RETRY_ATTEMPTS) {
@@ -131,39 +364,152 @@ public class FileUploader {
         }
     }
     // upload without activity
+//    public static void uploadFile(String filePath, UploadCallback callback) {
+//        File file = new File(filePath);
+//        String ownerName = "Vyyy";
+//        RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+//        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+//        RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+//
+//        String checksum = calculateMD5(file);
+//
+//        ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+////        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
+//        Call<ResponseBody> call = apiService.uploadFile(body, owner); // test route
+//        call.enqueue(new Callback<ResponseBody>() {
+//            @Override
+//            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+//                if (response.isSuccessful()) {
+//                    Log.i("FileUploader", "File upload successful");
+//                    retryCount = 0;
+//                    callback.onUploadComplete(true, "File upload successful");
+//                } else {
+//                    Log.e("FileUploader", "File upload failed: " + response.message());
+//                    scheduleRetryWithoutActivity(filePath, callback);
+//                }
+//            }
+//
+//            @Override
+//            public void onFailure(Call<ResponseBody> call, Throwable t) {
+//                Log.e("FileUploader", "Error uploading file", t);
+//                scheduleRetryWithoutActivity(filePath, callback);
+//            }
+//        });
+//    }
     public static void uploadFile(String filePath, UploadCallback callback) {
-        File file = new File(filePath);
-        String ownerName = "Vyyy";
-        RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
-        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
-        RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+        // Since we don't have an activity context here, we need app context for content URIs
+        if (filePath.startsWith("content://") && appContext != null) {
+            // Handle content URIs similar to the activity version but without toasts
+            Uri sourceUri = Uri.parse(filePath);
+            ContentResolver contentResolver = appContext.getContentResolver();
+            String fileName = null;
 
-        String checksum = calculateMD5(file);
+            try (Cursor cursor = contentResolver.query(sourceUri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME);
+                    fileName = cursor.getString(nameIndex);
+                }
+            } catch (Exception e) {
+                Log.e("FileUploader", "Error getting file name from URI", e);
+                callback.onUploadComplete(false, "Error getting file name: " + e.getMessage());
+                return;
+            }
 
-        ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-//        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
-        Call<ResponseBody> call = apiService.uploadFile(body, owner); // test route
-        call.enqueue(new Callback<ResponseBody>() {
-            @Override
-            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-                if (response.isSuccessful()) {
-                    Log.i("FileUploader", "File upload successful");
-                    retryCount = 0;
-                    callback.onUploadComplete(true, "File upload successful");
-                } else {
-                    Log.e("FileUploader", "File upload failed: " + response.message());
+            if (fileName == null) {
+                Log.e("FileUploader", "Could not get file name from URI: " + filePath);
+                callback.onUploadComplete(false, "Could not get file name from URI");
+                return;
+            }
+
+            String ownerName = "Vyyy";
+
+            try {
+                // Get file content
+                InputStream inputStream = contentResolver.openInputStream(sourceUri);
+                if (inputStream == null) {
+                    Log.e("FileUploader", "Failed to open input stream for URI: " + filePath);
+                    callback.onUploadComplete(false, "Failed to open file");
+                    return;
+                }
+
+                // Create a temporary file for upload
+                File tempFile = File.createTempFile("upload_", fileName, appContext.getCacheDir());
+                try (OutputStream outputStream = new java.io.FileOutputStream(tempFile)) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                }
+                inputStream.close();
+
+                RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), tempFile);
+                MultipartBody.Part body = MultipartBody.Part.createFormData("file", fileName, requestFile);
+                RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+                String checksum = calculateMD5(appContext, filePath);
+
+                ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+                Call<ResponseBody> call = apiService.uploadFile(body, owner);
+                call.enqueue(new Callback<ResponseBody>() {
+                    @Override
+                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                        tempFile.delete(); // Clean up temp file
+                        if (response.isSuccessful()) {
+                            Log.i("FileUploader", "File upload successful");
+                            retryCount = 0;
+                            callback.onUploadComplete(true, "File upload successful");
+                        } else {
+                            Log.e("FileUploader", "File upload failed: " + response.message());
+                            scheduleRetryWithoutActivity(filePath, callback);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                        tempFile.delete(); // Clean up temp file
+                        Log.e("FileUploader", "Error uploading file", t);
+                        scheduleRetryWithoutActivity(filePath, callback);
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e("FileUploader", "Error preparing file for upload", e);
+                callback.onUploadComplete(false, "Error: " + e.getMessage());
+            }
+        } else {
+            // Original code for regular files
+            File file = new File(filePath);
+            String ownerName = "Vyyy";
+            RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+            MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+            RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+            String checksum = calculateMD5(appContext, filePath);
+
+            ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+            Call<ResponseBody> call = apiService.uploadFile(body, owner);
+            call.enqueue(new Callback<ResponseBody>() {
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    if (response.isSuccessful()) {
+                        Log.i("FileUploader", "File upload successful");
+                        retryCount = 0;
+                        callback.onUploadComplete(true, "File upload successful");
+                    } else {
+                        Log.e("FileUploader", "File upload failed: " + response.message());
+                        scheduleRetryWithoutActivity(filePath, callback);
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    Log.e("FileUploader", "Error uploading file", t);
                     scheduleRetryWithoutActivity(filePath, callback);
                 }
-            }
-
-            @Override
-            public void onFailure(Call<ResponseBody> call, Throwable t) {
-                Log.e("FileUploader", "Error uploading file", t);
-                scheduleRetryWithoutActivity(filePath, callback);
-            }
-        });
+            });
+        }
     }
-
     private static void scheduleRetryWithoutActivity(String filePath, UploadCallback callback) {
         if (retryCount < MAX_RETRY_ATTEMPTS) {
             retryCount++;

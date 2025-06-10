@@ -3,33 +3,30 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 <item
     android:id="@+id/action_show_devices"
-
     android:title="Quản lý thiết bị"
     android:orderInCategory="100"
     android:showAsAction="never" />
 <item
     android:id="@+id/action_manage_files"
-
     android:title="@string/menu_manage_files"
     android:orderInCategory="200"
     android:showAsAction="never"
-    android:visible="false" />
+    />
 <item
     android:id="@+id/action_patient_info"
-
     android:title="Thông tin người dùng"
     android:orderInCategory="300"
     android:showAsAction="never" />
-<item
-    android:id="@+id/action_show_history"
-    android:title="Lịch sử"
-    android:orderInCategory="500"
-    android:showAsAction="never"/>
+
 <item
     android:id="@+id/action_config_info"
-
     android:title="@string/menu_config_info"
     android:orderInCategory="400"
     android:showAsAction="never"
-    android:visible="false" />
+     />
+    <item
+        android:id="@+id/action_show_history"
+        android:title="Lịch sử"
+        android:orderInCategory="500"
+        android:showAsAction="never"/>
 </menu>

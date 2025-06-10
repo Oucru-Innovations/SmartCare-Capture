@@ -230,7 +230,7 @@
             android:layout_toLeftOf="@id/horizontalCenterline"
             android:background="@drawable/border_background"
             android:gravity="center"
-            android:text="--"
+            android:text="SpO₂: --%\nPI: --"
             android:textSize="35sp"
             android:textColor="#333333"/>
 

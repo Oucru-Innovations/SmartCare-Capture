@@ -189,6 +189,9 @@ public class RecordActivity extends Activity {
     private boolean isServiceBound = false;
     private Intent serviceIntent;
     private static final int REQUEST_STORAGE_PERMISSION = 200;
+    //variables for show annotation
+    public static int annotationHeartRate = 0;
+    public static double annotationSpO2 = 0.f;
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
      * contain data or error messages.
@@ -249,7 +252,9 @@ public class RecordActivity extends Activity {
                     //end
                     final double perfusionIndex = latestPerfusionIndexValue;
 
-
+                    //store the latest HR and SpO2 values for annotation
+                    annotationHeartRate = latestHeartRateValue;
+                    annotationSpO2 = latestSpO2Value;
                     //double latestPerfusionIndexValue = -1;
 
                     //new code add
@@ -642,11 +647,16 @@ public class RecordActivity extends Activity {
                         @Override
                         public void onUploadComplete(boolean success, String message) {
                             if (success) {
-//                                Toast.makeText(RecordActivity.this, "File upload successful", Toast.LENGTH_SHORT).show();
                                 Log.i("FileUploader-RA", "File upload successful");
-                                FileUploader.moveFileToUploadedFolder(new File(filePath));
+                                // Check if it's a content URI and use the correct method
+                                if (filePath.startsWith("content://")) {
+                                    // Use the content URI version of moveFileToUploadedFolder
+                                    FileUploader.moveFileToUploadedFolderFromUri(RecordActivity.this, filePath);
+                                } else {
+                                    // Use the File-based version for regular file paths
+                                    FileUploader.moveFileToUploadedFolder(new File(filePath));
+                                }
                             } else {
-//                                Toast.makeText(RecordActivity.this, "File upload failed: " + message, Toast.LENGTH_SHORT).show();
                                 Log.e("FileUploader-RA", "File upload failed: " + message);
                             }
                         }
@@ -781,7 +791,8 @@ public class RecordActivity extends Activity {
         loadMacAddressQueueAndDeviceNames();
 
         // Set the activity reference when initializing
-        OximeterDataWriterFunctions.setActivity(this);
+//        OximeterDataWriterFunctions.setActivity(this);
+        OximeterDataWriterFunctions.initialize(getApplicationContext());
 
         initialisePlot();
         initialiseSeries();
@@ -909,6 +920,7 @@ public class RecordActivity extends Activity {
                 }
                 ChunkFileConfigPopup chunkFileConfigPopup = new ChunkFileConfigPopup(this);
                 chunkFileConfigPopup.show(findViewById(android.R.id.content));
+                return true;
             case R.id.action_show_history:
                 ShowAnnotate showAnnotate = new ShowAnnotate(this, "");
                 showAnnotate.showAnnotationHistory(null);
@@ -1557,6 +1569,10 @@ public class RecordActivity extends Activity {
 
         if (isServiceBound) {
             try {
+                // Stop data collection before unbinding
+                if (dataService != null) {
+                    dataService.stopDataCollection();
+                }
                 unbindService(serviceConnection);
             } catch (IllegalArgumentException e) {
                 Log.w(TAG, "Service wasn't bound when trying to unbind");
@@ -1670,18 +1686,7 @@ public class RecordActivity extends Activity {
 //    }
     public boolean checkAppPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
-        //new code add
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // Note: WRITE_EXTERNAL_STORAGE has limited effect on Android 11+ for apps targeting API 30+
-            // and is further restricted on Android 13+ for apps targeting API 33+.
-            // Consider using Scoped Storage or SAF.
-            int hasWriteStoragePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            if (PackageManager.PERMISSION_GRANTED != hasWriteStoragePermission) {
-                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            }
-        }
 
-        //end
         //new code
         // Check Bluetooth permissions
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // API 31+

@@ -32,6 +32,7 @@ public class OximeterDataService extends Service {
     public String endRecordFilePath = "";
     // Binder for Activity-Service communication
     private final IBinder binder = new LocalBinder();
+    private Context serviceContext;
 
     public class LocalBinder extends Binder {
         OximeterDataService getService() {
@@ -49,7 +50,7 @@ public class OximeterDataService extends Service {
         super.onCreate();
         Log.i(TAG, "Oximeter Data Service created");
         createNotificationChannel();
-
+        serviceContext = this;
     }
 
     @Override
@@ -124,7 +125,8 @@ public class OximeterDataService extends Service {
         dataBuffer = new OximeterDataBuffer();
 
         // Initialize data recording
-        OximeterDataWriterFunctions.setActivity(null);  // No need for Activity reference in service
+//        OximeterDataWriterFunctions.setActivity(null);  // No need for Activity reference in service
+        OximeterDataWriterFunctions.initialize(serviceContext);
         OximeterDataWriterFunctions.startNewRecording(
                 timestamp,
                 patientIdentifier,
