@@ -127,7 +127,7 @@ public class OximeterDataBuffer {
         timestampValues.add(point.timestamp);
 
         if (spo2Values.size() >= BUFFER_SIZE) {
-            String isoTimestamp = convertToISOTimestamp(timestampValues.get(0));
+            String isoTimestamp = convertToISOTimestamp(timestampValues.get(50));
             if (isoTimestamp != null) {
                 ProcessedData processedData = new ProcessedData(
                         isoTimestamp,                    // ISO 8601 formatted timestamp

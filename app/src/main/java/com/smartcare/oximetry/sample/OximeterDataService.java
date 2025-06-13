@@ -117,7 +117,7 @@ public class OximeterDataService extends Service {
             wakeLock = powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
                     "OximeterDataService::WakeLock");
-            wakeLock.acquire(10*60*1000L /*10 minutes*/);
+            wakeLock.acquire(5*60*1000L /*10 minutes*/);
         }
     }
 
