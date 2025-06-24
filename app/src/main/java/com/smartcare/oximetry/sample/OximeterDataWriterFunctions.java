@@ -1,17 +1,14 @@
 package com.smartcare.oximetry.sample;
 
 import android.app.Activity;
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
-import android.net.Uri;
-import android.os.Build;
-import android.provider.MediaStore;
+import android.os.Environment;
 import android.util.Log;
 
 import com.opencsv.CSVWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
@@ -26,7 +23,7 @@ import java.util.TimeZone;
 public class OximeterDataWriterFunctions {
     private static final String FOLDER_NAME = "OximeterData";
     private static final String TAG = "OximeterDataWriter";
-    private static Uri currentFileUri;
+    private static File currentFile;
     private static CSVWriter currentWriter;
     private static OximeterDataBuffer dataBuffer;
     private static long startTimestamp;
@@ -39,7 +36,7 @@ public class OximeterDataWriterFunctions {
     private static final String CHUNK_FILE_NAME = "chunk_file.csv";
     private static boolean enableChunkFile1 = false;
     private static int timeInterval1 = 1;
-    private static Uri lastChunkFileUri = null;
+    private static File lastChunkFile = null;
     private static final String STREAM_MODEL_FOLDER = "StreamModel";
 
     // File splitting
@@ -50,13 +47,9 @@ public class OximeterDataWriterFunctions {
     private static Activity currentActivity;
     private static WeakReference<Activity> weakActivity;
 
-//    public static void setActivity(Activity activity) {
-//        currentActivity = activity;
-//        appContext = activity.getApplicationContext();
-//    }
-    //new
     public static void initialize(Context context) {
         appContext = context.getApplicationContext();
+        createDirectoriesIfNeeded();
     }
 
     public static void setActivity(Activity activity) {
@@ -72,8 +65,33 @@ public class OximeterDataWriterFunctions {
         if (weakActivity != null && weakActivity.get() != null) {
             return weakActivity.get().getApplicationContext();
         }
-        return null;
+        return appContext;
     }
+
+    private static void createDirectoriesIfNeeded() {
+        File mainDir = getOximeterDataDirectory();
+        if (!mainDir.exists()) {
+            boolean created = mainDir.mkdirs();
+            Log.i(TAG, "Main directory created: " + created + " at " + mainDir.getAbsolutePath());
+        }
+
+        File streamModelDir = new File(mainDir, STREAM_MODEL_FOLDER);
+        if (!streamModelDir.exists()) {
+            boolean created = streamModelDir.mkdirs();
+            Log.i(TAG, "StreamModel directory created: " + created + " at " + streamModelDir.getAbsolutePath());
+        }
+    }
+
+    private static File getOximeterDataDirectory() {
+        // Use app's private external storage directory
+        File externalDir = appContext.getExternalFilesDir(null);
+        return new File(externalDir, FOLDER_NAME);
+    }
+
+    private static File getStreamModelDirectory() {
+        return new File(getOximeterDataDirectory(), STREAM_MODEL_FOLDER);
+    }
+
     public static void setSplitInterval(int hours) {
         splitInterval = hours * 60 * 60 * 1000L;
         if (startTimestamp > 0) {
@@ -92,31 +110,24 @@ public class OximeterDataWriterFunctions {
         enableChunkFile1 = enableChunkFile;
         timeInterval1 = timeInterval;
 
-        currentFileUri = createFileWithTempName(startTimestamp);
+        currentFile = createFileWithTempName(startTimestamp);
         dataBuffer = new OximeterDataBuffer();
 
         try {
-            OutputStream outputStream = appContext.getContentResolver()
-                    .openOutputStream(currentFileUri, "w");
-            currentWriter = new CSVWriter(new OutputStreamWriter(outputStream));
+            FileOutputStream fileOutputStream = new FileOutputStream(currentFile);
+            currentWriter = new CSVWriter(new OutputStreamWriter(fileOutputStream));
             writeHeader(currentWriter);
-            Log.i(TAG, "New recording started: " + currentFileUri);
+            Log.i(TAG, "New recording started: " + currentFile.getAbsolutePath());
         } catch (IOException e) {
             Log.e(TAG, "Error creating new CSV file", e);
             currentWriter = null;
         }
     }
 
-    private static Uri createFileWithTempName(long startTimestamp) {
-        ContentValues values = new ContentValues();
+    private static File createFileWithTempName(long startTimestamp) {
         String fileName = generateFileName(startTimestamp, "temp");
-
-        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
-        values.put(MediaStore.Downloads.MIME_TYPE, "text/csv");
-        values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/" + FOLDER_NAME);
-
-        ContentResolver resolver = appContext.getContentResolver();
-        return resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        File directory = getOximeterDataDirectory();
+        return new File(directory, fileName);
     }
 
     public static void writeProcessedDataPoint(OximeterDataBuffer.ProcessedData data) {
@@ -164,32 +175,34 @@ public class OximeterDataWriterFunctions {
 
         // Rename current file
         String newFileName = generateFileName(startTimestamp, formatTimestamp(timestamp));
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.Downloads.DISPLAY_NAME, newFileName);
-        appContext.getContentResolver().update(currentFileUri, values, null, null);
+        File newFile = new File(currentFile.getParent(), newFileName);
+        boolean renamed = currentFile.renameTo(newFile);
 
-        Uri completedFileUri = currentFileUri;
+        if (!renamed) {
+            Log.e(TAG, "Failed to rename file from " + currentFile.getName() + " to " + newFileName);
+        }
+
+        File completedFile = newFile;
 
         // Start new file
         startTimestamp = timestamp;
         nextSplitTime = timestamp + splitInterval;
-        currentFileUri = createFileWithTempName(timestamp);
+        currentFile = createFileWithTempName(timestamp);
 
-        OutputStream outputStream = appContext.getContentResolver()
-                .openOutputStream(currentFileUri, "w");
-        currentWriter = new CSVWriter(new OutputStreamWriter(outputStream));
+        FileOutputStream fileOutputStream = new FileOutputStream(currentFile);
+        currentWriter = new CSVWriter(new OutputStreamWriter(fileOutputStream));
         writeHeader(currentWriter);
 
-        Log.i(TAG, "File split successful. New file: " + currentFileUri);
+        Log.i(TAG, "File split successful. New file: " + currentFile.getAbsolutePath());
 
         if (currentActivity != null) {
-            FileUploader.uploadFile(currentActivity, getPathFromUri(completedFileUri),
+            FileUploader.uploadFile(currentActivity, completedFile.getAbsolutePath(),
                     new FileUploader.UploadCallback() {
                         @Override
                         public void onUploadComplete(boolean success, String message) {
                             if (success) {
                                 Log.i(TAG, "Split file uploaded successfully");
-                                FileUploader.moveFileToUploadedFolderFromUri(appContext, getPathFromUri(completedFileUri));
+                                FileUploader.moveFileToUploadedFolder(completedFile);
                             } else {
                                 Log.e(TAG, "Failed to upload split file");
                             }
@@ -208,30 +221,20 @@ public class OximeterDataWriterFunctions {
                     formatTimestamp(startTime),
                     formatTimestamp(currentTime));
 
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, chunkFileName);
-            values.put(MediaStore.Downloads.MIME_TYPE, "text/csv");
-            values.put(MediaStore.Downloads.RELATIVE_PATH,
-                    "Download/" + FOLDER_NAME + "/" + STREAM_MODEL_FOLDER);
+            File chunkFile = new File(getStreamModelDirectory(), chunkFileName);
 
-            Uri chunkFileUri = appContext.getContentResolver()
-                    .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            FileOutputStream fileOutputStream = new FileOutputStream(chunkFile);
+            CSVWriter chunkWriter = new CSVWriter(new OutputStreamWriter(fileOutputStream));
 
-            if (chunkFileUri != null) {
-                OutputStream outputStream = appContext.getContentResolver()
-                        .openOutputStream(chunkFileUri);
-                CSVWriter chunkWriter = new CSVWriter(new OutputStreamWriter(outputStream));
-
-                writeHeader(chunkWriter);
-                for (String[] row : tempBuffer) {
-                    chunkWriter.writeNext(row);
-                }
-                chunkWriter.flush();
-                chunkWriter.close();
-
-                Log.i(TAG, "New chunk file created: " + chunkFileUri);
-                lastChunkFileUri = chunkFileUri;
+            writeHeader(chunkWriter);
+            for (String[] row : tempBuffer) {
+                chunkWriter.writeNext(row);
             }
+            chunkWriter.flush();
+            chunkWriter.close();
+
+            Log.i(TAG, "New chunk file created: " + chunkFile.getAbsolutePath());
+            lastChunkFile = chunkFile;
         } catch (IOException e) {
             Log.e(TAG, "Error writing chunk to file", e);
         }
@@ -242,13 +245,16 @@ public class OximeterDataWriterFunctions {
         closeCurrentWriter();
 
         String newFileName = generateFileName(startTimestamp, formatTimestamp(endTimestamp));
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.Downloads.DISPLAY_NAME, newFileName);
+        File newFile = new File(currentFile.getParent(), newFileName);
+        boolean renamed = currentFile.renameTo(newFile);
 
-        appContext.getContentResolver().update(currentFileUri, values, null, null);
-        Log.i(TAG, "Recording ended: " + currentFileUri);
+        if (!renamed) {
+            Log.e(TAG, "Failed to rename file from " + currentFile.getName() + " to " + newFileName);
+            return currentFile.getAbsolutePath();
+        }
 
-        return getPathFromUri(currentFileUri);
+        Log.i(TAG, "Recording ended: " + newFile.getAbsolutePath());
+        return newFile.getAbsolutePath();
     }
 
     private static void closeCurrentWriter() {
@@ -262,8 +268,14 @@ public class OximeterDataWriterFunctions {
         }
     }
 
-    private static String getPathFromUri(Uri uri) {
-        return uri.toString();
+    // Helper method to get the directory path for external access
+    public static String getOximeterDataPath() {
+        return getOximeterDataDirectory().getAbsolutePath();
+    }
+
+    // Helper method to get the stream model directory path
+    public static String getStreamModelPath() {
+        return getStreamModelDirectory().getAbsolutePath();
     }
 
     // Helper methods remain unchanged

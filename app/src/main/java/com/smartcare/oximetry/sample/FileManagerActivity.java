@@ -1,6 +1,7 @@
 package com.smartcare.oximetry.sample;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
@@ -11,9 +12,11 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.TabHost;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,12 +31,21 @@ import java.util.Date;
 import java.util.Locale;
 
 public class FileManagerActivity extends Activity {
+    private static final String FOLDER_NAME = "OximeterData";
+    private static final String TAG = "FileManagerActivity";
+
+    private TabHost tabHost;
     private ListView fileListView;
+    private ListView uploadedListView;
     private TextView emptyTextView;
+    private TextView emptyUploadedTextView;
+    private Button refreshButton;
+    private Button backButton;
+
     private ArrayList<CsvFile> csvFiles = new ArrayList<>();
+    private ArrayList<CsvFile> uploadedFiles = new ArrayList<>();
     private CsvFileAdapter adapter;
-
-
+    private UploadedFileAdapter uploadedAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,54 +57,93 @@ public class FileManagerActivity extends Activity {
             getActionBar().hide();
         }
 
-        // Initialize views
-        fileListView = findViewById(R.id.fileListView);
-        emptyTextView = findViewById(R.id.emptyTextView);
-        findViewById(R.id.backButton).setOnClickListener(v -> navigateToRecordActivity());
+        // Initialize views and tabs
+        initializeViews();
+        setupTabs();
 
-        // Set up custom adapter
+        // Set up custom adapters
         adapter = new CsvFileAdapter();
         fileListView.setAdapter(adapter);
 
+        uploadedAdapter = new UploadedFileAdapter();
+        uploadedListView.setAdapter(uploadedAdapter);
+
         // Load and display CSV files
         loadCsvFiles();
+        loadUploadedFiles();
     }
 
-//    @Override
-//    protected void onResume()
-//    {
-//        super.onResume();
-//        loadCsvFiles();
-//        adapter.notifyDataSetChanged();
-//    }
+    private void initializeViews() {
+        tabHost = findViewById(R.id.tabHost);
+        fileListView = findViewById(R.id.fileListView);
+        uploadedListView = findViewById(R.id.uploadedListView);
+        emptyTextView = findViewById(R.id.emptyTextView);
+        emptyUploadedTextView = findViewById(R.id.emptyUploadedTextView);
+        refreshButton = findViewById(R.id.refreshButton);
+        backButton = findViewById(R.id.backButton);
+
+        // Set up click listeners
+        refreshButton.setOnClickListener(v -> refreshFileLists());
+        backButton.setOnClickListener(v -> navigateToRecordActivity());
+    }
+
+    private void setupTabs() {
+        tabHost.setup();
+
+        // Tab 1: Active Files
+        TabHost.TabSpec tabSpec1 = tabHost.newTabSpec("active");
+        tabSpec1.setContent(R.id.tab1);
+        tabSpec1.setIndicator("Active Files");
+        tabHost.addTab(tabSpec1);
+
+        // Tab 2: Uploaded Files
+        TabHost.TabSpec tabSpec2 = tabHost.newTabSpec("uploaded");
+        tabSpec2.setContent(R.id.tab2);
+        tabSpec2.setIndicator("Uploaded Files");
+        tabHost.addTab(tabSpec2);
+
+        // Set default tab
+        tabHost.setCurrentTab(0);
+    }
+
+    private void refreshFileLists() {
+        Log.d(TAG, "Refreshing file lists...");
+        Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
+
+        // Reload both file lists
+        loadCsvFiles();
+        loadUploadedFiles();
+
+        // Show confirmation message
+        Toast.makeText(this, "File lists refreshed", Toast.LENGTH_SHORT).show();
+    }
 
     private void loadCsvFiles() {
         // Clear previous files
         csvFiles.clear();
 
-        // Create the OximeterData directory in Downloads
-        File baseDir = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS), "OximeterData");
+        // Get the app's private external storage directory
+        File baseDir = getOximeterDataDirectory();
 
         // Check if directory exists
         if (!baseDir.exists()) {
             emptyTextView.setText("No OximeterData folder found");
-            updateFileList();
+            updateActiveFileList();
             return;
         }
 
-        // Get CSV files
+        // Get CSV files from the main directory
         File[] files = baseDir.listFiles(file ->
                 file.isFile() && file.getName().toLowerCase().endsWith(".csv")
         );
 
         // Log the number of files found
-        Log.d("FileManagerActivity", "Number of CSV files found: " + (files != null ? files.length : 0));
+        Log.d(TAG, "Number of active CSV files found: " + (files != null ? files.length : 0));
 
         // Check if any CSV files exist
         if (files == null || files.length == 0) {
             emptyTextView.setText("No CSV files found in OximeterData folder");
-            updateFileList();
+            updateActiveFileList();
             return;
         }
 
@@ -105,14 +156,61 @@ public class FileManagerActivity extends Activity {
         }
 
         // Update the UI
-        updateFileList();
+        updateActiveFileList();
     }
 
+    private void loadUploadedFiles() {
+        // Clear previous files
+        uploadedFiles.clear();
 
+        // Get the uploaded directory
+        File uploadedDir = getUploadedDirectory();
 
+        // Check if directory exists
+        if (!uploadedDir.exists()) {
+            emptyUploadedTextView.setText("No uploaded files folder found");
+            updateUploadedFileList();
+            return;
+        }
 
+        // Get CSV files from the uploaded directory
+        File[] files = uploadedDir.listFiles(file ->
+                file.isFile() && file.getName().toLowerCase().endsWith(".csv")
+        );
 
-    private void updateFileList() {
+        // Log the number of files found
+        Log.d(TAG, "Number of uploaded CSV files found: " + (files != null ? files.length : 0));
+
+        // Check if any CSV files exist
+        if (files == null || files.length == 0) {
+            emptyUploadedTextView.setText("No uploaded CSV files found");
+            updateUploadedFileList();
+            return;
+        }
+
+        // Sort files by last modified date (most recent first)
+        Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
+
+        // Create CsvFile objects
+        for (File file : files) {
+            uploadedFiles.add(new CsvFile(file));
+        }
+
+        // Update the UI
+        updateUploadedFileList();
+    }
+
+    private File getOximeterDataDirectory() {
+        // Use app's private external storage directory
+        File externalDir = getExternalFilesDir(null);
+        return new File(externalDir, FOLDER_NAME);
+    }
+
+    private File getUploadedDirectory() {
+        return new File(getOximeterDataDirectory(), "Uploaded");
+    }
+
+    private void updateActiveFileList() {
         adapter.notifyDataSetChanged();
 
         if (csvFiles.isEmpty()) {
@@ -128,6 +226,45 @@ public class FileManagerActivity extends Activity {
             CsvFile csvFile = csvFiles.get(position);
             openCsvFile(csvFile.getFile());
         });
+    }
+
+    private void updateUploadedFileList() {
+        uploadedAdapter.notifyDataSetChanged();
+
+        if (uploadedFiles.isEmpty()) {
+            uploadedListView.setVisibility(View.GONE);
+            emptyUploadedTextView.setVisibility(View.VISIBLE);
+        } else {
+            uploadedListView.setVisibility(View.VISIBLE);
+            emptyUploadedTextView.setVisibility(View.GONE);
+        }
+
+        // Set click listener for uploaded file items
+        uploadedListView.setOnItemClickListener((parent, view, position, id) -> {
+            CsvFile csvFile = uploadedFiles.get(position);
+            openCsvFile(csvFile.getFile());
+        });
+    }
+
+    private void deleteUploadedFile(CsvFile csvFile, int position) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete File")
+                .setMessage("Are you sure you want to delete '" + csvFile.getName() + "'?\n\nThis action cannot be undone.")
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    if (csvFile.getFile().delete()) {
+                        uploadedFiles.remove(position);
+                        uploadedAdapter.notifyDataSetChanged();
+                        updateUploadedFileList();
+                        Toast.makeText(this, "File deleted successfully", Toast.LENGTH_SHORT).show();
+                        Log.d(TAG, "File deleted: " + csvFile.getName());
+                    } else {
+                        Toast.makeText(this, "Failed to delete file", Toast.LENGTH_SHORT).show();
+                        Log.e(TAG, "Failed to delete file: " + csvFile.getName());
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show();
     }
 
     private void openCsvFile(File file) {
@@ -148,6 +285,7 @@ public class FileManagerActivity extends Activity {
         } catch (Exception e) {
             Toast.makeText(this, "Unable to open file: " + e.getMessage(),
                     Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Error opening file: " + file.getAbsolutePath(), e);
         }
     }
 
@@ -158,7 +296,7 @@ public class FileManagerActivity extends Activity {
         finish();
     }
 
-    // Custom adapter for CSV files
+    // Custom adapter for active CSV files
     private class CsvFileAdapter extends BaseAdapter {
         @Override
         public int getCount() {
@@ -191,8 +329,8 @@ public class FileManagerActivity extends Activity {
             TextView fileSizeText = convertView.findViewById(R.id.fileSizeText);
             TextView fileDateText = convertView.findViewById(R.id.fileDateText);
             ImageView fileIcon = convertView.findViewById(R.id.fileIcon);
-//            ImageView openFileIcon = convertView.findViewById(R.id.openFileIcon);
             ImageButton uploadButton = convertView.findViewById(R.id.uploadButton);
+
             // Set data
             fileNameText.setText(csvFile.getName());
             fileSizeText.setText(String.format("Size: %s", csvFile.getFormattedSize()));
@@ -206,37 +344,41 @@ public class FileManagerActivity extends Activity {
                         // Run on UI thread since we're updating UI
                         runOnUiThread(() -> {
                             if (success) {
-//                                FileUploader.moveFileToUploadedFolder(csvFile.getFile());
-//                                // Create Uploaded directory if it doesn't exist
-                                File newLocation = new File(csvFile.getFile().getParentFile(), "Uploaded");
-                                if (!newLocation.exists()) {
-                                    newLocation.mkdirs();
+                                // Create Uploaded directory if it doesn't exist
+                                File uploadedDir = getUploadedDirectory();
+                                if (!uploadedDir.exists()) {
+                                    boolean created = uploadedDir.mkdirs();
+                                    Log.d(TAG, "Uploaded directory created: " + created);
                                 }
 
                                 // Move file to Uploaded directory
-                                File newFile = new File(newLocation, csvFile.getFile().getName());
+                                File newFile = new File(uploadedDir, csvFile.getFile().getName());
                                 if (csvFile.getFile().renameTo(newFile)) {
-                                    // Remove the file from the list and update the UI
+                                    // Remove the file from the active list and update both lists
                                     csvFiles.remove(position);
                                     notifyDataSetChanged();
+                                    updateActiveFileList();
+
+                                    // Refresh uploaded files to show the new file
+                                    loadUploadedFiles();
+
                                     Toast.makeText(FileManagerActivity.this,
                                             "File uploaded successfully and moved to Uploaded folder",
                                             Toast.LENGTH_SHORT).show();
 
-                                    // Notify media scanner about the file move
-                                    MediaScannerConnection.scanFile(FileManagerActivity.this,
-                                            new String[] { newFile.getAbsolutePath() },
-                                            null, null);
+                                    Log.d(TAG, "File moved to: " + newFile.getAbsolutePath());
                                 } else {
                                     Toast.makeText(FileManagerActivity.this,
                                             "Upload successful but failed to move file",
                                             Toast.LENGTH_SHORT).show();
+                                    Log.e(TAG, "Failed to move file to uploaded directory");
                                 }
                             } else {
                                 // If upload failed, file stays in place
                                 Toast.makeText(FileManagerActivity.this,
                                         "Upload failed: " + message,
                                         Toast.LENGTH_SHORT).show();
+                                Log.e(TAG, "Upload failed: " + message);
                             }
                         });
                     }
@@ -250,6 +392,60 @@ public class FileManagerActivity extends Activity {
                 // Open file
                 openCsvFile(csvFile.getFile());
                 // Prevent click event from propagating to the ListView item
+                v.setPressed(true);
+            });
+
+            return convertView;
+        }
+    }
+
+    // Custom adapter for uploaded CSV files
+    private class UploadedFileAdapter extends BaseAdapter {
+        @Override
+        public int getCount() {
+            return uploadedFiles.size();
+        }
+
+        @Override
+        public CsvFile getItem(int position) {
+            return uploadedFiles.get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            // Inflate the custom layout for uploaded files
+            if (convertView == null) {
+                convertView = LayoutInflater.from(FileManagerActivity.this)
+                        .inflate(R.layout.item_uploaded_file, parent, false);
+            }
+
+            // Get the current CSV file
+            CsvFile csvFile = getItem(position);
+
+            // Find views
+            TextView fileNameText = convertView.findViewById(R.id.uploadedFileNameText);
+            TextView fileDateText = convertView.findViewById(R.id.uploadedFileDateText);
+            ImageButton deleteButton = convertView.findViewById(R.id.deleteButton);
+
+            // Set data
+            fileNameText.setText(csvFile.getName());
+            fileDateText.setText(String.format("Uploaded: %s", csvFile.getFormattedDate()));
+
+            // Set click listener for delete button
+            deleteButton.setOnClickListener(v -> {
+                deleteUploadedFile(csvFile, position);
+                // Prevent click event from propagating to the ListView item
+                v.setPressed(true);
+            });
+
+            // Set click listener for file name to open file
+            fileNameText.setOnClickListener(v -> {
+                openCsvFile(csvFile.getFile());
                 v.setPressed(true);
             });
 
@@ -290,5 +486,10 @@ public class FileManagerActivity extends Activity {
     @Override
     public void onBackPressed() {
         navigateToRecordActivity();
+    }
+
+    // Helper method to get the directory path (useful for debugging)
+    public String getOximeterDataPath() {
+        return getOximeterDataDirectory().getAbsolutePath();
     }
 }

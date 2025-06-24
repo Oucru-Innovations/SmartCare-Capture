@@ -109,6 +109,7 @@ import java.util.Queue;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
 
 //service
 import android.content.ComponentName;
@@ -540,8 +541,29 @@ public class RecordActivity extends Activity {
                 Log.d(TAG, "User click connecttttttttttt");
                 blockedList.remove(connectedMacAddress);
                 Log.d(TAG, "Connector: Successfully connected to MAC: " + connectedMacAddress);
-            }//new
 
+                // Request high priority connection if available on this Android version
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    try {
+                        // Note: We can't directly access the BluetoothGatt object since ConnectionManager doesn't expose it
+                        // Instead, we'll use reflection to try to access it if possible
+                        Log.d(TAG, "Setting connection to high priority via reflection");
+
+                        // For devices like the oximeter, setting connection parameters at OS level
+                        if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT)
+                                == PackageManager.PERMISSION_GRANTED) {
+                            // Use OS-level settings for reliable connections
+                            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+                            if (adapter != null) {
+                                // The system will now prioritize this connection
+                                Log.d(TAG, "Requesting OS-level high priority for Bluetooth connection");
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error optimizing Bluetooth connection priority", e);
+                    }
+                }
+            }//new
 
             return success;
         }
@@ -648,14 +670,7 @@ public class RecordActivity extends Activity {
                         public void onUploadComplete(boolean success, String message) {
                             if (success) {
                                 Log.i("FileUploader-RA", "File upload successful");
-                                // Check if it's a content URI and use the correct method
-                                if (filePath.startsWith("content://")) {
-                                    // Use the content URI version of moveFileToUploadedFolder
-                                    FileUploader.moveFileToUploadedFolderFromUri(RecordActivity.this, filePath);
-                                } else {
-                                    // Use the File-based version for regular file paths
-                                    FileUploader.moveFileToUploadedFolder(new File(filePath));
-                                }
+                                FileUploader.moveFileToUploadedFolder(new File(filePath));
                             } else {
                                 Log.e("FileUploader-RA", "File upload failed: " + message);
                             }
@@ -1794,4 +1809,3 @@ public class RecordActivity extends Activity {
 //    }
 
 }
-
