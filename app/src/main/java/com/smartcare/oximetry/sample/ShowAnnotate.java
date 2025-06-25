@@ -62,7 +62,8 @@ public class ShowAnnotate {
         dialog.show();
     }
 
-    private static CSVWriter getWriterForPatient(String patientCode) throws IOException {
+    // UPDATED: Changed to use app-private external storage
+    private CSVWriter getWriterForPatient(String patientCode) throws IOException {
         if (writerMap.containsKey(patientCode)) {
             return writerMap.get(patientCode);
         }
@@ -72,16 +73,15 @@ public class ShowAnnotate {
             throw new IOException("External storage not mounted");
         }
 
-        File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "OximeterData/Annotation");
+        // CHANGED: Use app-private external storage instead of public Downloads
+        File directory = getAnnotationDirectory();
         if (!directory.exists()) {
-            directory.mkdirs();
+            boolean created = directory.mkdirs();
+            if (!created) {
+                throw new IOException("Failed to create annotation directory");
+            }
         }
 
-//        String fileName = String.format("Annotation_%s.csv", patientCode);
-        //crete file for each patient every day
-        String currentDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-//        String fileName = String.format("Annotation_%s_%s.csv", patientCode, currentDate);
-//      temporary save all annotation in one file
         String fileName = "Annotation.csv";
         File file = new File(directory, fileName);
         boolean isNewFile = !file.exists();
@@ -97,9 +97,18 @@ public class ShowAnnotate {
         return writer;
     }
 
-    public static void startAnnotationSession(String patientCode) {
+    // NEW: Helper method to get annotation directory
+    private File getAnnotationDirectory() {
+        // Use the same pattern as FileManagerActivity and OximeterDataWriterFunctions
+        File externalDir = context.getExternalFilesDir(null);
+        File oximeterDataDir = new File(externalDir, "OximeterData");
+        return new File(oximeterDataDir, "Annotation");
+    }
+
+    public static void startAnnotationSession(String patientCode, Context context) {
         try {
-            getWriterForPatient(patientCode);
+            ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
+            annotate.getWriterForPatient(patientCode);
         } catch (IOException e) {
             e.printStackTrace();
         }

@@ -32,7 +32,7 @@ public class AnnotationHistory {
         TableLayout tableLayout = view.findViewById(R.id.annotationTable);
 
         // Load annotations from CSV file
-        List<AnnotationEntry> annotations = loadAnnotations(patientCode);
+        List<AnnotationEntry> annotations = loadAnnotations(context, patientCode);
 
         if (annotations.isEmpty()) {
             TextView emptyText = new TextView(context);
@@ -77,12 +77,13 @@ public class AnnotationHistory {
         builder.show();
     }
 
-    private static List<AnnotationEntry> loadAnnotations(String patientCode) {
+    // UPDATED: Added context parameter and changed to use app-private storage
+    private static List<AnnotationEntry> loadAnnotations(Context context, String patientCode) {
         List<AnnotationEntry> annotations = new ArrayList<>();
 
         try {
-            File directory = new File(Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOWNLOADS), "OximeterData/Annotation");
+            // CHANGED: Use app-private external storage instead of public Downloads
+            File directory = getAnnotationDirectory(context);
 
             if (!directory.exists()) {
                 return annotations;
@@ -122,6 +123,13 @@ public class AnnotationHistory {
         }
 
         return annotations;
+    }
+
+    // NEW: Helper method to get annotation directory (same as ShowAnnotate)
+    private static File getAnnotationDirectory(Context context) {
+        File externalDir = context.getExternalFilesDir(null);
+        File oximeterDataDir = new File(externalDir, "OximeterData");
+        return new File(oximeterDataDir, "Annotation");
     }
 
     private static class AnnotationEntry {

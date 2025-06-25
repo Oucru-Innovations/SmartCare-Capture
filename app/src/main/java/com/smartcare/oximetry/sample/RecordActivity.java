@@ -424,11 +424,14 @@ public class RecordActivity extends Activity {
                 case ConnectionManager.MESSAGE_BLUETOOTH_UNAVAILABLE:
                     Toast.makeText(target, "Bluetooth is unavailable", Toast.LENGTH_SHORT).show();
                     break;
+                // smartcare turn off when it is connected
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
                     //new
                     target.isConnected = false; //new
+                    isRecordingSessionActive = false;
 //                    target.bluetoothAdapter.startDiscovery(); // new
+
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
                     data = msg.getData();
