@@ -429,7 +429,7 @@ public class RecordActivity extends Activity {
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
                     //new
                     target.isConnected = false; //new
-                    isRecordingSessionActive = false;
+//                    isRecordingSessionActive = false;
 //                    target.bluetoothAdapter.startDiscovery(); // new
 
                     break;
@@ -545,7 +545,7 @@ public class RecordActivity extends Activity {
                 blockedList.remove(connectedMacAddress);
                 Log.d(TAG, "Connector: Successfully connected to MAC: " + connectedMacAddress);
 
-                // Request high priority connection if available on this Android version
+                // Request high .rity connection if available on this Android version
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     try {
                         // Note: We can't directly access the BluetoothGatt object since ConnectionManager doesn't expose it
@@ -894,6 +894,7 @@ public class RecordActivity extends Activity {
                             findViewById(R.id.annotateButton).setEnabled(true);
                         }
                         patientCodeTextView.setTextColor(Color.BLACK);
+//                        new ShowAnnotate(RecordActivity.this, formattedCode);
                     });
                 } else {
                     // Try again later if the window token isn't ready
@@ -940,7 +941,7 @@ public class RecordActivity extends Activity {
                 chunkFileConfigPopup.show(findViewById(android.R.id.content));
                 return true;
             case R.id.action_show_history:
-                ShowAnnotate showAnnotate = new ShowAnnotate(this, "");
+                ShowAnnotate showAnnotate = new ShowAnnotate(this, formattedCode);
                 showAnnotate.showAnnotationHistory(null);
                 return true;
             default:
@@ -972,21 +973,21 @@ public class RecordActivity extends Activity {
 //                            Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]"); //old
                             Log.i(TAG, "Device found in queue: " + " [" + deviceMac + "]");
 //                            connectToPulseOximeter();
-                            ProgressBar progressBar = RecordActivity.this.findViewById(R.id.progressBar);
-                            progressBar.setVisibility(View.VISIBLE);
+//                            ProgressBar progressBar = RecordActivity.this.findViewById(R.id.progressBar);
+//                            progressBar.setVisibility(View.VISIBLE);
 
-                            // Start the service before connecting
-                            serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
-                            serviceIntent.putExtra("patientCode", formattedCode);
 
-                            // Get chunk file configuration
-                            ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(RecordActivity.this);
-                            boolean enableChunk = configPopup.isChunkFileEnabled();
-                            int timeInterval = configPopup.getTimeInterval();
+                                // Start the service before connecting
+                                serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
+                                serviceIntent.putExtra("patientCode", formattedCode);
 
-                            serviceIntent.putExtra("enableChunkFile", enableChunk);
-                            serviceIntent.putExtra("timeInterval", timeInterval);
+                                // Get chunk file configuration
+                                ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(RecordActivity.this);
+                                boolean enableChunk = configPopup.isChunkFileEnabled();
+                                int timeInterval = configPopup.getTimeInterval();
 
+                                serviceIntent.putExtra("enableChunkFile", enableChunk);
+                                serviceIntent.putExtra("timeInterval", timeInterval);
                             // Start foreground service
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 startForegroundService(serviceIntent);
@@ -1002,12 +1003,13 @@ public class RecordActivity extends Activity {
                             if(success){
                                 isConnected = true;
 //                                bluetoothAdapter.cancelDiscovery();
-                                progressBar.setVisibility(View.GONE);
+//                                progressBar.setVisibility(View.GONE);
                                 Log.i(getString(R.string.app_name), "Connector task started");
                                 mControlButton.setText(getString(R.string.record_stop));
                                 //
                                 Log.i(getString(R.string.app_name), "Ready to start recording.");
                                 connectionManager.startRecording();
+                                //
                                 //
                                 updateMacAddressQueue(deviceMac);
                                 MacAddress = deviceMac;
@@ -1055,34 +1057,28 @@ public class RecordActivity extends Activity {
         scanRunnable = new Runnable() {
             @Override
             public void run() {
-                //old code
-                // Start discovery if not already discovering
-//                if (!bluetoothAdapter.isDiscovering()) {
-//                    bluetoothAdapter.startDiscovery();
-//                    Log.d(TAG, "Started Bluetooth device discovery");
-//                }
-                //new code
-                if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                // Check permissions based on Android version
+                boolean hasPermission;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // Android 12+
+                    hasPermission = ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_SCAN)
+                            == PackageManager.PERMISSION_GRANTED;
+                } else {
+                    // Android 11 and below
+                    hasPermission = ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_ADMIN)
+                            == PackageManager.PERMISSION_GRANTED;
+                }
+
+                if (hasPermission) {
                     if (!bluetoothAdapter.isDiscovering()) {
                         bluetoothAdapter.startDiscovery();
                         Log.d(TAG, "Started Bluetooth device discovery");
                     }
                 } else {
                     requestBluetoothPermissions();
+                    return;
                 }
-//                if (connectionManager.isConnected()) {
-//                    // If connected, stop scanning to save battery
-//                    if (bluetoothAdapter.isDiscovering()) {
-//                        bluetoothAdapter.cancelDiscovery();
-//                        Log.d(TAG, "Bluetooth discovery stopped due to active connection.");
-//                    }
-//                } else {
-//                    // If not connected, start scanning for devices
-//                    if (!bluetoothAdapter.isDiscovering()) {
-//                        bluetoothAdapter.startDiscovery();
-//                        Log.d(TAG, "Started Bluetooth device discovery");
-//                    }
-//                }
+
                 // Schedule next scan after the interval
                 scanHandler.postDelayed(this, SCAN_INTERVAL);
             }
@@ -1252,7 +1248,7 @@ public class RecordActivity extends Activity {
 
         builder.setView(popupView);
 //        builder.setTitle("Connected Devices");
-        builder.setPositiveButton("Đóng", null);
+        builder.setPositiveButton("Close", null);
 
         devicesDialog = builder.create();
         devicesDialog.show();
@@ -1292,7 +1288,7 @@ public class RecordActivity extends Activity {
         }
 
         if (macs.length == 0) {
-            device1TextView.setText("Không có thiết bị");
+            device1TextView.setText("No divices");
             device1TextView.setTextColor(Color.BLACK);
             device1TextView.setVisibility(View.VISIBLE);
             device1DeleteButton.setVisibility(View.GONE);
@@ -1302,21 +1298,21 @@ public class RecordActivity extends Activity {
     //
     private void showRenameDeviceDialog(String macAddress) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Đổi tên thiết bị");
+        builder.setTitle("Rename Device");
 
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         input.setText(deviceNames.getOrDefault(macAddress, ""));
         builder.setView(input);
 
-        builder.setPositiveButton("Đồng ý", (dialog, which) -> {
+        builder.setPositiveButton("OK", (dialog, which) -> {
             String newName = input.getText().toString();
             deviceNames.put(macAddress, newName);
 //            saveDeviceNames();
             saveMacAddressQueueAndDeviceNames();
             updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
         });
-        builder.setNegativeButton("Huỷ", (dialog, which) -> dialog.cancel());
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
 
         builder.show();
     }
@@ -1524,9 +1520,8 @@ public class RecordActivity extends Activity {
         mTrendSeries = new SimpleXYSeries("trend");
         mTrendSeries.useImplicitXVals();
 //        mPlot.addSeries(mTrendSeries, new LineAndPointFormatter(Color.YELLOW, null, null, new PointLabelFormatter(Color.TRANSPARENT)));
-        LineAndPointFormatter formatter = new LineAndPointFormatter(Color.parseColor("#FFC100"), null, null, new PointLabelFormatter(Color.TRANSPARENT));
-        formatter.getLinePaint().setPathEffect(new DashPathEffect(new float[]{10, 20}, 0));
-        mPlot.addSeries(mTrendSeries, formatter);
+        LineAndPointFormatter formatter = new LineAndPointFormatter(Color.YELLOW, null, null, new PointLabelFormatter(Color.TRANSPARENT));
+//        mPlot.addSeries(mTrendSeries, formatter);
 
     }
     // service foreground

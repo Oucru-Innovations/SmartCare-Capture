@@ -18,20 +18,20 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:padding="10dp"
-                android:text="Thời gian"
+                android:text="Time"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:padding="10dp"
-                android:text="Nội dung ghi chú"
+                android:text="Note"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:padding="10dp"
-                android:text="Mã nguời dùng"
+                android:text="User ID"
                 android:textStyle="bold" />
         </TableRow>
     </TableLayout>

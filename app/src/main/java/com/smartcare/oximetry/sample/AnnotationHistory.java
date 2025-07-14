@@ -25,7 +25,7 @@ public class AnnotationHistory {
 
     public static void showAnnotationHistory(Context context, String patientCode) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Lịch sử ghi chú");
+        builder.setTitle("Annotation History");
 
         // Inflate a layout for displaying annotations in a table
         View view = LayoutInflater.from(context).inflate(R.layout.annotation_history_layout, null);
@@ -36,7 +36,7 @@ public class AnnotationHistory {
 
         if (annotations.isEmpty()) {
             TextView emptyText = new TextView(context);
-            emptyText.setText("Không có ghi chú nào cho bệnh nhân này");
+            emptyText.setText("No notes for this patient");
             emptyText.setPadding(20, 20, 20, 20);
             builder.setView(emptyText);
         } else {
@@ -73,7 +73,7 @@ public class AnnotationHistory {
             builder.setView(view);
         }
 
-        builder.setPositiveButton("Đóng", null);
+        builder.setPositiveButton("Close", null);
         builder.show();
     }
 
@@ -107,11 +107,11 @@ public class AnnotationHistory {
 
                 if (line.length >= 3) {
                     String timestamp = line[0];
-                    String filePatientCode = line[1];
+                    String filePatientCode = line[1].trim();
                     String note = line[2];
 
                     // Filter by patient code if specified
-                    if (patientCode == null || patientCode.isEmpty() || patientCode.equals(filePatientCode)) {
+                    if (patientCode != null && patientCode.trim().equals(filePatientCode)) {
                         annotations.add(new AnnotationEntry(timestamp, filePatientCode, note));
                     }
                 }

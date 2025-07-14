@@ -67,7 +67,15 @@ public class FileUploader {
 
         // Move file to Uploaded directory
         File newFile = new File(uploadedDir, file.getName());
-        return file.renameTo(newFile);
+        boolean moveSuccess = file.renameTo(newFile);
+
+        // Update the file's modification time to current time
+        if (moveSuccess) {
+            long currentTime = System.currentTimeMillis();
+            newFile.setLastModified(currentTime);
+        }
+
+        return moveSuccess;
     }
     // move file with MediaStore
     public static boolean moveFileToUploadedFolderFromUri(Context context, String uriPath) {
@@ -546,3 +554,4 @@ public static String calculateMD5(Context context, String filePath) {
         );
     }
 }
+
