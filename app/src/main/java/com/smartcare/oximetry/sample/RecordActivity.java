@@ -193,6 +193,8 @@ public class RecordActivity extends Activity {
     //variables for show annotation
     public static int annotationHeartRate = 0;
     public static double annotationSpO2 = 0.f;
+    // handle service target.isServiceBound && target.dataService false
+    private long lastReconnectAttempt = 0;
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
      * contain data or error messages.
@@ -271,8 +273,8 @@ public class RecordActivity extends Activity {
 //                    } catch (IOException e) {
 //                        Log.e("RecordActivity", "Error writing to CSV file", e);
 //                    }
-                    Log.d("RecordActivity", "MAC address: "+MacAddress);
-                    Log.d("RecordActivity", String.format(Locale.US, "Sample: %s", target.connectionManager.getSampleRate() ));
+//                    Log.d("RecordActivity", "MAC address: "+MacAddress);
+//                    Log.d("RecordActivity", String.format(Locale.US, "Sample: %s", target.connectionManager.getSampleRate() ));
                     // After retrieving all the data from the packet
 //                    Log.d("RecordActivity", "Preparing to write CSV data");
 //
@@ -289,7 +291,7 @@ public class RecordActivity extends Activity {
                         target.isEnabled = chunkFileConfigPrefs.getBoolean("enable_chunk_file", false);
                         target.interval = chunkFileConfigPrefs.getInt("time_interval", 3);
 
-                        Log.i(TAG, "Chunk file: " + target.isEnabled + " ---- Interval: " + target.interval);
+//                        Log.i(TAG, "Chunk file: " + target.isEnabled + " ---- Interval: " + target.interval);
 //                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
                         if (!isRecordingSessionActive) {
 //                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode, target.isEnabled, target.interval);
@@ -331,7 +333,18 @@ public class RecordActivity extends Activity {
                                     timestamp
                             );
                         }
-                        Log.i("RecordActivity", "CSV data written successfully");
+                        else {
+                            // Service is unavailable - attempt to reconnect
+                            Log.w("RecordActivity", "Service unavailable, attempting reconnection");
+
+                            // Avoid spamming reconnection attempts - use a timestamp to throttle
+                            long currentTime = System.currentTimeMillis();
+                            if (currentTime - target.lastReconnectAttempt > 15000) { // Only try every 15 seconds
+                                target.lastReconnectAttempt = currentTime;
+                                target.reconnectToService();
+                            }
+                        }
+//                        Log.i("RecordActivity", "CSV data written successfully");
 
                     } catch (Exception e) {
                         Log.e("RecordActivity", "Error writing CSV data", e);
@@ -430,7 +443,7 @@ public class RecordActivity extends Activity {
                     //new
                     target.isConnected = false; //new
 //                    isRecordingSessionActive = false;
-//                    target.bluetoothAdapter.startDiscovery(); // new
+//                    target.bluetoothAdapter.startDiscovery();
 
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
@@ -503,7 +516,7 @@ public class RecordActivity extends Activity {
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
                     //new
                     target.isConnected = false;
-//                    target.bluetoothAdapter.startDiscovery();
+                    target.bluetoothAdapter.startDiscovery();
                     // Clear the pending MAC address as the connection failed
 
                     break;
@@ -921,10 +934,10 @@ public class RecordActivity extends Activity {
                 showConnectedDevicesPopup();
                 return true;
             case R.id.action_manage_files:
-                if(isRecordingSessionActive){
-                    Toast.makeText(this, "Please stop recording before managing files", Toast.LENGTH_SHORT).show();
-                    return true;
-                }
+//                if(isRecordingSessionActive){
+//                    Toast.makeText(this, "Please stop recording before managing files", Toast.LENGTH_SHORT).show();
+//                    return true;
+//                }
                 Intent manageFilesIntent = new Intent(this, FileManagerActivity.class);
                 startActivity(manageFilesIntent);
                 return true;
@@ -969,6 +982,8 @@ public class RecordActivity extends Activity {
                     // Check if device is in macAddressQueue
                     if (macAddressQueue.contains(deviceMac) && !blockedList.contains(deviceMac) ) {
 //                        Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
+
+
                         if( isConnected == false) {
 //                            Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]"); //old
                             Log.i(TAG, "Device found in queue: " + " [" + deviceMac + "]");
@@ -1002,8 +1017,7 @@ public class RecordActivity extends Activity {
                             boolean success = connectionManager.connect(deviceMac);
                             if(success){
                                 isConnected = true;
-//                                bluetoothAdapter.cancelDiscovery();
-//                                progressBar.setVisibility(View.GONE);
+                                //pause scanning
                                 Log.i(getString(R.string.app_name), "Connector task started");
                                 mControlButton.setText(getString(R.string.record_stop));
                                 //
@@ -1523,6 +1537,43 @@ public class RecordActivity extends Activity {
         LineAndPointFormatter formatter = new LineAndPointFormatter(Color.YELLOW, null, null, new PointLabelFormatter(Color.TRANSPARENT));
 //        mPlot.addSeries(mTrendSeries, formatter);
 
+    }
+    // reconnect service to prevent not write data to file
+    private void reconnectToService() {
+        Log.i(TAG, "Attempting to reconnect to OximeterDataService");
+
+        // If there's an existing service connection, clean it up
+        if (isServiceBound) {
+            try {
+                unbindService(serviceConnection);
+            } catch (IllegalArgumentException e) {
+                // Service wasn't actually bound
+                Log.w(TAG, "Service wasn't bound when trying to unbind");
+            }
+            isServiceBound = false;
+        }
+
+        // Start fresh with a new service
+        serviceIntent = new Intent(this, OximeterDataService.class);
+        serviceIntent.putExtra("patientCode", formattedCode);
+
+        // Get chunk file configuration
+        ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(this);
+        boolean enableChunk = configPopup.isChunkFileEnabled();
+        int timeInterval = configPopup.getTimeInterval();
+
+        serviceIntent.putExtra("enableChunkFile", enableChunk);
+        serviceIntent.putExtra("timeInterval", timeInterval);
+
+        // Start the service
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+
+        // Bind to the service
+        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
     // service foreground
 

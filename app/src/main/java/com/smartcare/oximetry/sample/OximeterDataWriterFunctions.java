@@ -131,6 +131,8 @@ public class OximeterDataWriterFunctions {
     }
 
     public static void writeProcessedDataPoint(OximeterDataBuffer.ProcessedData data) {
+        Log.d(TAG, "Attempting to write data point: " + data.timestamp);
+
         if (currentWriter == null) {
             Log.e(TAG, "No active recording session");
             return;
