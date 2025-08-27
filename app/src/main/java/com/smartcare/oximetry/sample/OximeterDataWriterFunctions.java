@@ -125,7 +125,7 @@ public class OximeterDataWriterFunctions {
     }
 
     private static File createFileWithTempName(long startTimestamp) {
-        String fileName = generateFileName(startTimestamp, "temp");
+        String fileName = generateFileName(startTimestamp, "unknown");
         File directory = getOximeterDataDirectory();
         return new File(directory, fileName);
     }

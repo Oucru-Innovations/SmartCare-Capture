@@ -93,7 +93,7 @@ public class FileManagerActivity extends Activity {
         // Tab 1: Active Files
         TabHost.TabSpec tabSpec1 = tabHost.newTabSpec("active");
         tabSpec1.setContent(R.id.tab1);
-        tabSpec1.setIndicator("Active Files");
+        tabSpec1.setIndicator("Pending Files");
         tabHost.addTab(tabSpec1);
 
         // Tab 2: Uploaded Files
@@ -134,7 +134,7 @@ public class FileManagerActivity extends Activity {
 
         // Get CSV files from the main directory
         File[] files = baseDir.listFiles(file ->
-                file.isFile() && file.getName().toLowerCase().endsWith(".csv")
+                (file.isFile() && file.getName().toLowerCase().endsWith(".csv") ) || (file.isFile() && file.getName().toLowerCase().endsWith(".json"))
         );
 
         // Log the number of files found
@@ -175,7 +175,7 @@ public class FileManagerActivity extends Activity {
 
         // Get CSV files from the uploaded directory
         File[] files = uploadedDir.listFiles(file ->
-                file.isFile() && file.getName().toLowerCase().endsWith(".csv")
+                (file.isFile() && file.getName().toLowerCase().endsWith(".csv") ) || (file.isFile() && file.getName().toLowerCase().endsWith(".json"))
         );
 
         // Log the number of files found

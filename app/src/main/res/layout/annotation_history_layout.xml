@@ -27,12 +27,8 @@
                 android:padding="10dp"
                 android:text="Note"
                 android:textStyle="bold" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:padding="10dp"
-                android:text="User ID"
-                android:textStyle="bold" />
+
+            <!-- Patient ID column removed -->
         </TableRow>
     </TableLayout>
 </ScrollView>

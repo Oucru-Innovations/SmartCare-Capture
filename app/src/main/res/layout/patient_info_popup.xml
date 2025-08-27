@@ -14,7 +14,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="User Information"
+        android:text="Patient Information"
         android:textSize="@dimen/title_text_size"
         android:textStyle="bold"
         android:textColor="@android:color/black"
@@ -31,7 +31,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Patient Research Code"
+        android:text="Patient Study Code"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
         android:paddingBottom="4dp" />
@@ -59,16 +59,18 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Recent Codes"
-            android:textColor="#000000"
-            android:textSize="14sp"
+            android:textColor="#036bfc"
+            android:textSize="16sp"
             android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
             android:visibility="visible"/>
             
         <ImageButton
             android:id="@+id/dropdownButton"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="25dp"
+            android:layout_height="25dp"
             android:src="@android:drawable/arrow_down_float"
+            android:tint="#036bfc"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Toggle code history" />
     </LinearLayout>
@@ -131,7 +133,7 @@
         android:id="@+id/submitButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Submit"
+        android:text="Save"
         android:backgroundTint="#00FF9C"
         android:textColor="@android:color/white"
         android:padding="@dimen/button_padding"

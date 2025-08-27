@@ -10,7 +10,7 @@
         android:id="@+id/fileIcon"
         android:layout_width="40dp"
         android:layout_height="40dp"
-        android:src="@drawable/csv_icon"
+        android:src="@drawable/file_icon"
         android:layout_marginEnd="16dp"/>
 
     <LinearLayout

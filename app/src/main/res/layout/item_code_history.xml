@@ -23,7 +23,7 @@
         android:layout_height="24dp"
         android:src="@android:drawable/ic_menu_delete"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:tint="@android:color/white"
+        android:tint="@android:color/holo_red_dark"
         android:contentDescription="Delete code" />
 
 </LinearLayout>

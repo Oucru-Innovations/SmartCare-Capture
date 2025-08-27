@@ -30,7 +30,7 @@ public class AnnotationHistory {
 
     public static void showAnnotationHistory(Context context, String patientCode) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Annotation History");
+        builder.setTitle("Annotation");
 
         // Inflate a layout for displaying annotations in a table
         View view = LayoutInflater.from(context).inflate(R.layout.annotation_history_layout, null);
@@ -85,12 +85,8 @@ public class AnnotationHistory {
                     noteView.setPadding(10, 5, 10, 5);
                     row.addView(noteView);
 
-                    TextView patientcodeView = new TextView(context);
-                    patientcodeView.setText(entry.getPatientCode());
-                    patientcodeView.setPadding(10, 5, 10, 5);
-                    row.addView(patientcodeView);
+                    // Remove patient code column from display
 
-                    // Add click listener to the row to show edit/delete options
                     row.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {

@@ -250,10 +250,10 @@ public class PatientInfoPopup {
             (code, position) -> {
                 // Show confirmation dialog before deleting
                 new AlertDialog.Builder(context)
-                    .setTitle("Xóa mã")
-                    .setMessage("Bạn có chắc chắn muốn xóa mã")
-                    .setPositiveButton("Đồng ý", (dialog, which) -> deleteCodeFromHistory(code, position))
-                    .setNegativeButton("Hủy", null)
+                    .setTitle("Delete code")
+                    .setMessage("Are you sure you want to delete the code")
+                    .setPositiveButton("OK", (dialog, which) -> deleteCodeFromHistory(code, position))
+                    .setNegativeButton("Cancel", null)
                     .show();
             }
         );

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 <item
     android:id="@+id/action_show_devices"
-    android:title="Device Management"
+    android:title="Device Manager"
     android:orderInCategory="100"
     android:showAsAction="never" />
 <item
@@ -16,7 +16,8 @@
     android:id="@+id/action_patient_info"
     android:title="User Information"
     android:orderInCategory="300"
-    android:showAsAction="never" />
+    android:showAsAction="never"
+    android:visible="false"/>
 
 <item
     android:id="@+id/action_config_info"
@@ -26,7 +27,7 @@
      />
     <item
         android:id="@+id/action_show_history"
-        android:title="History"
+        android:title="Annotation"
         android:orderInCategory="500"
         android:showAsAction="never"/>
 </menu>

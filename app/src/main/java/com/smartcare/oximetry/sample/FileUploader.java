@@ -39,7 +39,7 @@ import java.io.OutputStream;
 public class FileUploader {
 
 //    private static final String BASE_URL = "http://13.250.243.25:8080/";
-    private static final String BASE_URL = "http://vital-ei.oucru.org/";
+    private static final String BASE_URL = "http://103.213.124.230/"; //"http://vital-ei.oucru.org/";
     private static final int RETRY_DELAY_MS = 10000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";

@@ -230,7 +230,7 @@
             android:layout_toLeftOf="@id/horizontalCenterline"
             android:background="@drawable/border_background"
             android:gravity="center"
-            android:text="SpO₂: --%\nPI: --"
+            android:text="SpO₂: --%\n\n\PI: --"
             android:textSize="35sp"
             android:textColor="#333333"/>
 
@@ -243,7 +243,7 @@
             android:layout_alignTop="@id/spo2"
             android:layout_marginTop="6dp"
             android:layout_marginLeft="8dp"
-            android:text="SpO₂"
+            android:text="SpO₂/Perfusion"
             android:textSize="20sp"
             android:textColor="#888888"/>
 

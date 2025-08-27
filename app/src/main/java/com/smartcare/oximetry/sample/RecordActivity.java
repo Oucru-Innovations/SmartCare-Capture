@@ -403,8 +403,8 @@ public class RecordActivity extends Activity {
                         // Update UI with the latest values
                         target.runOnUiThread(() -> {
                             String heartRateText = String.valueOf(latestHeartRateValue);
-                            String spo2Text = String.valueOf((int) latestSpO2Value);
-//                            String spo2Text = String.format(Locale.US, "SpO₂: %d%%\nPI: %.1f", (int) latestSpO2Value, perfusionIndex);
+//                            String spo2Text = String.valueOf((int) latestSpO2Value);
+                            String spo2Text = String.format(Locale.US, "SpO₂: %d%%\n\nPI: %.1f", (int) latestSpO2Value, perfusionIndex);
 
                             //convert battery to persentage
                             double percentage = Math.min(Math.max((latestBatteryValue - 3300.0) / 850.0, 0.0), 1.0) * 100.0;
@@ -941,10 +941,11 @@ public class RecordActivity extends Activity {
                 Intent manageFilesIntent = new Intent(this, FileManagerActivity.class);
                 startActivity(manageFilesIntent);
                 return true;
-            case R.id.action_patient_info:
-                patientInfoPopup.requestEdit();
-                patientInfoPopup.show(findViewById(android.R.id.content));
-                return true;
+                //hide patient info in menu
+//            case R.id.action_patient_info:
+//                patientInfoPopup.requestEdit();
+//                patientInfoPopup.show(findViewById(android.R.id.content));
+//                return true;
             case R.id.action_config_info:
                 if(isRecordingSessionActive){
                     Toast.makeText(this, "Please stop recording before change configuration", Toast.LENGTH_SHORT).show();
