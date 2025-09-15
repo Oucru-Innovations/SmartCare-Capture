@@ -5,92 +5,94 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <!-- Template Selector -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:text="Recording Time (dd/mm/yyyy)" />
+        android:text="Select Template"
+        android:layout_marginBottom="8dp" />
 
-    <EditText
-        android:id="@+id/edit_recording_time"
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:hint="DD/MM/YYYY"
-        android:inputType="date" />
+        android:scrollbars="none"
+        android:layout_marginBottom="16dp">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:text="Is collected as scheduled?" />
-
-    <RadioGroup
-        android:id="@+id/radio_is_collecting"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:orientation="horizontal">
-
-        <RadioButton
-            android:id="@+id/radio_yes"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="24dp"
-            android:text="Yes" />
+            android:orientation="horizontal">
 
-        <RadioButton
-            android:id="@+id/radio_no"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="No" />
-    </RadioGroup>
-    <!-- Not collected reason (shown when radio_no is selected) -->
-    <LinearLayout
-        android:id="@+id/layout_not_collecting_reason"
+            <RadioGroup
+                android:id="@+id/template_selector"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/template_log_note"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/annotation_selector_bg"
+                    android:button="@null"
+                    android:checked="true"
+                    android:paddingStart="12dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:text="Log"
+                    android:textAlignment="center" />
+
+                <RadioButton
+                    android:id="@+id/template_model_note"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/annotation_selector_bg"
+                    android:button="@null"
+                    android:paddingStart="12dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:text="Model"
+                    android:textAlignment="center" />
+
+<!--                <RadioButton-->
+<!--                    android:id="@+id/template_task_list"-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:background="@drawable/annotation_selector_bg"-->
+<!--                    android:button="@null"-->
+<!--                    android:paddingStart="12dp"-->
+<!--                    android:paddingTop="8dp"-->
+<!--                    android:paddingEnd="12dp"-->
+<!--                    android:paddingBottom="8dp"-->
+<!--                    android:text="Task List"-->
+<!--                    android:textAlignment="center" />-->
+            </RadioGroup>
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Template Content Container -->
+    <ViewFlipper
+        android:id="@+id/template_content_flipper"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone">
+        android:layout_height="wrap_content">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Reason why not collecting data" />
+        <!-- Quick Note Template (existing layout) -->
+        <include
+            android:id="@+id/template_quick_note_content"
+            layout="@layout/template_log_note" />
 
-        <EditText
-            android:id="@+id/edit_not_collecting_reason"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:inputType="textMultiLine"
-            android:maxLines="5"
-            android:minLines="3" />
-    </LinearLayout>
-    <!-- Invalid data reason (shown when radio_yes is selected) -->
-    <LinearLayout
-        android:id="@+id/layout_invalid_data_reason"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone">
+        <!-- Meeting Template -->
+        <include
+            android:id="@+id/template_meeting_content"
+            layout="@layout/template_model_note" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Reason for invalid data" />
-
-        <EditText
-            android:id="@+id/edit_invalid_data_reason"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:inputType="textMultiLine"
-            android:hint="Enter time and reason for invalid data"
-            android:maxLines="5"
-            android:minLines="3" />
-    </LinearLayout>
-
+        <!-- Add more note below (create new template) -->
+<!--        <include-->
+<!--            android:id="@+id/template_task_list_content"-->
+<!--            layout="@layout/template_task_list" />-->
+    </ViewFlipper>
 </LinearLayout>

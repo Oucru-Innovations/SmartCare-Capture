@@ -1,13 +1,15 @@
 package com.smartcare.oximetry.sample;
 
 import android.app.AlertDialog;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.os.Environment;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.text.InputFilter;
-import android.text.InputType;
 import android.text.TextWatcher;
-import java.util.Calendar;
+
+import java.io.OutputStream;
 import java.util.Calendar;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -17,6 +19,7 @@ import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Toast;
+import android.widget.ViewFlipper;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -28,7 +31,6 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -42,14 +44,20 @@ public class ShowAnnotate {
     private Context context;
     private String patientCode;
     private static final Gson gson = new Gson();
+    private static final String TEMPLATE_LOG_NOTE = "log_note";
+    private static final String TEMPLATE_MODEL_NOTE = "model_note";
 
-    // Annotation model class
+//    private static final String TEMPLATE_TASK_LIST = "task_list";
+
+    // Annotation model class with template support
     public static class AnnotationEntry {
         String timestamp;
         String patientCode;
         String note;
         String heartRate;
         String spO2;
+        String template;
+        Map<String, Object> templateData;
 
         public AnnotationEntry(String timestamp, String patientCode, String note,
                                String heartRate, String spO2) {
@@ -58,6 +66,19 @@ public class ShowAnnotate {
             this.note = note;
             this.heartRate = heartRate;
             this.spO2 = spO2;
+            this.template = TEMPLATE_LOG_NOTE; // Default template for backward compatibility
+            this.templateData = new HashMap<>();
+        }
+
+        public AnnotationEntry(String timestamp, String patientCode, String note,
+                               String heartRate, String spO2, String template, Map<String, Object> templateData) {
+            this.timestamp = timestamp;
+            this.patientCode = patientCode;
+            this.note = note;
+            this.heartRate = heartRate;
+            this.spO2 = spO2;
+            this.template = template;
+            this.templateData = templateData != null ? templateData : new HashMap<>();
         }
 
         // Getters
@@ -66,15 +87,18 @@ public class ShowAnnotate {
         public String getNote() { return note; }
         public String getHeartRate() { return heartRate; }
         public String getSpO2() { return spO2; }
+        public String getTemplate() { return template; }
+        public Map<String, Object> getTemplateData() { return templateData; }
 
         // Setter for note content
         public void setNote(String note) { this.note = note; }
+        public void setTemplateData(Map<String, Object> templateData) { this.templateData = templateData; }
     }
 
     public ShowAnnotate(Context context, String patientCode) {
         this.context = context;
         this.patientCode = patientCode;
-    }
+    } 
 
     public void showAnnotateMenu(View anchorView) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
@@ -84,15 +108,26 @@ public class ShowAnnotate {
         View dialogView = LayoutInflater.from(context).inflate(R.layout.annotation_dialog, null);
         builder.setView(dialogView);
 
-        // Get references to UI components
-        final EditText recordingTimeEdit = dialogView.findViewById(R.id.edit_recording_time);
-        final RadioGroup isCollectingRadioGroup = dialogView.findViewById(R.id.radio_is_collecting);
-        final RadioButton yesRadioButton = dialogView.findViewById(R.id.radio_yes);
-        final RadioButton noRadioButton = dialogView.findViewById(R.id.radio_no);
-        final LinearLayout notCollectingLayout = dialogView.findViewById(R.id.layout_not_collecting_reason);
-        final LinearLayout invalidDataLayout = dialogView.findViewById(R.id.layout_invalid_data_reason);
-        final EditText notCollectingReasonEdit = dialogView.findViewById(R.id.edit_not_collecting_reason);
-        final EditText invalidDataReasonEdit = dialogView.findViewById(R.id.edit_invalid_data_reason);
+        // Get template selector references
+        RadioGroup templateSelector = dialogView.findViewById(R.id.template_selector);
+        RadioButton templateLogNote = dialogView.findViewById(R.id.template_log_note);
+        RadioButton templateMeeting = dialogView.findViewById(R.id.template_model_note);
+        final ViewFlipper templateFlipper = dialogView.findViewById(R.id.template_content_flipper);
+
+        // Set default template (Log Note)
+        templateLogNote.setChecked(true);
+        templateFlipper.setDisplayedChild(0);
+
+        // Initialize Log Note template
+        View logNoteView = templateFlipper.getChildAt(0);
+        final EditText recordingTimeEdit = logNoteView.findViewById(R.id.edit_recording_time);
+        final RadioGroup isCollectingRadioGroup = logNoteView.findViewById(R.id.radio_is_collecting);
+        final RadioButton yesRadioButton = logNoteView.findViewById(R.id.radio_yes);
+        final RadioButton noRadioButton = logNoteView.findViewById(R.id.radio_no);
+        final LinearLayout notCollectingLayout = logNoteView.findViewById(R.id.layout_not_collecting_reason);
+        final LinearLayout invalidDataLayout = logNoteView.findViewById(R.id.layout_invalid_data_reason);
+        final EditText notCollectingReasonEdit = logNoteView.findViewById(R.id.edit_not_collecting_reason);
+        final EditText invalidDataReasonEdit = logNoteView.findViewById(R.id.edit_invalid_data_reason);
 
         // Set date format hint
         recordingTimeEdit.setText(new SimpleDateFormat("dd/MM/yyyy", Locale.US).format(new Date()));
@@ -135,6 +170,7 @@ public class ShowAnnotate {
                 isFormatting = false;
             }
         });
+
         // Set up radio button listeners for conditional fields
         isCollectingRadioGroup.setOnCheckedChangeListener((group, checkedId) -> {
             if (checkedId == R.id.radio_yes) {
@@ -150,40 +186,119 @@ public class ShowAnnotate {
         yesRadioButton.setChecked(true);
         invalidDataLayout.setVisibility(View.VISIBLE);
 
+        View modelView = templateFlipper.getChildAt(1);
+        RadioGroup comorbidGroup = modelView.findViewById(R.id.radio_comorbid);
+        RadioGroup ventilationGroup = modelView.findViewById(R.id.radio_ventilation);
+        // Set up template selection listener
+        templateSelector.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == R.id.template_log_note) {
+                templateFlipper.setDisplayedChild(0);
+            } else if (checkedId == R.id.template_model_note) {
+                templateFlipper.setDisplayedChild(1);
+            }
+//            else if (checkedId == R.id.template_task_list) {
+//                templateFlipper.setDisplayedChild(2);
+//            }
+        });
+
         builder.setPositiveButton("Save", null); // We'll override this below
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
 
         final AlertDialog dialog = builder.create();
         dialog.show();
 
-        // Override the "Save" button to handle validation
+        // Override the "Save" button to handle validation and template-specific saving
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String recordingTime = recordingTimeEdit.getText().toString().trim();
-            boolean isCollectedAsScheduled = yesRadioButton.isChecked();
+            int selectedTemplateIndex = templateFlipper.getDisplayedChild();
 
-            // Validate recording time format
-            if (!isValidDateFormat(recordingTime)) {
-                Toast.makeText(context, "Please enter a valid date (DD/MM/YYYY)", Toast.LENGTH_SHORT).show();
-                return;
+            switch (selectedTemplateIndex) {
+                case 0: // Log Note
+                    String recordingTime = recordingTimeEdit.getText().toString().trim();
+                    boolean isCollectedAsScheduled = yesRadioButton.isChecked();
+
+                    // Validate recording time format
+                    if (!isValidDateFormat(recordingTime)) {
+                        Toast.makeText(context, "Please enter a valid date (DD/MM/YYYY)", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    String reason = "";
+                    if (isCollectedAsScheduled) {
+                        reason = invalidDataReasonEdit.getText().toString().trim();
+                    } else {
+                        reason = notCollectingReasonEdit.getText().toString().trim();
+                        if (reason.isEmpty()) {
+                            Toast.makeText(context, "Please provide a reason for not collecting data", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    }
+
+                    handleQuickNoteAnnotation(recordingTime, isCollectedAsScheduled, reason);
+                    break;
+
+                case 1: // Model template
+                    String modelAblett = ((EditText) modelView.findViewById(R.id.edit_ablett_score)).getText().toString().trim();
+                    String modelAge = ((EditText) modelView.findViewById(R.id.edit_age)).getText().toString().trim();
+
+                    // Get RadioGroup values
+                    String modelComorbid = getRadioGroupValue(comorbidGroup);
+                    String modelVentilation = getRadioGroupValue(ventilationGroup);
+
+                    handleMeetingAnnotation(modelAblett, modelComorbid, modelVentilation, modelAge);
+                    break;
             }
 
-            String reason = "";
-            if (isCollectedAsScheduled) {
-                reason = invalidDataReasonEdit.getText().toString().trim();
-            } else {
-                reason = notCollectingReasonEdit.getText().toString().trim();
-                if (reason.isEmpty()) {
-                    Toast.makeText(context, "Please provide a reason for not collecting data", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-            }
-
-            // All validation passed, handle the annotation
-            handleAnnotation(recordingTime, isCollectedAsScheduled, reason);
             dialog.dismiss();
         });
     }
+    // Helper method to get selected value from RadioGroup
+    private String getRadioGroupValue(RadioGroup radioGroup) {
+        int selectedId = radioGroup.getCheckedRadioButtonId();
+        if (selectedId != -1) {
+            RadioButton selectedButton = radioGroup.findViewById(selectedId);
+            return selectedButton.getText().toString();
+        }
+        return "";
+    }
+    // Helper method to add date formatting TextWatcher to EditText fields
+    private void addDateFormatWatcher(EditText editText) {
+        editText.addTextChangedListener(new TextWatcher() {
+            private boolean isFormatting = false;
 
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                if (isFormatting) return;
+
+                isFormatting = true;
+                String input = s.toString().replaceAll("[^\\d]", ""); // Remove all non-digits
+
+                if (input.length() <= 8) {
+                    StringBuilder formatted = new StringBuilder();
+                    for (int i = 0; i < input.length(); i++) {
+                        if (i == 2 || i == 4) {
+                            formatted.append("/");
+                        }
+                        formatted.append(input.charAt(i));
+                    }
+
+                    s.replace(0, s.length(), formatted.toString());
+
+                    // Set cursor position
+                    int cursorPos = formatted.length();
+                    if (cursorPos <= editText.getText().length()) {
+                        editText.setSelection(cursorPos);
+                    }
+                }
+                isFormatting = false;
+            }
+        });
+    }
 
     // Helper method to validate date format
     private boolean isValidDateFormat(String date) {
@@ -197,45 +312,106 @@ public class ShowAnnotate {
         }
     }
 
-    // Handle the annotation logic
-    private void handleAnnotation(String recordingTime, boolean isCollectedAsScheduled, String reason) {
+    // Handle Log Note annotations
+    private void handleQuickNoteAnnotation(String recordingTime, boolean isCollectedAsScheduled, String reason) {
         try {
-            // Load existing annotations
-            List<AnnotationEntry> annotations = loadAnnotations();
-
-            // Filter notes for this patient
-            List<AnnotationEntry> patientNotes = new ArrayList<>();
-            for (AnnotationEntry entry : annotations) {
-                if (entry.getPatientCode().equals(patientCode)) {
-                    patientNotes.add(entry);
-                }
-            }
-
-            // Remove oldest if there are already 5 notes
-            if (patientNotes.size() >= 5) {
-                AnnotationEntry oldest = Collections.min(patientNotes, Comparator.comparing(AnnotationEntry::getTimestamp));
-                annotations.remove(oldest);
-            }
-
             // Create note content from the fields
             String noteContent = (isCollectedAsScheduled ? "Reason for Invalid Data: " : "Reason for Not Collecting: ") + reason;
 
-            // Create new annotation
-            String timeStamp = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US).format(new Date());
-            AnnotationEntry newEntry = new AnnotationEntry(
-                    timeStamp,
-                    patientCode,
-                    noteContent,
-                    "",
-                    ""
-            );
+            // Create template-specific data
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("recordingTime", recordingTime);
+            templateData.put("isCollectedAsScheduled", isCollectedAsScheduled);
+            templateData.put("reason", reason);
 
-            // Add new annotation
-            annotations.add(newEntry);
-            // Save to file
-            saveAnnotations(annotations);
+            // Save the annotation
+            saveAnnotationEntry(noteContent, TEMPLATE_LOG_NOTE, templateData);
 
-            // Create single note JSON file for server
+            // Create server JSON with specific format
+            createServerJsonForLogNote(recordingTime, isCollectedAsScheduled, reason);
+
+            Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            Log.e(TAG, "Error saving annotation", e);
+            Toast.makeText(context, "Failed to save note", Toast.LENGTH_SHORT).show();
+        }
+    }
+    // Handle model annotations
+    private void handleMeetingAnnotation(String ablettScore, String comorbid, String ventilation, String age) {
+        try {
+            // Create note content from the model template fields
+            String noteContent = "Ablett Score: " + ablettScore;
+            if (!comorbid.isEmpty()) {
+                noteContent += "\nComorbidities: " + comorbid;
+            }
+            if (!ventilation.isEmpty()) {
+                noteContent += "\nVentilation: " + ventilation;
+            }
+            if (!age.isEmpty()) {
+                noteContent += "\nAge: " + age;
+            }
+            // Create template-specific data
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("ablettScore", ablettScore);
+            templateData.put("comorbidities", comorbid);
+            templateData.put("ventilation", ventilation);
+            templateData.put("age", age);
+
+            // Save the annotation
+            saveAnnotationEntry(noteContent, TEMPLATE_MODEL_NOTE, templateData);
+
+            // Create server JSON for the model template
+            createServerJsonForModel(ablettScore, comorbid, ventilation, age);
+
+            Toast.makeText(context, "Model note saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            Log.e(TAG, "Error saving model annotation", e);
+            Toast.makeText(context, "Failed to save note", Toast.LENGTH_SHORT).show();
+        }
+    }
+    // Common method to save annotation entry
+    private void saveAnnotationEntry(String noteContent, String template, Map<String, Object> templateData) throws IOException {
+        // Load existing annotations
+        List<AnnotationEntry> annotations = loadAnnotations();
+
+        // Filter notes for this patient
+        List<AnnotationEntry> patientNotes = new ArrayList<>();
+        for (AnnotationEntry entry : annotations) {
+            if (entry.getPatientCode().equals(patientCode)) {
+                patientNotes.add(entry);
+            }
+        }
+        // \|\./|/
+        // Remove oldest if there are already 5 notes
+        if (patientNotes.size() >= 5) {
+            AnnotationEntry oldest = Collections.min(patientNotes, Comparator.comparing(AnnotationEntry::getTimestamp));
+            annotations.remove(oldest);
+        }
+
+        // Create new annotation
+        String timeStamp = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US).format(new Date());
+        AnnotationEntry newEntry = new AnnotationEntry(
+                timeStamp,
+                patientCode,
+                noteContent,
+                "",
+                "",
+                template,
+                templateData
+        );
+
+        // Add new annotation
+        annotations.add(newEntry);
+
+        // Save to file
+        saveAnnotations(annotations);
+    }
+
+    // Create server JSON for Log Note template
+    private void createServerJsonForLogNote(String recordingTime, boolean isCollectedAsScheduled, String reason) {
+        String timeStamp = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US).format(new Date());
+
+        try {
             File oximeterDataDir = context.getExternalFilesDir(null);
             File mainFolder = new File(oximeterDataDir, "OximeterData");
             if (!mainFolder.exists()) {
@@ -270,7 +446,7 @@ public class ShowAnnotate {
                 Log.e(TAG, "Error formatting recording time", e);
                 serverNote.put("recording_time", recordingTime); // fallback to original
             }
-//            serverNote.put("recording_time", recordingTime);
+
             serverNote.put("data_type", "PPG");
             serverNote.put("research_code", patientCode);
             serverNote.put("is_collected_as_scheduled", isCollectedAsScheduled);
@@ -298,7 +474,7 @@ public class ShowAnnotate {
                 gson.toJson(serverNote, writer);
 
                 // Upload the file to server
-                FileUploader.uploadFile(singleNoteFile.getAbsolutePath(), new FileUploader.UploadCallback() {
+                FileUploader.uploadNoteFile(singleNoteFile.getAbsolutePath(), new FileUploader.UploadCallback() {
                     @Override
                     public void onUploadComplete(boolean success, String message) {
                         if (success) {
@@ -312,13 +488,73 @@ public class ShowAnnotate {
                     }
                 });
             }
-
-            Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
-            Log.e(TAG, "Error saving annotation", e);
-            Toast.makeText(context, "Failed to save note", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Error creating server JSON for quick note", e);
         }
     }
+
+    // Create server JSON for Model template
+    private void createServerJsonForModel(String ablettScore, String comorbid, String ventilation, String age) {
+        String timeStamp = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US).format(new Date());
+
+        try {
+//            File oximeterDataDir = context.getExternalFilesDir(null);
+//            File mainFolder = new File(oximeterDataDir, "OximeterData");
+//            if (!mainFolder.exists()) {
+//                mainFolder.mkdirs();
+//            }
+
+            String singleFileName = "Model_" + patientCode + "_" + timeStamp.replace(" ", ".")
+                    .replace(":", ".").replace("-", ".") + "_.json";
+
+            // Create JSON with specific format for server
+            Map<String, Object> serverNote = new HashMap<>();
+            serverNote.put("ablett", ablettScore);
+            serverNote.put("comorbidities", comorbid);
+            serverNote.put("ventilation", ventilation);
+            serverNote.put("age", age);
+
+
+            // Use MediaStore to save to Download/OximeterData/Annotation
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, singleFileName);
+            values.put(MediaStore.Downloads.MIME_TYPE, "application/json");
+            values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/OximeterData/Annotation");
+
+            ContentResolver contentResolver = context.getContentResolver();
+            Uri uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+
+            if (uri != null) {
+                try (OutputStream outputStream = contentResolver.openOutputStream(uri)) {
+                    if (outputStream != null) {
+                        String jsonString = gson.toJson(serverNote);
+                        outputStream.write(jsonString.getBytes());
+                        outputStream.flush();
+
+                        // Upload the file using the URI
+//                        FileUploader.uploadFile(uri.toString(), new FileUploader.UploadCallback() {
+//                            @Override
+//                            public void onUploadComplete(boolean success, String message) {
+//                                if (success) {
+//                                    // Move to Uploaded folder on success
+//                                    FileUploader.moveFileToUploadedFolderFromUri(context, uri.toString());
+//                                    Log.i(TAG, "Model note file uploaded successfully");
+//                                } else {
+//                                    Log.e(TAG, "Failed to upload model note file: " + message);
+//                                }
+//                            }
+//                        });
+                    }
+                }
+            } else {
+                Log.e(TAG, "Failed to create file URI with MediaStore");
+                Toast.makeText(context, "Failed to save model note", Toast.LENGTH_SHORT).show();
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error creating server JSON for model", e);
+        }
+    }
+
     // Load annotations from JSON file
     private List<AnnotationEntry> loadAnnotations() throws IOException {
         File jsonFile = getAnnotationFile();
@@ -336,7 +572,6 @@ public class ShowAnnotate {
             return new ArrayList<>();
         }
     }
-
     // Save annotations to JSON file
     private void saveAnnotations(List<AnnotationEntry> annotations) throws IOException {
         File jsonFile = getAnnotationFile();
@@ -353,14 +588,13 @@ public class ShowAnnotate {
             gson.toJson(annotations, writer);
         }
     }
-
+    //
     // Get JSON file for annotations
     private File getAnnotationFile() {
         File directory = getAnnotationDirectory();
         return new File(directory, "Annotations.json");
     }
-
-    // Helper method to get annotation directory
+    // Helper method to get annotation directory (unchanged from original)
     private File getAnnotationDirectory() {
         File externalDir = context.getExternalFilesDir(null);
         File oximeterDataDir = new File(externalDir, "OximeterData");
@@ -383,7 +617,7 @@ public class ShowAnnotate {
         }
     }
 
-    // Delete an annotation
+    // Delete an annotation (unchanged from original)
     public void deleteAnnotation(int index) {
         try {
             List<AnnotationEntry> annotations = loadAnnotations();
@@ -399,7 +633,7 @@ public class ShowAnnotate {
         }
     }
 
-    // Legacy methods for compatibility - these can be simplified since JSON doesn't need open writers
+    // Legacy methods for compatibility
     public static void startAnnotationSession(String patientCode, Context context) {
         // Nothing needed for JSON implementation
     }

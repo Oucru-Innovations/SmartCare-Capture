@@ -1,14 +1,18 @@
 package com.smartcare.oximetry.sample;
 
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Context;
+import android.net.Uri;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
 
 import com.opencsv.CSVWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
@@ -43,7 +47,7 @@ public class OximeterDataWriterFunctions {
     private static final long DEFAULT_SPLIT_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
     private static long splitInterval = DEFAULT_SPLIT_INTERVAL;
     private static long nextSplitTime;
-
+    private static Uri lastChunkFileUri = null;
     private static Activity currentActivity;
     private static WeakReference<Activity> weakActivity;
 
@@ -213,8 +217,50 @@ public class OximeterDataWriterFunctions {
         }
     }
 
+//    private static void writeChunkToFile() {
+//        try {
+//            long currentTime = System.currentTimeMillis();
+//            long startTime = currentTime - (timeInterval1 * 60 * 1000);
+//
+//            String chunkFileName = String.format("SmartCareCsvChunk_%s_%s_%s.csv",
+//                    patientCode,
+//                    formatTimestamp(startTime),
+//                    formatTimestamp(currentTime));
+//
+//            File chunkFile = new File(getStreamModelDirectory(), chunkFileName);
+//
+//            FileOutputStream fileOutputStream = new FileOutputStream(chunkFile);
+//            CSVWriter chunkWriter = new CSVWriter(new OutputStreamWriter(fileOutputStream));
+//
+//            writeHeader(chunkWriter);
+//            for (String[] row : tempBuffer) {
+//                chunkWriter.writeNext(row);
+//            }
+//            chunkWriter.flush();
+//            chunkWriter.close();
+//
+//            Log.i(TAG, "New chunk file created: " + chunkFile.getAbsolutePath());
+//            lastChunkFile = chunkFile;
+//        } catch (IOException e) {
+//            Log.e(TAG, "Error writing chunk to file", e);
+//        }
+//    }
     private static void writeChunkToFile() {
         try {
+            // Delete previous chunk file if it exists
+            if (lastChunkFileUri != null) {
+                try {
+                    int deletedRows = appContext.getContentResolver().delete(lastChunkFileUri, null, null);
+                    if (deletedRows > 0) {
+                        Log.i(TAG, "Previous chunk file deleted successfully");
+                    } else {
+                        Log.w(TAG, "Failed to delete previous chunk file");
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error deleting previous chunk file", e);
+                }
+            }
+
             long currentTime = System.currentTimeMillis();
             long startTime = currentTime - (timeInterval1 * 60 * 1000);
 
@@ -223,20 +269,52 @@ public class OximeterDataWriterFunctions {
                     formatTimestamp(startTime),
                     formatTimestamp(currentTime));
 
-            File chunkFile = new File(getStreamModelDirectory(), chunkFileName);
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, chunkFileName);
+            values.put(MediaStore.Downloads.MIME_TYPE, "text/csv");
+            values.put(MediaStore.Downloads.RELATIVE_PATH,
+                    "Download/" + FOLDER_NAME + "/" + STREAM_MODEL_FOLDER);
 
-            FileOutputStream fileOutputStream = new FileOutputStream(chunkFile);
-            CSVWriter chunkWriter = new CSVWriter(new OutputStreamWriter(fileOutputStream));
+            Uri chunkFileUri = appContext.getContentResolver()
+                    .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
 
-            writeHeader(chunkWriter);
-            for (String[] row : tempBuffer) {
-                chunkWriter.writeNext(row);
+            if (chunkFileUri != null) {
+                try (OutputStream outputStream = appContext.getContentResolver()
+                        .openOutputStream(chunkFileUri)) {
+                    if (outputStream != null) {
+                        CSVWriter chunkWriter = new CSVWriter(new OutputStreamWriter(outputStream));
+                        writeHeader(chunkWriter);
+                        for (String[] row : tempBuffer) {
+                            chunkWriter.writeNext(row);
+                        }
+                        chunkWriter.flush();
+                        chunkWriter.close();
+
+                        Log.i(TAG, "New chunk file created: " + chunkFileUri);
+                        lastChunkFileUri = chunkFileUri;
+                    } else {
+                        Log.e(TAG, "Failed to open output stream for chunk file");
+                    }
+                }
+            } else {
+                Log.e(TAG, "Failed to create chunk file URI");
             }
-            chunkWriter.flush();
-            chunkWriter.close();
-
-            Log.i(TAG, "New chunk file created: " + chunkFile.getAbsolutePath());
-            lastChunkFile = chunkFile;
+            //send chunk file to server
+            if (lastChunkFileUri != null && appContext != null) {
+                FileUploader.setAppContext(appContext); // Initialize FileUploader context
+                FileUploader.uploadChunkFile(lastChunkFileUri.toString(), new FileUploader.UploadCallback() {
+                    @Override
+                    public void onUploadComplete(boolean success, String message) {
+                        if (success) {
+                            Log.i(TAG, "Chunk file uploaded successfully");
+                        } else {
+                            Log.e(TAG, "Failed to upload chunk file: " + message);
+                        }
+                    }
+                });
+            } else {
+                Log.e(TAG, "Cannot upload chunk file - missing URI or context");
+            }
         } catch (IOException e) {
             Log.e(TAG, "Error writing chunk to file", e);
         }
@@ -316,7 +394,7 @@ public class OximeterDataWriterFunctions {
 
     public static String formatTimestamp(long timestamp) {
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US);
-        dateFormat.setTimeZone(TimeZone.getTimeZone("GMT+7"));
+        dateFormat.setTimeZone(TimeZone.getDefault()); // Use device timezone
         return dateFormat.format(new Date(timestamp));
     }
 }

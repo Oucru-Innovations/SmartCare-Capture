@@ -39,7 +39,8 @@ import java.io.OutputStream;
 public class FileUploader {
 
 //    private static final String BASE_URL = "http://13.250.243.25:8080/";
-    private static final String BASE_URL = "http://103.213.124.230/"; //"http://vital-ei.oucru.org/";
+//    private static final String BASE_URL ="http://103.213.124.230/"; //nepal server
+    private static final String BASE_URL = "http://vital-ei.oucru.org/"; // oucru server
     private static final int RETRY_DELAY_MS = 10000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
@@ -138,71 +139,6 @@ public class FileUploader {
         }
     }
 
-
-    //upload with activity
-//    public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
-//        File file = new File(filePath);
-//
-//
-////        String accessToken = "";
-//        String ownerName = "Vyyy";
-//        RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
-//        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
-//        RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
-//
-////        ProgressBar progressBar = activity.findViewById(R.id.progressBar);
-////        progressBar.setVisibility(View.VISIBLE);
-//
-//        String checksum = calculateMD5(file);
-//
-//        ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-////        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
-//        Call<ResponseBody> call = apiService.uploadFile(body, owner); // test route
-//        call.enqueue(new Callback<ResponseBody>() {
-//            @Override
-//            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-////                progressBar.setVisibility(View.GONE);
-//                if (response.isSuccessful()) {
-//                    Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
-//                    Log.i("FileUploader", "File upload successful");
-//                    retryCount = 0;
-//                    callback.onUploadComplete(true, "File upload successful");
-//                } else {
-//                    Toast.makeText(activity, "File upload failed: " + response.message(), Toast.LENGTH_SHORT).show();
-//                    Log.e("FileUploader", "File upload failed: " + response.message());
-//                    scheduleRetry(activity, filePath, callback);
-//                }
-//            }
-//
-//            @Override
-//            public void onFailure(Call<ResponseBody> call, Throwable t) {
-////                progressBar.setVisibility(View.GONE);
-//                Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
-//                Log.e("FileUploader", "Error uploading file", t);
-//                scheduleRetry(activity, filePath, callback);
-//            }
-//        });
-//    }
-
-//    private static String calculateMD5(File file) {
-//        try (FileInputStream fis = new FileInputStream(file)) {
-//            MessageDigest digest = MessageDigest.getInstance("MD5");
-//            byte[] buffer = new byte[1024];
-//            int numRead;
-//            while ((numRead = fis.read(buffer)) != -1) {
-//                digest.update(buffer, 0, numRead);
-//            }
-//            byte[] md5Bytes = digest.digest();
-//            StringBuilder sb = new StringBuilder();
-//            for (byte b : md5Bytes) {
-//                sb.append(String.format("%02x", b));
-//            }
-//            return sb.toString();
-//        } catch (IOException | NoSuchAlgorithmException e) {
-//            Log.e("FileUploader", "Error calculating MD5 checksum", e);
-//            return null;
-//        }
-//    }
 public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
     // Check if this is a content URI
     if (filePath.startsWith("content://")) {
@@ -258,7 +194,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
             String checksum = calculateMD5(activity, filePath);
 
             ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-            Call<ResponseBody> call = apiService.uploadFile(body, owner);
+            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);
             call.enqueue(new Callback<ResponseBody>() {
                 @Override
                 public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -299,7 +235,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
         String checksum = calculateMD5(activity, filePath);
 
         ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-        Call<ResponseBody> call = apiService.uploadFile(body, owner);
+        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);
         call.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -324,6 +260,9 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
         });
     }
 }
+
+//upload annotation file
+
 public static String calculateMD5(Context context, String filePath) {
     try {
         MessageDigest digest = MessageDigest.getInstance("MD5");
@@ -458,7 +397,7 @@ public static String calculateMD5(Context context, String filePath) {
                 String checksum = calculateMD5(appContext, filePath);
 
                 ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-                Call<ResponseBody> call = apiService.uploadFile(body, owner);
+                Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
                 call.enqueue(new Callback<ResponseBody>() {
                     @Override
                     public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -496,7 +435,237 @@ public static String calculateMD5(Context context, String filePath) {
             String checksum = calculateMD5(appContext, filePath);
 
             ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-            Call<ResponseBody> call = apiService.uploadFile(body, owner);
+            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
+            call.enqueue(new Callback<ResponseBody>() {
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    if (response.isSuccessful()) {
+                        Log.i("FileUploader", "File upload successful");
+                        retryCount = 0;
+                        callback.onUploadComplete(true, "File upload successful");
+                    } else {
+                        Log.e("FileUploader", "File upload failed: " + response.message());
+                        scheduleRetryWithoutActivity(filePath, callback);
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    Log.e("FileUploader", "Error uploading file", t);
+                    scheduleRetryWithoutActivity(filePath, callback);
+                }
+            });
+        }
+    }
+    // upload note file here
+    public static void uploadNoteFile(String filePath, UploadCallback callback) {
+        // Since we don't have an activity context here, we need app context for content URIs
+        if (filePath.startsWith("content://") && appContext != null) {
+            // Handle content URIs similar to the activity version but without toasts
+            Uri sourceUri = Uri.parse(filePath);
+            ContentResolver contentResolver = appContext.getContentResolver();
+            String fileName = null;
+
+            try (Cursor cursor = contentResolver.query(sourceUri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME);
+                    fileName = cursor.getString(nameIndex);
+                }
+            } catch (Exception e) {
+                Log.e("FileUploader", "Error getting file name from URI", e);
+                callback.onUploadComplete(false, "Error getting file name: " + e.getMessage());
+                return;
+            }
+
+            if (fileName == null) {
+                Log.e("FileUploader", "Could not get file name from URI: " + filePath);
+                callback.onUploadComplete(false, "Could not get file name from URI");
+                return;
+            }
+
+            String ownerName = "Vyyy";
+
+            try {
+                // Get file content
+                InputStream inputStream = contentResolver.openInputStream(sourceUri);
+                if (inputStream == null) {
+                    Log.e("FileUploader", "Failed to open input stream for URI: " + filePath);
+                    callback.onUploadComplete(false, "Failed to open file");
+                    return;
+                }
+
+                // Create a temporary file for upload
+                File tempFile = File.createTempFile("upload_", fileName, appContext.getCacheDir());
+                try (OutputStream outputStream = new java.io.FileOutputStream(tempFile)) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                }
+                inputStream.close();
+
+                RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), tempFile);
+                MultipartBody.Part body = MultipartBody.Part.createFormData("file", fileName, requestFile);
+                RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+                String checksum = calculateMD5(appContext, filePath);
+
+                ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+                Call<ResponseBody> call = apiService.uploadNoteFile(body, owner);
+                call.enqueue(new Callback<ResponseBody>() {
+                    @Override
+                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                        tempFile.delete(); // Clean up temp file
+                        if (response.isSuccessful()) {
+                            Log.i("FileUploader", "File upload successful");
+                            retryCount = 0;
+                            callback.onUploadComplete(true, "File upload successful");
+                        } else {
+                            Log.e("FileUploader", "File upload failed: " + response.message());
+                            scheduleRetryWithoutActivity(filePath, callback);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                        tempFile.delete(); // Clean up temp file
+                        Log.e("FileUploader", "Error uploading file", t);
+                        scheduleRetryWithoutActivity(filePath, callback);
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e("FileUploader", "Error preparing file for upload", e);
+                callback.onUploadComplete(false, "Error: " + e.getMessage());
+            }
+        } else {
+            // Original code for regular files
+            File file = new File(filePath);
+            String ownerName = "Vyyy";
+            RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+            MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+            RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+            String checksum = calculateMD5(appContext, filePath);
+
+            ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+            Call<ResponseBody> call = apiService.uploadNoteFile(body, owner);
+            call.enqueue(new Callback<ResponseBody>() {
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    if (response.isSuccessful()) {
+                        Log.i("FileUploader", "File upload successful");
+                        retryCount = 0;
+                        callback.onUploadComplete(true, "File upload successful");
+                    } else {
+                        Log.e("FileUploader", "File upload failed: " + response.message());
+                        scheduleRetryWithoutActivity(filePath, callback);
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    Log.e("FileUploader", "Error uploading file", t);
+                    scheduleRetryWithoutActivity(filePath, callback);
+                }
+            });
+        }
+    }
+    // upload chunk file here
+    public static void uploadChunkFile(String filePath, UploadCallback callback) {
+        // Since we don't have an activity context here, we need app context for content URIs
+        if (filePath.startsWith("content://") && appContext != null) {
+            // Handle content URIs similar to the activity version but without toasts
+            Uri sourceUri = Uri.parse(filePath);
+            ContentResolver contentResolver = appContext.getContentResolver();
+            String fileName = null;
+
+            try (Cursor cursor = contentResolver.query(sourceUri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME);
+                    fileName = cursor.getString(nameIndex);
+                }
+            } catch (Exception e) {
+                Log.e("FileUploader", "Error getting file name from URI", e);
+                callback.onUploadComplete(false, "Error getting file name: " + e.getMessage());
+                return;
+            }
+
+            if (fileName == null) {
+                Log.e("FileUploader", "Could not get file name from URI: " + filePath);
+                callback.onUploadComplete(false, "Could not get file name from URI");
+                return;
+            }
+
+            String ownerName = "Vyyy";
+
+            try {
+                // Get file content
+                InputStream inputStream = contentResolver.openInputStream(sourceUri);
+                if (inputStream == null) {
+                    Log.e("FileUploader", "Failed to open input stream for URI: " + filePath);
+                    callback.onUploadComplete(false, "Failed to open file");
+                    return;
+                }
+
+                // Create a temporary file for upload
+                File tempFile = File.createTempFile("upload_", fileName, appContext.getCacheDir());
+                try (OutputStream outputStream = new java.io.FileOutputStream(tempFile)) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                }
+                inputStream.close();
+
+                RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), tempFile);
+                MultipartBody.Part body = MultipartBody.Part.createFormData("file", fileName, requestFile);
+                RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+//                String checksum = calculateMD5(appContext, filePath);
+
+                ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+                Call<ResponseBody> call = apiService.uploadChunkFile(STATIC_TOKEN, body, owner);
+                call.enqueue(new Callback<ResponseBody>() {
+                    @Override
+                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                        tempFile.delete(); // Clean up temp file
+                        if (response.isSuccessful()) {
+                            Log.i("FileUploader", "File upload successful");
+                            retryCount = 0;
+                            callback.onUploadComplete(true, "File upload successful");
+                        } else {
+                            Log.e("FileUploader", "File upload failed: " + response.message());
+                            scheduleRetryWithoutActivity(filePath, callback);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                        tempFile.delete(); // Clean up temp file
+                        Log.e("FileUploader", "Error uploading file", t);
+                        scheduleRetryWithoutActivity(filePath, callback);
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e("FileUploader", "Error preparing file for upload", e);
+                callback.onUploadComplete(false, "Error: " + e.getMessage());
+            }
+        } else {
+            // Original code for regular files
+            File file = new File(filePath);
+            String ownerName = "Vyyy";
+            RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+            MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+            RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
+
+//            String checksum = calculateMD5(appContext, filePath);
+
+            ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+            Call<ResponseBody> call = apiService.uploadChunkFile(STATIC_TOKEN, body, owner);
             call.enqueue(new Callback<ResponseBody>() {
                 @Override
                 public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -544,11 +713,27 @@ public static String calculateMD5(Context context, String filePath) {
 
     private interface ApiService {
         @Multipart
-//        @POST("api/v1/file/smapp/upload")
-        @POST("api/v1/file/upload") //route for test upload
+        @POST("api/v1/file/smapp/upload") //route for file data
+//        @POST("api/v1/file/upload") //route for test upload
         Call<ResponseBody> uploadFile(
-//                @Header("x-static-token") String staticToken,
-//                @Header("x-content-md5") String checksum,
+                @Header("x-static-token") String staticToken,
+                @Header("x-content-md5") String checksum,
+                @Part MultipartBody.Part file,
+                @Part("owner") RequestBody owner
+        );
+        //TODO: add upload chunk file to api/v1/file/smapp/upload-chunk
+        // fix the api service without static token
+        @Multipart
+        @POST("api/v1/file/upload") //route for annotation file
+        Call<ResponseBody> uploadNoteFile(
+                @Part MultipartBody.Part file,
+                @Part("owner") RequestBody owner
+        );
+
+        @Multipart
+        @POST("api/v1/file/smapp/upload-chunk") //route for chunk file
+        Call<ResponseBody> uploadChunkFile(
+                @Header("x-static-token") String staticToken,
                 @Part MultipartBody.Part file,
                 @Part("owner") RequestBody owner
         );

@@ -3,5 +3,6 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">13.250.243.25</domain>
         <domain includeSubdomains="true">103.213.124.230</domain>
+        <domain includeSubdomains="true">vital-ei.oucru.org</domain>
     </domain-config>
 </network-security-config>

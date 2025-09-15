@@ -76,7 +76,8 @@ public class OximeterDataBuffer {
     private static String convertToISOTimestamp(long timestamp) {
         try {
             Instant instant = Instant.ofEpochMilli(timestamp);
-            OffsetDateTime offsetDateTime = instant.atOffset(ZoneOffset.ofHours(7));
+            ZoneId deviceZone = ZoneId.systemDefault(); // Use device timezone
+            OffsetDateTime offsetDateTime = instant.atZone(deviceZone).toOffsetDateTime();
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
             return offsetDateTime.format(formatter);
         } catch (Exception e) {

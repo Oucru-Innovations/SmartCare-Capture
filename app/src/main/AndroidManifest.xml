@@ -63,7 +63,8 @@
 <!--        end -->
         <activity
             android:name=".FileManagerActivity"
-            android:exported="false"
+            android:screenOrientation="portrait"
+            android:exported="true"
             android:label="File Manager"
             android:theme="@style/CustomTheme"/>
 
