@@ -195,6 +195,8 @@ public class RecordActivity extends Activity {
     public static double annotationSpO2 = 0.f;
     // handle service target.isServiceBound && target.dataService false
     private long lastReconnectAttempt = 0;
+    // Save Logs to file
+    private FileLogger logger;
     /**
      * This Handler is responsible for handling messages from the ConnectionManager which may
      * contain data or error messages.
@@ -317,6 +319,8 @@ public class RecordActivity extends Activity {
 //                        );
 //                        Log.i("RecordActivity", "CSV data written successfully");
                         //write data to CSV file by service
+                        // simualate service unavailable
+//                        target.isServiceBound = false;
                         if (target.isServiceBound && target.dataService != null) {
                             target.dataService.addDataPoint(
                                     latestSpO2Value,
@@ -336,7 +340,7 @@ public class RecordActivity extends Activity {
                         else {
                             // Service is unavailable - attempt to reconnect
                             Log.w("RecordActivity", "Service unavailable, attempting reconnection");
-
+                            FileLogger.w(TAG, "Service unavailable, attempting reconnection");
                             // Avoid spamming reconnection attempts - use a timestamp to throttle
                             long currentTime = System.currentTimeMillis();
                             if (currentTime - target.lastReconnectAttempt > 15000) { // Only try every 15 seconds
@@ -440,6 +444,7 @@ public class RecordActivity extends Activity {
                 // smartcare turn off when it is connected
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
+                    FileLogger.w(TAG, "Bluetooth connection lost");
                     //new
                     target.isConnected = false; //new
 //                    isRecordingSessionActive = false;
@@ -459,8 +464,10 @@ public class RecordActivity extends Activity {
                         + " oximeter at " + timeFormat.format(new Date(recordingStarted)) + "."
                         + "\nSampling at " + Integer.toString(target.connectionManager.getSampleRate())
                         + " samples per second.";
-
                     Toast.makeText(target, str, Toast.LENGTH_LONG).show();
+
+                    FileLogger.i(TAG, "Connected to oximeter, recording started at "+ timeFormat.format(new Date(recordingStarted)));
+
                     //new
                     target.isConnected = true;
 //                    target.bluetoothAdapter.cancelDiscovery();
@@ -484,6 +491,7 @@ public class RecordActivity extends Activity {
                     toast.show();
                     new Handler().postDelayed(toast::cancel, 1000); // 1000 milliseconds = 1 second
 
+                    FileLogger.i(TAG, "Disconnected from oximetry");
 //                    FileUploader.uploadFile(target, target.filePath);
                     target.isConnected = false; //new
                     target.bluetoothAdapter.startDiscovery(); // new
@@ -557,7 +565,7 @@ public class RecordActivity extends Activity {
                 Log.d(TAG, "User click connecttttttttttt");
                 blockedList.remove(connectedMacAddress);
                 Log.d(TAG, "Connector: Successfully connected to MAC: " + connectedMacAddress);
-
+                FileLogger.i(TAG, "Connector: Successfully connected to MAC: " + connectedMacAddress);
                 // Request high .rity connection if available on this Android version
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     try {
@@ -590,6 +598,7 @@ public class RecordActivity extends Activity {
 
             if (!result) {
                 Log.w(getString(R.string.app_name), "Cannot connect");
+                FileLogger.e(TAG, "Cannot connect to device");
                 mControlButton.setText(getString(R.string.record_start));
 
                 mControlButton.setOnClickListener(new OnClickListener() {
@@ -676,6 +685,7 @@ public class RecordActivity extends Activity {
             //get path from service
             filePath = dataService.endRecordFilePath;
             Log.i("RecordActivity", "File path: " + filePath);
+            FileLogger.i(TAG, "Recoding ended, file saved: " + filePath);
             //end annotation
 //            ShowAnnotate.stopAnnotationSession();
             new Handler().postDelayed(new Runnable() {
@@ -686,9 +696,11 @@ public class RecordActivity extends Activity {
                         public void onUploadComplete(boolean success, String message) {
                             if (success) {
                                 Log.i("FileUploader-RA", "File upload successful");
+                                FileLogger.i(TAG, "File upload successful: "+ filePath);
                                 FileUploader.moveFileToUploadedFolder(new File(filePath));
                             } else {
                                 Log.e("FileUploader-RA", "File upload failed: " + message);
+                                FileLogger.e(TAG, "File upload failed: " + message);
                             }
                         }
                     });
@@ -750,6 +762,8 @@ public class RecordActivity extends Activity {
                     ", enableChunkFile=" + enableChunk +
                     ", timeInterval=" + timeInterval);
 
+            FileLogger.i(TAG, "Initializing OximeterDataService with patientCode: " + formattedCode);
+
             // Start the service
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Log.d(TAG, "Starting foreground service for Android O+");
@@ -762,6 +776,8 @@ public class RecordActivity extends Activity {
             // Bind to the service
             bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
             Log.d(TAG, "Service binding requested");
+
+            FileLogger.i(TAG, "OximeterDataService started and binding requested");
 
             // Continue with connection to oximeter
             new Connector().execute();
@@ -852,6 +868,9 @@ public class RecordActivity extends Activity {
         requestBatteryOptimizationExemption();
         // Initialize service intent
 
+        //Initialize FileLogger
+        logger = FileLogger.getInstance(this);
+        FileLogger.i(TAG,"Application started");
 
         AnnotationUploadScheduler.scheduleDailyUpload(this);
         // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
@@ -907,6 +926,8 @@ public class RecordActivity extends Activity {
                             findViewById(R.id.annotateButton).setEnabled(true);
                         }
                         patientCodeTextView.setTextColor(Color.BLACK);
+
+                        FileLogger.i(TAG, "Patient code confirmed: " + formattedCode);
 //                        new ShowAnnotate(RecordActivity.this, formattedCode);
                     });
                 } else {
@@ -1598,6 +1619,7 @@ public class RecordActivity extends Activity {
             dataService = binder.getService();
             isServiceBound = true;
             Log.i(TAG, "Successfully bound to OximeterDataService");
+            FileLogger.i(TAG, "Successfully bound to OximeterDataService");
         }
 
         @Override
@@ -1605,6 +1627,7 @@ public class RecordActivity extends Activity {
             isServiceBound = false;
             dataService = null;
             Log.w(TAG, "OximeterDataService disconnected unexpectedly");
+            FileLogger.w(TAG, "OximeterDataService disconnected unexpectedly");
         }
     };
 
