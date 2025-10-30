@@ -686,6 +686,7 @@ public class RecordActivity extends Activity {
             filePath = dataService.endRecordFilePath;
             Log.i("RecordActivity", "File path: " + filePath);
             FileLogger.i(TAG, "Recoding ended, file saved: " + filePath);
+            FileLogger.i("FileUploader", "Server URL: " + FileUploader.getBaseUrl());
             //end annotation
 //            ShowAnnotate.stopAnnotationSession();
             new Handler().postDelayed(new Runnable() {

@@ -554,5 +554,9 @@ public static String calculateMD5(Context context, String filePath) {
                 @Part("owner") RequestBody owner
         );
     }
+
+    public static String getBaseUrl() {
+        return BASE_URL;
+    }
 }
 

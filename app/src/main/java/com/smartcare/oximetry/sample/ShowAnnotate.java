@@ -93,6 +93,9 @@ public class ShowAnnotate {
         final LinearLayout invalidDataLayout = dialogView.findViewById(R.id.layout_invalid_data_reason);
         final EditText notCollectingReasonEdit = dialogView.findViewById(R.id.edit_not_collecting_reason);
         final EditText invalidDataReasonEdit = dialogView.findViewById(R.id.edit_invalid_data_reason);
+        final RadioGroup dataTypeRadioGroup = dialogView.findViewById(R.id.radio_data_type);
+        final RadioButton ppgRadioButton = dialogView.findViewById(R.id.radio_ppg);
+        final RadioButton ecgRadioButton = dialogView.findViewById(R.id.radio_ecg);
 
         // Set date format hint
         recordingTimeEdit.setText(new SimpleDateFormat("dd/MM/yyyy", Locale.US).format(new Date()));
@@ -160,6 +163,8 @@ public class ShowAnnotate {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String recordingTime = recordingTimeEdit.getText().toString().trim();
             boolean isCollectedAsScheduled = yesRadioButton.isChecked();
+            boolean isPpgSelected = ppgRadioButton.isChecked();
+            String dataType = isPpgSelected ? "PPG" : "ECG";
 
             // Validate recording time format
             if (!isValidDateFormat(recordingTime)) {
@@ -179,7 +184,7 @@ public class ShowAnnotate {
             }
 
             // All validation passed, handle the annotation
-            handleAnnotation(recordingTime, isCollectedAsScheduled, reason);
+            handleAnnotation(recordingTime, isCollectedAsScheduled, dataType, reason);
             dialog.dismiss();
         });
     }
@@ -198,7 +203,7 @@ public class ShowAnnotate {
     }
 
     // Handle the annotation logic
-    private void handleAnnotation(String recordingTime, boolean isCollectedAsScheduled, String reason) {
+    private void handleAnnotation(String recordingTime, boolean isCollectedAsScheduled, String dataType, String reason) {
         try {
             // Load existing annotations
             List<AnnotationEntry> annotations = loadAnnotations();
@@ -271,7 +276,7 @@ public class ShowAnnotate {
                 serverNote.put("recording_time", recordingTime); // fallback to original
             }
 //            serverNote.put("recording_time", recordingTime);
-            serverNote.put("data_type", "PPG");
+            serverNote.put("data_type", dataType);
             serverNote.put("research_code", patientCode);
             serverNote.put("is_collected_as_scheduled", isCollectedAsScheduled);
 
