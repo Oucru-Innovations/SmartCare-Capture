@@ -3,6 +3,15 @@
 ## SMARTCARE CAPTURE
 This is an Android application for recording, displaying, and uploading physiological signals from SmartCare.
 
+## ⚠️ Important Notice
+
+There are **two types of SmartCare oximeters** to be aware of:
+
+1. **Silver Label Type** – Devices with a **silver information sticker** on the back are **only compatible with older Android versions** (up to Android 10 or below). These devices may experience connection issues on newer Android versions.  
+2. **Printed Label Type** – Devices with **printed information directly on the back** are **fully compatible with all Android versions** and do not have such limitations.
+
+Before using the application, please **check your device’s Android version** and **grant the required permissions** according to the version’s security requirements to ensure stable operation.
+
 ## File Structure
 
 ### Main Package: `com.smartcare.oximetry.sample`
