@@ -75,10 +75,14 @@ public class OximeterDataBuffer {
 
     private static String convertToISOTimestamp(long timestamp) {
         try {
-            Instant instant = Instant.ofEpochMilli(timestamp);
-            OffsetDateTime offsetDateTime = instant.atOffset(ZoneOffset.ofHours(7));
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
-            return offsetDateTime.format(formatter);
+//            Instant instant = Instant.ofEpochMilli(timestamp);
+//            OffsetDateTime offsetDateTime = instant.atOffset(ZoneOffset.ofHours(7));
+//            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
+//            return offsetDateTime.format(formatter);
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSSSSXXX", Locale.US);
+//        dateFormat.setTimeZone(TimeZone.getTimeZone("GMT+7"));
+            dateFormat.setTimeZone(TimeZone.getDefault());
+            return dateFormat.format(new Date(timestamp));
         } catch (Exception e) {
             Log.e(TAG, "Error converting timestamp to ISO format", e);
             return null;

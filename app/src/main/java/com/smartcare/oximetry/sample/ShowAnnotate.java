@@ -256,9 +256,9 @@ public class ShowAnnotate {
 
             //parse recording time to ISO format
             SimpleDateFormat inputFormat = new SimpleDateFormat("dd/MM/yyyy", Locale.US);
-            SimpleDateFormat outputFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'XXX", Locale.US);
-            outputFormat.setTimeZone(java.util.TimeZone.getTimeZone("GMT+07:00"));
-
+            SimpleDateFormat outputFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US);
+//            outputFormat.setTimeZone(java.util.TimeZone.getTimeZone("GMT+07:00"));
+            outputFormat.setTimeZone(java.util.TimeZone.getDefault());
             try {
                 Date date = inputFormat.parse(recordingTime);
                 // Set time to current time or default time (12:00:00)

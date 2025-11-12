@@ -40,7 +40,7 @@ public class OximeterDataWriterFunctions {
     private static final String STREAM_MODEL_FOLDER = "StreamModel";
 
     // File splitting
-    private static final long DEFAULT_SPLIT_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+    private static final long DEFAULT_SPLIT_INTERVAL =  6 * 60 * 60 * 1000; // 6 hours //test 5min  5 * 60 * 1000;
     private static long splitInterval = DEFAULT_SPLIT_INTERVAL;
     private static long nextSplitTime;
 
@@ -196,6 +196,7 @@ public class OximeterDataWriterFunctions {
         writeHeader(currentWriter);
 
         Log.i(TAG, "File split successful. New file: " + currentFile.getAbsolutePath());
+        FileLogger.i(TAG, "File split: " + completedFile.getName());
 
         if (currentActivity != null) {
             FileUploader.uploadFile(currentActivity, completedFile.getAbsolutePath(),
@@ -204,12 +205,30 @@ public class OximeterDataWriterFunctions {
                         public void onUploadComplete(boolean success, String message) {
                             if (success) {
                                 Log.i(TAG, "Split file uploaded successfully");
+                                FileLogger.i(TAG, "Split file uploaded: " + completedFile.getName());
                                 FileUploader.moveFileToUploadedFolder(completedFile);
                             } else {
                                 Log.e(TAG, "Failed to upload split file");
+                                FileLogger.e(TAG, "Failed to upload split file: " + completedFile.getName() + " - " + message);
                             }
                         }
                     });
+        }
+        else {
+            FileUploader.uploadFile(completedFile.getAbsolutePath(), new FileUploader.UploadCallback() {
+                @Override
+                public void onUploadComplete(boolean success, String message) {
+                    if (success) {
+                        // Move to Uploaded folder on success
+                        FileUploader.moveFileToUploadedFolder(completedFile);
+                        Log.i(TAG, "Split file uploaded successfully");
+                        FileLogger.i(TAG, "Split file uploaded: " + completedFile.getName());
+                    } else {
+                        Log.e(TAG, "Failed to upload split file");
+                        FileLogger.e(TAG, "Failed to upload split file: " + completedFile.getName() + " - " + message);
+                    }
+                }
+            });
         }
     }
 
@@ -316,7 +335,8 @@ public class OximeterDataWriterFunctions {
 
     public static String formatTimestamp(long timestamp) {
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US);
-        dateFormat.setTimeZone(TimeZone.getTimeZone("GMT+7"));
+//        dateFormat.setTimeZone(TimeZone.getTimeZone("GMT+7"));
+        dateFormat.setTimeZone(TimeZone.getDefault());
         return dateFormat.format(new Date(timestamp));
     }
 }
