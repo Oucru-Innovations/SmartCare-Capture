@@ -352,6 +352,7 @@ public class RecordActivity extends Activity {
 
                     } catch (Exception e) {
                         Log.e("RecordActivity", "Error writing CSV data", e);
+                        FileLogger.e("RecordActivity", "Error writing CSV data: " + e.getMessage());
                     }
 
                     //end
@@ -444,7 +445,7 @@ public class RecordActivity extends Activity {
                 // smartcare turn off when it is connected
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
-                    FileLogger.w(TAG, "Bluetooth connection lost");
+                    FileLogger.w(TAG, "Bluetooth connection lost (smartcare turn off when it is connecting to app)");
                     //new
                     target.isConnected = false; //new
 //                    isRecordingSessionActive = false;
@@ -466,6 +467,7 @@ public class RecordActivity extends Activity {
                         + " samples per second.";
                     Toast.makeText(target, str, Toast.LENGTH_LONG).show();
 
+                    FileLogger.i(TAG, "Successfully connected to MAC:" + target.connectionManager.getMacAddress());
                     FileLogger.i(TAG, "Connected to oximeter, recording started at "+ timeFormat.format(new Date(recordingStarted)));
 
                     //new
@@ -781,7 +783,7 @@ public class RecordActivity extends Activity {
             FileLogger.i(TAG, "OximeterDataService started and binding requested");
 
             // Continue with connection to oximeter
-            new Connector().execute();
+            //new Connector().execute();
         }
     }
 
@@ -1621,6 +1623,9 @@ public class RecordActivity extends Activity {
             isServiceBound = true;
             Log.i(TAG, "Successfully bound to OximeterDataService");
             FileLogger.i(TAG, "Successfully bound to OximeterDataService");
+
+            // Execute Connector only after service is successfully bound
+            new Connector().execute();
         }
 
         @Override

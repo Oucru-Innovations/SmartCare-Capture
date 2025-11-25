@@ -1,5 +1,6 @@
 package com.smartcare.oximetry.sample;
 
+import android.content.ContentResolver;
 import android.content.Context;
 import android.util.Log;
 import java.io.File;
@@ -19,8 +20,8 @@ public class FileLogger {
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
     private static final long MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
     private static final String LOG_FILE_DATE_FORMAT = "yyyyMMdd";
-    private static final String CURRENT_LOG_FILENAME = "app_log_current.txt";
-    private static final String ARCHIVED_LOG_PATTERN = "app_log_%s.txt";
+    private static final String CURRENT_LOG_FILENAME = "smartcare_app_log.txt";
+    private static final String ARCHIVED_LOG_PATTERN = "smartcare_app_log_%s.txt";
     public enum LogLevel {
         VERBOSE, DEBUG, INFO, WARN, ERROR
     }
@@ -57,11 +58,69 @@ public class FileLogger {
                 writer.write(logEntry);
             }
 
+            // Write to secondary location (Downloads/OximeterData) using MediaStore
+            writeToDownloadsFolder(logEntry);
+
         } catch (IOException e) {
             Log.e(TAG, "Error writing to log file", e);
         }
     }
 
+    private static void writeToDownloadsFolder(String logEntry) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            return; // Only works on Android 10+
+        }
+
+        try {
+            ContentResolver resolver = appContext.getContentResolver();
+
+            // Query for existing file first
+            String selection = android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=? AND " +
+                    android.provider.MediaStore.MediaColumns.RELATIVE_PATH + "=?";
+            String[] selectionArgs = {CURRENT_LOG_FILENAME,
+                    android.os.Environment.DIRECTORY_DOWNLOADS + "/OximeterData/FileLogger/"};
+
+            android.database.Cursor cursor = resolver.query(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    new String[]{android.provider.MediaStore.MediaColumns._ID},
+                    selection,
+                    selectionArgs,
+                    null);
+
+            android.net.Uri fileUri;
+
+            if (cursor != null && cursor.moveToFirst()) {
+                // File exists - get its URI
+                long id = cursor.getLong(0);
+                fileUri = android.content.ContentUris.withAppendedId(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, id);
+                cursor.close();
+            } else {
+                // File doesn't exist - create it
+                if (cursor != null) cursor.close();
+
+                android.content.ContentValues values = new android.content.ContentValues();
+                values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, CURRENT_LOG_FILENAME);
+                values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_DOWNLOADS + "/OximeterData/FileLogger");
+
+                fileUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            }
+
+            // Write/append to file
+            if (fileUri != null) {
+                try (java.io.OutputStream outputStream = resolver.openOutputStream(fileUri, "wa")) {
+                    if (outputStream != null) {
+                        outputStream.write(logEntry.getBytes());
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error writing to Downloads folder", e);
+        }
+    }
     // Convenience methods for different log levels
     public static void v(String tag, String message) {
         writeLog(LogLevel.VERBOSE, tag, message);
@@ -132,7 +191,7 @@ public class FileLogger {
 
         // Find all archived log files
         File[] archivedFiles = logDir.listFiles((dir, name) ->
-                name.startsWith("app_log_") && name.endsWith(".txt") && !name.equals(CURRENT_LOG_FILENAME));
+                name.startsWith("smartcare_app_log_") && name.endsWith(".txt") && !name.equals(CURRENT_LOG_FILENAME));
 
         if (archivedFiles == null || archivedFiles.length <= 1) {
             return; // No cleanup needed if we have 0 or 1 archive files

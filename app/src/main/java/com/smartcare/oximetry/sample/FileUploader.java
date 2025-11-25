@@ -39,8 +39,8 @@ import java.io.OutputStream;
 public class FileUploader {
 
 //    private static final String BASE_URL = "http://13.250.243.25:8080/";
-//    private static final String BASE_URL = "http://103.213.124.230/";
-    private static final String BASE_URL = "http://vital-ei.oucru.org/";
+    private static final String BASE_URL = "http://103.213.124.230/";
+//    private static final String BASE_URL = "http://vital-ei.oucru.org/";
     private static final int RETRY_DELAY_MS = 10000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
@@ -259,7 +259,8 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
             String checksum = calculateMD5(activity, filePath);
 
             ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);
+//            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); // for api/v1/file/smapp/upload
+            Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
             call.enqueue(new Callback<ResponseBody>() {
                 @Override
                 public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -300,7 +301,8 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
         String checksum = calculateMD5(activity, filePath);
 
         ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);
+//        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); //for api/v1/file/smapp/upload
+        Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
         call.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -459,7 +461,8 @@ public static String calculateMD5(Context context, String filePath) {
                 String checksum = calculateMD5(appContext, filePath);
 
                 ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-                Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);
+//                Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); // for api/v1/file/smapp/upload
+                Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
                 call.enqueue(new Callback<ResponseBody>() {
                     @Override
                     public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -497,7 +500,8 @@ public static String calculateMD5(Context context, String filePath) {
             String checksum = calculateMD5(appContext, filePath);
 
             ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
-            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);
+//            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);//for api/v1/file/smapp/upload
+            Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
             call.enqueue(new Callback<ResponseBody>() {
                 @Override
                 public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
@@ -545,11 +549,11 @@ public static String calculateMD5(Context context, String filePath) {
 
     private interface ApiService {
         @Multipart
-        @POST("api/v1/file/smapp/upload")
-//        @POST("api/v1/file/upload") //route for test upload
+//        @POST("api/v1/file/smapp/upload")
+        @POST("api/v1/file/upload") //route for upload nepal server
         Call<ResponseBody> uploadFile(
-                @Header("x-static-token") String staticToken,
-                @Header("x-content-md5") String checksum,
+//                @Header("x-static-token") String staticToken,
+//                @Header("x-content-md5") String checksum,
                 @Part MultipartBody.Part file,
                 @Part("owner") RequestBody owner
         );
