@@ -64,7 +64,7 @@ BLUETOOTH_SCAN_PERIOD_MS=
 ### 3. Clone the Repository
 ```bash
 git clone https://github.com/Oucru-Innovations/SmartCare-Capture.git
-cd ProjectSample
+cd SmartCare-Capture
 ```
 
 ---
@@ -95,7 +95,7 @@ Sensitive variables are currently hardcoded. You should configure them using env
 ### For Development (Debug Build)
 
 1. **Open the project in Android Studio**
-   - File → Open → Select ProjectSample folder
+   - File → Open → Select SmartCare-Capture folder
 
 2. **Sync Gradle**
    - File → Sync Project with Gradle Files
@@ -134,7 +134,7 @@ Output: `app/build/outputs/bundle/release/app-release.aab`
 ## Project Structure
 
 ```
-ProjectSample/
+SmartCare-Capture/
 ├── app/
 │   ├── src/main/
 │   │   ├── java/com/smartcare/oximetry/sample/  # Source code
