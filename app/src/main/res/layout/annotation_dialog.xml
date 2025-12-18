@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Recording Time (dd/mm/yyyy)" />
+
+    <EditText
+        android:id="@+id/edit_recording_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:hint="DD/MM/YYYY"
+        android:inputType="date" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Data Type" />
+    <RadioGroup
+        android:id="@+id/radio_data_type"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/radio_ppg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
+            android:text="PPG" />
+
+        <RadioButton
+            android:id="@+id/radio_ecg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ECG" />
+    </RadioGroup>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Is collected as scheduled?" />
+    <RadioGroup
+        android:id="@+id/radio_is_collecting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/radio_yes"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
+            android:text="Yes" />
+
+        <RadioButton
+            android:id="@+id/radio_no"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No" />
+    </RadioGroup>
+    <!-- Not collected reason (shown when radio_no is selected) -->
+    <LinearLayout
+        android:id="@+id/layout_not_collecting_reason"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="Reason why not collecting data" />
+
+        <EditText
+            android:id="@+id/edit_not_collecting_reason"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:hint="Enter reason for not collecting data"
+            android:inputType="textMultiLine"
+            android:maxLines="5"
+            android:minLines="3" />
+    </LinearLayout>
+    <!-- Invalid data reason (shown when radio_yes is selected) -->
+    <LinearLayout
+        android:id="@+id/layout_invalid_data_reason"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="Reason for invalid data" />
+
+        <EditText
+            android:id="@+id/edit_invalid_data_reason"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:inputType="textMultiLine"
+            android:hint="Enter time and reason for invalid data"
+            android:maxLines="5"
+            android:minLines="3" />
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,346 @@
+<!--
+/**
+* Copyright (c) 2018, SmartCare Analytics Ltd.
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without modification, are permitted
+* provided that the following conditions are met:
+*
+* 1. Redistributions of source code must retain the above copyright notice, this list of conditions
+* and the following disclaimer.
+*
+* 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+* conditions and the following disclaimer in the documentation and/or other materials provided with
+* the distribution.
+*
+* 3. Neither the name of the copyright holder nor the names of its contributors may be used to
+* endorse or promote products derived from this software without specific prior written permission.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+* IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+* FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+* CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+* DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+* ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* NOT MEDICAL SOFTWARE. THIS SOFTWARE IS PROVIDED FOR INFORMATIONAL OR RESEARCH PURPOSES ONLY, AND
+* IS NOT FOR PROFESSIONAL MEDICAL USE, DIAGNOSIS, TREATMENT OR CARE, NOR IS IT INTENDED TO BE A
+* SUBSTITUTE THEREFOR. ALWAYS SEEK THE ADVICE OF A PHYSICIAN OR OTHER QUALIFIED HEALTH PROVIDER
+* PROPERLY LICENSED TO PRACTICE MEDICINE OR GENERAL HEALTHCARE IN YOUR JURISDICTION CONCERNING ANY
+* QUESTIONS YOU MAY HAVE REGARDING ANY HEALTH PROBLEM. NEVER DISREGARD PROFESSIONAL MEDICAL ADVICE
+* OR DELAY IN SEEKING IT BECAUSE OF SOMETHING YOU HAVE OBSERVED THROUGH THE USE OF THIS SOFTWARE.
+* ALWAYS CONSULT WITH YOUR PHYSICIAN OR OTHER QUALIFIED HEALTH CARE PROVIDER BEFORE EMBARKING ON A
+* NEW TREATMENT, DIET OR FITNESS PROGRAMME.
+*
+* Graphical charts are copyright (c) AndroidPlot (released under the Apache 2.0 licence).
+*/
+-->
+
+<!-- res/layout/patient_monitor_layout.xml -->
+
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:androind="http://schemas.android.com/apk/res-auto"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#FEF9F2"> <!-- Light background color -->
+
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="16dp">
+
+        <!-- Nested LinearLayout for Info and Patient Code with background -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:background="@drawable/edit_text_background"> <!-- Background drawable for boxed look -->
+
+<!--            <TextView-->
+<!--                android:id="@+id/infoTextView"-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:text="Patient Code:"        -->
+<!--                android:textColor="#FF6600"-->
+<!--                android:textStyle="bold"-->
+<!--                android:textSize="18sp"-->
+<!--                android:paddingEnd="4dp"/>-->
+
+            <TextView
+                android:id="@+id/patientCodeTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-----"
+                android:textColor="#FF6600"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:paddingStart="4dp"/>
+        </LinearLayout>
+        <!-- Battery indicator -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:gravity="center_vertical"
+            android:background="@drawable/edit_text_background"
+            android:layout_marginStart="8dp">
+
+            <TextView
+                android:id="@+id/batteryText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--%"
+                android:textColor="#333333"
+                android:textSize="16sp"
+                android:paddingStart="4dp"/>
+        </LinearLayout>
+        <!-- Toggle Plot Button -->
+<!--        <Button-->
+<!--            android:id="@+id/togglePlotButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Chart"-->
+<!--            android:background="@drawable/rounded_button_blue"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            style="?android:attr/buttonStyleSmall"-->
+<!--            android:layout_marginStart="8dp"/> &lt;!&ndash; Space between text box and button &ndash;&gt;-->
+
+    </LinearLayout>
+
+
+    <!-- Plot Section with Border Background -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:id="@+id/plotContainer"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_margin="12dp"
+            android:padding="8dp"
+            android:background="@drawable/border_background">
+
+            <com.androidplot.xy.XYPlot
+                android:id="@+id/plot"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
+
+        </LinearLayout>
+            <ImageButton
+                android:id="@+id/togglePlotButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:padding="8dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_zoom_in"
+                android:layout_alignTop="@id/plotContainer"
+                android:layout_alignEnd="@id/plotContainer">
+            </ImageButton>
+<!--        <Button-->
+<!--            android:id="@+id/togglePlotButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Chart"-->
+<!--            android:layout_gravity="top|end"-->
+<!--            android:layout_marginTop="16dp"-->
+<!--            android:layout_marginEnd="16dp"-->
+<!--            android:background="@drawable/rounded_button_blue"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            style="?android:attr/buttonStyleSmall"/>-->
+    </RelativeLayout>
+
+    <!-- HR and SpO2 Section with Labels and Borders -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="2"
+        android:gravity="center"
+        android:layout_marginBottom="16dp">
+
+        <!-- Horizontal Centerline (invisible) -->
+        <View
+            android:id="@+id/horizontalCenterline"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_centerHorizontal="true" />
+
+        <!-- Heart Rate TextView -->
+        <TextView
+            android:id="@+id/hr"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentTop="true"
+            android:layout_margin="10dp"
+            android:layout_toRightOf="@id/horizontalCenterline"
+            android:background="@drawable/border_background"
+            android:gravity="center"
+            android:text="--"
+            android:textSize="70sp"
+            android:textColor="#333333"/>
+
+        <!-- Heart Rate Label -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignLeft="@id/hr"
+            android:layout_alignTop="@id/hr"
+            android:layout_marginTop="6dp"
+            android:layout_marginLeft="8dp"
+            android:text="HR"
+            android:textSize="20sp"
+            android:textColor="#888888"/>
+
+        <!-- Heart Rate Unit -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@id/hr"
+            android:layout_alignRight="@id/hr"
+            android:layout_marginBottom="6dp"
+            android:layout_marginRight="8dp"
+            android:text="bpm"
+            android:textSize="20sp"
+            android:textColor="#888888"/>
+
+        <!-- SpO2 TextView android:text="SpO₂: -%\nPI: -" -->
+        <TextView
+            android:id="@+id/spo2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentTop="true"
+            android:layout_margin="10dp"
+            android:layout_toLeftOf="@id/horizontalCenterline"
+            android:background="@drawable/border_background"
+            android:gravity="center"
+            android:text="SpO₂: --%\n\n\PI: --"
+            android:textSize="35sp"
+            android:textColor="#333333"/>
+
+        <!-- SpO2 Label SpO₂/Perfusion -->
+        <TextView
+            android:id="@+id/spo2label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignLeft="@id/spo2"
+            android:layout_alignTop="@id/spo2"
+            android:layout_marginTop="6dp"
+            android:layout_marginLeft="8dp"
+            android:text="SpO₂/Perfusion"
+            android:textSize="20sp"
+            android:textColor="#888888"/>
+
+        <!-- SpO2 Unit -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@id/spo2"
+            android:layout_alignRight="@id/spo2"
+            android:layout_marginBottom="6dp"
+            android:layout_marginRight="8dp"
+            android:text=""
+            android:textSize="20sp"
+            android:textColor="#888888"/>
+
+    </RelativeLayout>
+
+    <!-- Buttons Section with Equal Weight -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="20dp"
+        android:gravity="center"
+        android:paddingHorizontal="16dp">
+
+        <Button
+            android:id="@+id/annotateButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="50dp"
+            android:text="Annotate"
+            android:textSize="20sp"
+            android:textColor="@android:color/white"
+            android:background="@drawable/rounded_button_blue" />
+<!--        <Switch-->
+<!--            android:id="@+id/switchButton"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Switch Button" />-->
+<!--        <Button-->
+<!--            android:id="@+id/showDevicesButton"-->
+<!--            android:layout_width="0dp"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_weight="1"-->
+<!--            android:text="Connected Devices"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            android:background="@drawable/rounded_button_green"-->
+<!--            android:layout_marginEnd="8dp"/>-->
+
+<!--        <Button-->
+<!--            android:id="@+id/patientInfoButton"-->
+<!--            android:layout_width="0dp"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_weight="1"-->
+<!--            android:text="Patient Info"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            android:background="@drawable/rounded_button_blue"-->
+<!--            android:layout_marginStart="8dp"/>-->
+
+<!--        &lt;!&ndash; New Button to Manage Files &ndash;&gt;-->
+<!--        <Button-->
+<!--            android:id="@+id/manageFilesButton"-->
+<!--            android:layout_width="0dp"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_weight="1"-->
+<!--            android:text="Manage Files"-->
+<!--            android:textColor="@android:color/white"-->
+<!--            android:background="@drawable/rounded_button_orange"-->
+<!--            android:layout_marginStart="8dp"/>-->
+
+    </LinearLayout>
+
+    <!-- Connect Button -->
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="20dp">
+
+        <Button
+            android:id="@+id/button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="50dp"
+            android:text="Connect"
+            android:textSize="20sp"
+            android:textColor="@android:color/white"
+            android:background="@drawable/rounded_button_orange" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+    </FrameLayout>
+
+</LinearLayout>
+

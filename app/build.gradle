@@ -1,0 +1,81 @@
+apply plugin: 'com.android.application'
+
+
+android {
+    compileSdkVersion 35
+//    buildToolsVersion "30.0.2"
+    buildToolsVersion "34.0.0"
+
+    defaultConfig {
+        applicationId "com.smartcare.oximetry.sample"
+//        minSdkVersion 18
+        minSdkVersion 29
+        targetSdkVersion 35
+        versionCode 17
+        versionName "2.0.1"
+        vectorDrawables {
+            useSupportLibrary true
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    //new
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+//        sourceCompatibility JavaVersion.VERSION_11
+//        targetCompatibility JavaVersion.VERSION_11
+    }
+    //new for jdsp
+    packagingOptions {
+        // Exclude these files because they conflict with those imported from the jDSP package
+        exclude 'META-INF/*'
+    }
+    namespace 'com.smartcare.oximetry.sample'
+
+}
+
+repositories {
+    maven { url "https://maven.google.com" }
+    mavenCentral()
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation name: 'scolib-2.0.0', ext: 'aar'
+    implementation 'com.androidplot:androidplot-core:0.6.1'
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation 'com.opencsv:opencsv:4.1'
+
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.9.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.9.0' //end
+//    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.4.0'
+    implementation 'com.github.psambit9791:jdsp:0.2.0'//new end
+    implementation "androidx.work:work-runtime:2.7.1"
+//    implementation 'androidx.activity:activity:1.9.3'
+//    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
+
+//    implementation 'androidx.appcompat:appcompat:1.7.0'
+    //
+//    implementation 'com.google.android.material:material:1.12.0'
+//    implementation 'androidx.activity:activity:1.9.2'
+//    implementation 'com.squareup.okhttp3:okhttp:4.9.0'
+//    implementation 'com.rabbitmq:amqp-client:5.5.0'
+//    implementation 'com.google.android.material:material:1.12.0'
+//    implementation 'com.google.code.gson:gson:2.6.2'
+//    implementation 'org.java-websocket:Java-WebSocket:1.5.2'
+
+}
+
+

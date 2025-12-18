@@ -1,0 +1,82 @@
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Files for the dex VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Configuration files with sensitive data
+config.properties
+keystore.properties
+
+# Keystore files - NEVER commit these!
+*.keystore
+*.jks
+
+# Release files
+release/
+app/release/
+*/release/
+
+# Signing files
+signing.properties
+keystore.properties
+release.properties
+
+# Windows thumbnail db
+Thumbs.db
+
+# OSX files
+.DS_Store
+
+# Eclipse project files
+.classpath
+.project
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# NDK
+obj/
+.externalNativeBuild/
+
+# Gradle files
+.gradle/
+gradle-app.setting
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log Files
+*.log
+
+# Android Profiling
+*.hprof
+
+# Backup files
+*~
+*.swp
+*.bak
+*.tmp
+*.orig
+*.rej
