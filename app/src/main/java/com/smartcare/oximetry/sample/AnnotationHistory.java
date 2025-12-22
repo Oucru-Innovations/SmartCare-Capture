@@ -90,7 +90,7 @@ public class AnnotationHistory {
                     row.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
-                            showAnnotationOptions(context, patientCode, position, entry);
+                            showAnnotationOptions(context, patientCode, entry);
                         }
                     });
 
@@ -126,7 +126,7 @@ public class AnnotationHistory {
     }
 
     private static void showAnnotationOptions(final Context context, final String patientCode,
-                                              final int position, final ShowAnnotate.AnnotationEntry entry) {
+                                              final ShowAnnotate.AnnotationEntry entry) {
         String[] options = {"Edit", "Delete", "Cancel"};
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
@@ -134,10 +134,10 @@ public class AnnotationHistory {
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
                 case 0: // Edit
-                    showEditDialog(context, patientCode, position, entry);
+                    showEditDialog(context, patientCode, entry);
                     break;
                 case 1: // Delete
-                    showDeleteConfirmation(context, patientCode, position);
+                    showDeleteConfirmation(context, patientCode, entry);
                     break;
             }
         });
@@ -145,7 +145,7 @@ public class AnnotationHistory {
     }
 
     private static void showEditDialog(final Context context, final String patientCode,
-                                       final int position, final ShowAnnotate.AnnotationEntry entry) {
+                                       final ShowAnnotate.AnnotationEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Edit Note");
 
@@ -160,7 +160,7 @@ public class AnnotationHistory {
             String newNote = input.getText().toString();
             if (!newNote.isEmpty()) {
                 ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
-                annotate.updateAnnotation(position, newNote);
+                annotate.updateAnnotationByEntry(entry, newNote);
                 // Refresh the dialog
                 showAnnotationHistory(context, patientCode);
             }
@@ -170,14 +170,14 @@ public class AnnotationHistory {
         builder.show();
     }
 
-    private static void showDeleteConfirmation(final Context context, final String patientCode, final int position) {
+    private static void showDeleteConfirmation(final Context context, final String patientCode, final ShowAnnotate.AnnotationEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Delete Note");
         builder.setMessage("Are you sure you want to delete this note?");
 
         builder.setPositiveButton("Delete", (dialog, which) -> {
             ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
-            annotate.deleteAnnotation(position);
+            annotate.deleteAnnotation(entry);
             // Refresh the dialog
             showAnnotationHistory(context, patientCode);
         });
