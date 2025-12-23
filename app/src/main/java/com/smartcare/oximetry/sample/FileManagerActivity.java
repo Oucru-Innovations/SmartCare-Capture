@@ -344,35 +344,14 @@ public class FileManagerActivity extends Activity {
                         // Run on UI thread since we're updating UI
                         runOnUiThread(() -> {
                             if (success) {
-                                // Create Uploaded directory if it doesn't exist
-                                File uploadedDir = getUploadedDirectory();
-                                if (!uploadedDir.exists()) {
-                                    boolean created = uploadedDir.mkdirs();
-                                    Log.d(TAG, "Uploaded directory created: " + created);
-                                }
-
-                                // Move file to Uploaded directory
-                                File newFile = new File(uploadedDir, csvFile.getFile().getName());
-                                if (csvFile.getFile().renameTo(newFile)) {
-                                    // Remove the file from the active list and update both lists
-                                    csvFiles.remove(position);
-                                    notifyDataSetChanged();
-                                    updateActiveFileList();
-
-                                    // Refresh uploaded files to show the new file
-                                    loadUploadedFiles();
-
-                                    Toast.makeText(FileManagerActivity.this,
-                                            "File uploaded successfully and moved to Uploaded folder",
-                                            Toast.LENGTH_SHORT).show();
-
-                                    Log.d(TAG, "File moved to: " + newFile.getAbsolutePath());
-                                } else {
-                                    Toast.makeText(FileManagerActivity.this,
-                                            "Upload successful but failed to move file",
-                                            Toast.LENGTH_SHORT).show();
-                                    Log.e(TAG, "Failed to move file to uploaded directory");
-                                }
+                                // upload and move file in FileUploader
+                                loadCsvFiles();
+                                loadUploadedFiles();
+                                Toast.makeText(
+                                        FileManagerActivity.this,
+                                        "File uploaded successfully",
+                                        Toast.LENGTH_SHORT
+                                ).show();
                             } else {
                                 // If upload failed, file stays in place
                                 Toast.makeText(FileManagerActivity.this,

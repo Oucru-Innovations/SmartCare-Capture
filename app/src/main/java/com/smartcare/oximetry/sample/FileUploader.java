@@ -1,6 +1,9 @@
 package com.smartcare.oximetry.sample;
 
 import com.smartcare.oximetry.sample.config.ApiConfig;
+import com.smartcare.oximetry.sample.network.RetrofitClient;
+import com.smartcare.oximetry.sample.network.ApiService;
+
 import android.app.Activity;
 import android.content.Context;
 import android.os.Handler;
@@ -259,7 +262,9 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
 
             String checksum = calculateMD5(activity, filePath);
 
-            ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+            ApiService apiService =
+                    RetrofitClient.getInstance().create(ApiService.class);
+
 //            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); // for api/v1/file/smapp/upload
             Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
             call.enqueue(new Callback<ResponseBody>() {
@@ -301,7 +306,9 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
 
         String checksum = calculateMD5(activity, filePath);
 
-        ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+        ApiService apiService =
+                RetrofitClient.getInstance().create(ApiService.class);
+
 //        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); //for api/v1/file/smapp/upload
         Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
         call.enqueue(new Callback<ResponseBody>() {
@@ -461,7 +468,9 @@ public static String calculateMD5(Context context, String filePath) {
 
                 String checksum = calculateMD5(appContext, filePath);
 
-                ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+                ApiService apiService =
+                        RetrofitClient.getInstance().create(ApiService.class);
+
 //                Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); // for api/v1/file/smapp/upload
                 Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
                 call.enqueue(new Callback<ResponseBody>() {
@@ -500,7 +509,9 @@ public static String calculateMD5(Context context, String filePath) {
 
             String checksum = calculateMD5(appContext, filePath);
 
-            ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
+            ApiService apiService =
+                    RetrofitClient.getInstance().create(ApiService.class);
+
 //            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);//for api/v1/file/smapp/upload
             Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
             call.enqueue(new Callback<ResponseBody>() {
@@ -534,31 +545,31 @@ public static String calculateMD5(Context context, String filePath) {
             callback.onUploadComplete(false, "Max retry attempts reached");
         }
     }
-    private static class RetrofitClient {
-        private static Retrofit retrofit = null;
+//    private static class RetrofitClient {
+//        private static Retrofit retrofit = null;
+//
+//        public static Retrofit getClient() {
+//            if (retrofit == null) {
+//                retrofit = new Retrofit.Builder()
+//                        .baseUrl(ApiConfig.BASE_URL)
+//                        .addConverterFactory(GsonConverterFactory.create())
+//                        .build();
+//            }
+//            return retrofit;
+//        }
+//    }
 
-        public static Retrofit getClient() {
-            if (retrofit == null) {
-                retrofit = new Retrofit.Builder()
-                        .baseUrl(ApiConfig.BASE_URL)
-                        .addConverterFactory(GsonConverterFactory.create())
-                        .build();
-            }
-            return retrofit;
-        }
-    }
-
-    private interface ApiService {
-        @Multipart
-//        @POST("api/v1/file/smapp/upload")
-        @POST("api/v1/file/upload") //route for upload nepal server
-        Call<ResponseBody> uploadFile(
-//                @Header("x-static-token") String staticToken,
-//                @Header("x-content-md5") String checksum,
-                @Part MultipartBody.Part file,
-                @Part("owner") RequestBody owner
-        );
-    }
+//    private interface ApiService {
+//        @Multipart
+////        @POST("api/v1/file/smapp/upload")
+//        @POST("api/v1/file/upload") //route for upload nepal server
+//        Call<ResponseBody> uploadFile(
+////                @Header("x-static-token") String staticToken,
+////                @Header("x-content-md5") String checksum,
+//                @Part MultipartBody.Part file,
+//                @Part("owner") RequestBody owner
+//        );
+//    }
 
     public static String getBaseUrl() {
         return ApiConfig.BASE_URL;
