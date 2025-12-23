@@ -16,14 +16,14 @@
 ### 1.1. Activity Layouts (Màn hình chính)
 
 | File | Mô tả | Activity sử dụng |
-|------|-------|------------------|
+|---------------------|------------------------------------------------------------------------|-----------------------|
 | `activity_main.xml` | Màn hình chính - Hiển thị đồ thị PPG, HR, SpO2, nút Connect/Disconnect | `RecordActivity.java` |
 | `activity_file_manager.xml` | Màn hình quản lý file - Danh sách CSV files, upload files | `FileManagerActivity.java` |
 
 ### 1.2. Popup/Dialog Layouts
 
 | File | Mô tả | Sử dụng trong |
-|------|-------|--------------|
+|--------------------------|-------------------------------------------------------------------------------|-------------------------|
 | `patient_info_popup.xml` | Popup nhập thông tin bệnh nhân (Patient Code) - **POPUP ĐẦU TIÊN KHI MỞ APP** | `PatientInfoPopup.java` |
 | `chunk_file_config_popup.xml` | Popup cấu hình chunk files | `ChunkFileConfigPopup.java` |
 | `popup_connected_devices.xml` | Popup hiển thị danh sách thiết bị đã kết nối | `RecordActivity.java` (menu) |

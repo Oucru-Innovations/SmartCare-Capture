@@ -125,6 +125,12 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.provider.Settings;
 import com.github.psambit9791.jdsp.signal.Detrend;
+
+import android.util.Log;
+import com.smartcare.oximetry.sample.BuildConfig;
+
+
+
 /**
  * This Activity is responsible for recording, displaying and uploading a physiological signal
  * using a SmartCare Analytics Ltd. Bluetooth pulse oximeter.
@@ -892,7 +898,7 @@ public class RecordActivity extends Activity {
 
         patientInfoPopup.resetPatientCode();
 
-
+        Log.d("TEST_CONFIG", BuildConfig.BASE_URL);
 
 //        updateMacAddressDisplay();
     }

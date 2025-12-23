@@ -1,5 +1,6 @@
 package com.smartcare.oximetry.sample;
 
+import com.smartcare.oximetry.sample.config.ApiConfig;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Handler;
@@ -39,11 +40,11 @@ import java.io.OutputStream;
 public class FileUploader {
 
 //    private static final String BASE_URL = "http://13.250.243.25:8080/";
-    private static final String BASE_URL = "http://103.213.124.230/";
+//    private static final String BASE_URL = "http://103.213.124.230/";
 //    private static final String BASE_URL = "http://vital-ei.oucru.org/";
     private static final int RETRY_DELAY_MS = 10000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
+//    private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
 
     private static int retryCount = 0;
 
@@ -539,7 +540,7 @@ public static String calculateMD5(Context context, String filePath) {
         public static Retrofit getClient() {
             if (retrofit == null) {
                 retrofit = new Retrofit.Builder()
-                        .baseUrl(BASE_URL)
+                        .baseUrl(ApiConfig.BASE_URL)
                         .addConverterFactory(GsonConverterFactory.create())
                         .build();
             }
@@ -560,7 +561,7 @@ public static String calculateMD5(Context context, String filePath) {
     }
 
     public static String getBaseUrl() {
-        return BASE_URL;
+        return ApiConfig.BASE_URL;
     }
 }
 
