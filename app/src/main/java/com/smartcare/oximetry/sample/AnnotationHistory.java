@@ -28,6 +28,12 @@ public class AnnotationHistory {
     private static final String TAG = "AnnotationHistory";
     private static final Gson gson = new Gson();
 
+    // Store references to active dialogs to properly dismiss them
+    private static AlertDialog activeMainDialog;
+    private static AlertDialog activeOptionsDialog;
+    private static AlertDialog activeEditDialog;
+    private static AlertDialog activeDeleteDialog;
+
     public static void showAnnotationHistory(Context context, String patientCode) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Annotation");
@@ -90,7 +96,7 @@ public class AnnotationHistory {
                     row.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
-                            showAnnotationOptions(context, patientCode, position, entry);
+                            showAnnotationOptions(context, patientCode, entry);
                         }
                     });
 
@@ -102,7 +108,11 @@ public class AnnotationHistory {
         }
 
         builder.setPositiveButton("Close", null);
-        builder.show();
+        // Dismiss any existing main dialog before showing new one
+        if (activeMainDialog != null && activeMainDialog.isShowing()) {
+            activeMainDialog.dismiss();
+        }
+        activeMainDialog = builder.show();
     }
 
     private static List<ShowAnnotate.AnnotationEntry> loadAnnotations(Context context) {
@@ -126,26 +136,35 @@ public class AnnotationHistory {
     }
 
     private static void showAnnotationOptions(final Context context, final String patientCode,
-                                              final int position, final ShowAnnotate.AnnotationEntry entry) {
+                                              final ShowAnnotate.AnnotationEntry entry) {
         String[] options = {"Edit", "Delete", "Cancel"};
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Options");
         builder.setItems(options, (dialog, which) -> {
+            // Dismiss the options dialog
+            if (activeOptionsDialog != null && activeOptionsDialog.isShowing()) {
+                activeOptionsDialog.dismiss();
+            }
+
             switch (which) {
                 case 0: // Edit
-                    showEditDialog(context, patientCode, position, entry);
+                    showEditDialog(context, patientCode, entry);
                     break;
                 case 1: // Delete
-                    showDeleteConfirmation(context, patientCode, position);
+                    showDeleteConfirmation(context, patientCode, entry);
                     break;
             }
         });
-        builder.show();
+        // Dismiss any existing options dialog before showing new one
+        if (activeOptionsDialog != null && activeOptionsDialog.isShowing()) {
+            activeOptionsDialog.dismiss();
+        }
+        activeOptionsDialog = builder.show();
     }
 
     private static void showEditDialog(final Context context, final String patientCode,
-                                       final int position, final ShowAnnotate.AnnotationEntry entry) {
+                                       final ShowAnnotate.AnnotationEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Edit Note");
 
@@ -160,30 +179,58 @@ public class AnnotationHistory {
             String newNote = input.getText().toString();
             if (!newNote.isEmpty()) {
                 ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
-                annotate.updateAnnotation(position, newNote);
+                annotate.updateAnnotationByEntry(entry, newNote);
+                // Dismiss the edit dialog
+                if (activeEditDialog != null && activeEditDialog.isShowing()) {
+                    activeEditDialog.dismiss();
+                }
                 // Refresh the dialog
                 showAnnotationHistory(context, patientCode);
             }
         });
 
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
+        builder.setNegativeButton("Cancel", (dialog, which) -> {
+            // Dismiss the edit dialog when canceled
+            if (activeEditDialog != null && activeEditDialog.isShowing()) {
+                activeEditDialog.dismiss();
+            }
+        });
+
+        // Dismiss any existing edit dialog before showing new one
+        if (activeEditDialog != null && activeEditDialog.isShowing()) {
+            activeEditDialog.dismiss();
+        }
+        activeEditDialog = builder.show();
     }
 
-    private static void showDeleteConfirmation(final Context context, final String patientCode, final int position) {
+    private static void showDeleteConfirmation(final Context context, final String patientCode, final ShowAnnotate.AnnotationEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Delete Note");
         builder.setMessage("Are you sure you want to delete this note?");
 
         builder.setPositiveButton("Delete", (dialog, which) -> {
             ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
-            annotate.deleteAnnotation(position);
+            annotate.deleteAnnotation(entry);
+            // Dismiss the delete dialog
+            if (activeDeleteDialog != null && activeDeleteDialog.isShowing()) {
+                activeDeleteDialog.dismiss();
+            }
             // Refresh the dialog
             showAnnotationHistory(context, patientCode);
         });
 
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
+        builder.setNegativeButton("Cancel", (dialog, which) -> {
+            // Dismiss the delete dialog when canceled
+            if (activeDeleteDialog != null && activeDeleteDialog.isShowing()) {
+                activeDeleteDialog.dismiss();
+            }
+        });
+
+        // Dismiss any existing delete dialog before showing new one
+        if (activeDeleteDialog != null && activeDeleteDialog.isShowing()) {
+            activeDeleteDialog.dismiss();
+        }
+        activeDeleteDialog = builder.show();
     }
 
     private static File getAnnotationFile(Context context) {

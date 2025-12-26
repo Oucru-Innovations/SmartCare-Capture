@@ -216,12 +216,6 @@ public class ShowAnnotate {
                 }
             }
 
-            // Remove oldest if there are already 5 notes
-            if (patientNotes.size() >= 5) {
-                AnnotationEntry oldest = Collections.min(patientNotes, Comparator.comparing(AnnotationEntry::getTimestamp));
-                annotations.remove(oldest);
-            }
-
             // Create note content from the fields
             String noteContent = (isCollectedAsScheduled ? "Reason for Invalid Data: " : "Reason for Not Collecting: ") + reason;
 
@@ -237,6 +231,10 @@ public class ShowAnnotate {
 
             // Add new annotation
             annotations.add(newEntry);
+
+            // Now enforce the 5-note limit for this patient only
+            enforcePatientAnnotationLimit(annotations, patientCode);
+
             // Save to file
             saveAnnotations(annotations);
 
@@ -372,6 +370,24 @@ public class ShowAnnotate {
         return new File(oximeterDataDir, "Annotation");
     }
 
+    // Enforce the 5-note limit for a specific patient
+    private void enforcePatientAnnotationLimit(List<AnnotationEntry> annotations, String patientCode) {
+        // Filter notes for this patient
+        List<AnnotationEntry> patientNotes = new ArrayList<>();
+        for (AnnotationEntry entry : annotations) {
+            if (entry.getPatientCode().equals(patientCode)) {
+                patientNotes.add(entry);
+            }
+        }
+
+        // If this patient has more than 5 notes, remove the oldest ones
+        while (patientNotes.size() > 5) {
+            AnnotationEntry oldest = Collections.min(patientNotes, Comparator.comparing(AnnotationEntry::getTimestamp));
+            annotations.remove(oldest);
+            patientNotes.remove(oldest);
+        }
+    }
+
     // Update an existing annotation
     public void updateAnnotation(int index, String newContent) {
         try {
@@ -381,6 +397,33 @@ public class ShowAnnotate {
                 annotations.get(index).setNote(newContent);
                 saveAnnotations(annotations);
                 Toast.makeText(context, "Note updated", Toast.LENGTH_SHORT).show();
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error updating annotation", e);
+            Toast.makeText(context, "Failed to update note", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // Update an existing annotation by entry reference
+    public void updateAnnotationByEntry(AnnotationEntry entryToUpdate, String newContent) {
+        try {
+            List<AnnotationEntry> annotations = loadAnnotations();
+
+            boolean updated = false;
+            for (AnnotationEntry entry : annotations) {
+                if (entry == entryToUpdate ||
+                        (entry.getTimestamp().equals(entryToUpdate.getTimestamp()) &&
+                                entry.getPatientCode().equals(entryToUpdate.getPatientCode()))) {
+                    entry.setNote(newContent);
+                    updated = true;
+                    break;
+                }
+            }
+            if (updated) {
+                saveAnnotations(annotations);
+                Toast.makeText(context, "Note updated", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(context, "Note not found", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             Log.e(TAG, "Error updating annotation", e);
@@ -402,6 +445,34 @@ public class ShowAnnotate {
             Log.e(TAG, "Error deleting annotation", e);
             Toast.makeText(context, "Failed to delete note", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    public void deleteAnnotation(AnnotationEntry entryToDelete) {
+        try {
+            List<AnnotationEntry> annotations = loadAnnotations();
+            // find and remove the specific entry
+            boolean removed = false;
+            for (int  i = 0; i < annotations.size(); i++) {
+                if (annotations.get(i) == entryToDelete ||
+                        (annotations.get(i).getTimestamp().equals(entryToDelete.getTimestamp()) &&
+                                annotations.get(i).getPatientCode().equals(entryToDelete.getPatientCode()))) {
+                    annotations.remove(i);
+                    removed = true;
+                    break;
+                }
+            }
+
+            if (removed) {
+                saveAnnotations(annotations);
+                Toast.makeText(context, "Note deleted", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(context, "Note not found", Toast.LENGTH_SHORT).show();
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error deleting annotation", e);
+            Toast.makeText(context, "Failed to delete note", Toast.LENGTH_SHORT).show();
+        }
+
     }
 
     // Legacy methods for compatibility - these can be simplified since JSON doesn't need open writers
