@@ -3,6 +3,7 @@ package com.smartcare.oximetry.sample;
 import com.smartcare.oximetry.sample.config.ApiConfig;
 import com.smartcare.oximetry.sample.network.RetrofitClient;
 import com.smartcare.oximetry.sample.network.ApiService;
+import com.smartcare.oximetry.sample.network.UploadResponse;
 
 import android.app.Activity;
 import android.content.Context;
@@ -266,25 +267,39 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                     RetrofitClient.getInstance().create(ApiService.class);
 
 //            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); // for api/v1/file/smapp/upload
-            Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
-            call.enqueue(new Callback<ResponseBody>() {
+            Call<UploadResponse> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
+            call.enqueue(new Callback<UploadResponse>() {
                 @Override
-                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                public void onResponse(Call<UploadResponse> call, Response<UploadResponse> response) {
                     tempFile.delete(); // Clean up temp file
-                    if (response.isSuccessful()) {
-                        Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
-                        Log.i("FileUploader", "File upload successful");
-                        retryCount = 0;
-                        callback.onUploadComplete(true, "File upload successful");
+                    if (response.isSuccessful() && response.body() != null) {
+                        UploadResponse uploadResponse = response.body();
+                        String message = uploadResponse.getMessage();
+                        
+                        // Only consider upload successful if server confirms with specific messages
+                        if (message != null && 
+                            (message.equals("File uploaded successfully!") || 
+                             message.equals("File uploaded successfully"))) {
+                            Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
+                            Log.i("FileUploader", "File upload successful: " + message);
+                            retryCount = 0;
+                            callback.onUploadComplete(true, message);
+                        } else {
+                            String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
+                            Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
+                            Log.e("FileUploader", "File upload failed: " + errorMsg);
+                            callback.onUploadComplete(false, errorMsg);
+                        }
                     } else {
-                        Toast.makeText(activity, "File upload failed: " + response.message(), Toast.LENGTH_SHORT).show();
-                        Log.e("FileUploader", "File upload failed: " + response.message());
+                        String errorMsg = response.message() != null ? response.message() : "Unknown error";
+                        Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
+                        Log.e("FileUploader", "File upload failed: " + errorMsg);
                         scheduleRetry(activity, filePath, callback);
                     }
                 }
 
                 @Override
-                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                public void onFailure(Call<UploadResponse> call, Throwable t) {
                     tempFile.delete(); // Clean up temp file
                     Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "Error uploading file", t);
@@ -310,24 +325,38 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                 RetrofitClient.getInstance().create(ApiService.class);
 
 //        Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); //for api/v1/file/smapp/upload
-        Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
-        call.enqueue(new Callback<ResponseBody>() {
+        Call<UploadResponse> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
+        call.enqueue(new Callback<UploadResponse>() {
             @Override
-            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-                if (response.isSuccessful()) {
-                    Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
-                    Log.i("FileUploader", "File upload successful");
-                    retryCount = 0;
-                    callback.onUploadComplete(true, "File upload successful");
+            public void onResponse(Call<UploadResponse> call, Response<UploadResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    UploadResponse uploadResponse = response.body();
+                    String message = uploadResponse.getMessage();
+                    
+                    // Only consider upload successful if server confirms with specific messages
+                    if (message != null && 
+                        (message.equals("File uploaded successfully!") || 
+                         message.equals("File uploaded successfully"))) {
+                        Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
+                        Log.i("FileUploader", "File upload successful: " + message);
+                        retryCount = 0;
+                        callback.onUploadComplete(true, message);
+                    } else {
+                        String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
+                        Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
+                        Log.e("FileUploader", "File upload failed: " + errorMsg);
+                        callback.onUploadComplete(false, errorMsg);
+                    }
                 } else {
-                    Toast.makeText(activity, "File upload failed: " + response.message(), Toast.LENGTH_SHORT).show();
-                    Log.e("FileUploader", "File upload failed: " + response.message());
+                    String errorMsg = response.message() != null ? response.message() : "Unknown error";
+                    Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
+                    Log.e("FileUploader", "File upload failed: " + errorMsg);
                     scheduleRetry(activity, filePath, callback);
                 }
             }
 
             @Override
-            public void onFailure(Call<ResponseBody> call, Throwable t) {
+            public void onFailure(Call<UploadResponse> call, Throwable t) {
                 Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                 Log.e("FileUploader", "Error uploading file", t);
                 scheduleRetry(activity, filePath, callback);
@@ -472,23 +501,36 @@ public static String calculateMD5(Context context, String filePath) {
                         RetrofitClient.getInstance().create(ApiService.class);
 
 //                Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner); // for api/v1/file/smapp/upload
-                Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
-                call.enqueue(new Callback<ResponseBody>() {
+                Call<UploadResponse> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
+                call.enqueue(new Callback<UploadResponse>() {
                     @Override
-                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    public void onResponse(Call<UploadResponse> call, Response<UploadResponse> response) {
                         tempFile.delete(); // Clean up temp file
-                        if (response.isSuccessful()) {
-                            Log.i("FileUploader", "File upload successful");
-                            retryCount = 0;
-                            callback.onUploadComplete(true, "File upload successful");
+                        if (response.isSuccessful() && response.body() != null) {
+                            UploadResponse uploadResponse = response.body();
+                            String message = uploadResponse.getMessage();
+                            
+                            // Only consider upload successful if server confirms with specific messages
+                            if (message != null && 
+                                (message.equals("File uploaded successfully!") || 
+                                 message.equals("File uploaded successfully"))) {
+                                Log.i("FileUploader", "File upload successful: " + message);
+                                retryCount = 0;
+                                callback.onUploadComplete(true, message);
+                            } else {
+                                String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
+                                Log.e("FileUploader", "File upload failed: " + errorMsg);
+                                callback.onUploadComplete(false, errorMsg);
+                            }
                         } else {
-                            Log.e("FileUploader", "File upload failed: " + response.message());
+                            String errorMsg = response.message() != null ? response.message() : "Unknown error";
+                            Log.e("FileUploader", "File upload failed: " + errorMsg);
                             scheduleRetryWithoutActivity(filePath, callback);
                         }
                     }
 
                     @Override
-                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    public void onFailure(Call<UploadResponse> call, Throwable t) {
                         tempFile.delete(); // Clean up temp file
                         Log.e("FileUploader", "Error uploading file", t);
                         scheduleRetryWithoutActivity(filePath, callback);
@@ -513,22 +555,35 @@ public static String calculateMD5(Context context, String filePath) {
                     RetrofitClient.getInstance().create(ApiService.class);
 
 //            Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN,checksum,body, owner);//for api/v1/file/smapp/upload
-            Call<ResponseBody> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
-            call.enqueue(new Callback<ResponseBody>() {
+            Call<UploadResponse> call = apiService.uploadFile(body, owner); // for api/v1/file/upload
+            call.enqueue(new Callback<UploadResponse>() {
                 @Override
-                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-                    if (response.isSuccessful()) {
-                        Log.i("FileUploader", "File upload successful");
-                        retryCount = 0;
-                        callback.onUploadComplete(true, "File upload successful");
+                public void onResponse(Call<UploadResponse> call, Response<UploadResponse> response) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        UploadResponse uploadResponse = response.body();
+                        String message = uploadResponse.getMessage();
+                        
+                        // Only consider upload successful if server confirms with specific messages
+                        if (message != null && 
+                            (message.equals("File uploaded successfully!") || 
+                             message.equals("File uploaded successfully"))) {
+                            Log.i("FileUploader", "File upload successful: " + message);
+                            retryCount = 0;
+                            callback.onUploadComplete(true, message);
+                        } else {
+                            String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
+                            Log.e("FileUploader", "File upload failed: " + errorMsg);
+                            callback.onUploadComplete(false, errorMsg);
+                        }
                     } else {
-                        Log.e("FileUploader", "File upload failed: " + response.message());
+                        String errorMsg = response.message() != null ? response.message() : "Unknown error";
+                        Log.e("FileUploader", "File upload failed: " + errorMsg);
                         scheduleRetryWithoutActivity(filePath, callback);
                     }
                 }
 
                 @Override
-                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                public void onFailure(Call<UploadResponse> call, Throwable t) {
                     Log.e("FileUploader", "Error uploading file", t);
                     scheduleRetryWithoutActivity(filePath, callback);
                 }

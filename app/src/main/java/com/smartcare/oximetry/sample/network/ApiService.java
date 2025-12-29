@@ -12,7 +12,7 @@ public interface ApiService {
 
     @Multipart
     @POST("api/v1/file/upload")
-    Call<ResponseBody> uploadFile(
+    Call<UploadResponse> uploadFile(
             @Part MultipartBody.Part file,
             @Part("owner") RequestBody owner
     );
