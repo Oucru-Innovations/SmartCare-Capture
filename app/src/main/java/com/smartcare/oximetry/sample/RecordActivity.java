@@ -190,6 +190,8 @@ public class RecordActivity extends Activity {
     private boolean isConnected = false;
 //    test
     private String filePath;
+    // Bluetooth Event Interceptor
+    private BluetoothEventInterceptor bluetoothInterceptor;
     //trend line
     private SimpleXYSeries mTrendSeries;  // Trendline data
     //chunk file config
@@ -635,10 +637,14 @@ public class RecordActivity extends Activity {
             mControlButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    stopDisconnectExit();
+                     stopDisconnectExit();
                     blockedList.add(connectedMac);
                     //new
                     isConnected = false; //new
+                    // Clear interceptor MAC address on disconnect
+                    if (bluetoothInterceptor != null) {
+                        bluetoothInterceptor.setConnectedMacAddress(null);
+                    }
 //                    bluetoothAdapter.startDiscovery(); // new
                     if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
                             ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
@@ -891,6 +897,10 @@ public class RecordActivity extends Activity {
         if (connectionManager == null) {
             connectionManager = new ConnectionManager(this, mHandler);
         }
+        
+        // Initialize Bluetooth Event Interceptor
+        bluetoothInterceptor = new BluetoothEventInterceptor(this, macAddressQueue);
+        Log.i(TAG, "BluetoothEventInterceptor initialized");
         //new
         if(connectionManager.isRecording()){
 
@@ -1051,6 +1061,10 @@ public class RecordActivity extends Activity {
                             boolean success = connectionManager.connect(deviceMac);
                             if(success){
                                 isConnected = true;
+                                // Update interceptor with connected MAC address
+                                if (bluetoothInterceptor != null) {
+                                    bluetoothInterceptor.setConnectedMacAddress(deviceMac);
+                                }
                                 //pause scanning
                                 Log.i(getString(R.string.app_name), "Connector task started");
                                 mControlButton.setText(getString(R.string.record_stop));
@@ -1707,6 +1721,12 @@ public class RecordActivity extends Activity {
 
         if (scanHandler != null && scanRunnable != null) {
             scanHandler.removeCallbacks(scanRunnable);
+        }
+        
+        // Cleanup Bluetooth Event Interceptor
+        if (bluetoothInterceptor != null) {
+            bluetoothInterceptor.cleanup();
+            Log.i(TAG, "BluetoothEventInterceptor cleaned up");
         }
 
         // Unregister Bluetooth receiver to prevent memory leaks

@@ -41,6 +41,9 @@ import android.net.Uri;
 import android.provider.MediaStore;
 import java.io.InputStream;
 import java.io.OutputStream;
+// For logging JSON response
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 public class FileUploader {
 
 //    private static final String BASE_URL = "http://13.250.243.25:8080/";
@@ -53,6 +56,9 @@ public class FileUploader {
     private static int retryCount = 0;
 
     private static Context appContext;
+    
+    // Gson instance for logging JSON response
+    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     // to non activity context
     public static void setAppContext(Context context) {
@@ -276,6 +282,16 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                         UploadResponse uploadResponse = response.body();
                         String message = uploadResponse.getMessage();
                         
+                        // Log complete JSON response from server
+                        String jsonResponse = gson.toJson(uploadResponse);
+                        Log.i("FileUploader", "Server Response JSON:\n" + jsonResponse);
+                        
+                        // Log file information if available
+                        if (uploadResponse.getFile() != null) {
+                            UploadResponse.FileInfo fileInfo = uploadResponse.getFile();
+                            Log.i("FileUploader", "File ID: " + fileInfo.getId() + ", Filename: " + fileInfo.getFilename());
+                        }
+                        
                         // Only consider upload successful if server confirms with specific messages
                         if (message != null && 
                             (message.equals("File uploaded successfully!") || 
@@ -294,6 +310,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                         String errorMsg = response.message() != null ? response.message() : "Unknown error";
                         Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
+                        Log.e("FileUploader", "Response code: " + response.code());
                         scheduleRetry(activity, filePath, callback);
                     }
                 }
@@ -333,6 +350,16 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                     UploadResponse uploadResponse = response.body();
                     String message = uploadResponse.getMessage();
                     
+                    // Log complete JSON response from server
+                    String jsonResponse = gson.toJson(uploadResponse);
+                    Log.i("FileUploader", "Server Response JSON:\n" + jsonResponse);
+                    
+                    // Log file information if available
+                    if (uploadResponse.getFile() != null) {
+                        UploadResponse.FileInfo fileInfo = uploadResponse.getFile();
+                        Log.i("FileUploader", "File ID: " + fileInfo.getId() + ", Filename: " + fileInfo.getFilename());
+                    }
+                    
                     // Only consider upload successful if server confirms with specific messages
                     if (message != null && 
                         (message.equals("File uploaded successfully!") || 
@@ -351,6 +378,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                     String errorMsg = response.message() != null ? response.message() : "Unknown error";
                     Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "File upload failed: " + errorMsg);
+                    Log.e("FileUploader", "Response code: " + response.code());
                     scheduleRetry(activity, filePath, callback);
                 }
             }
@@ -510,6 +538,16 @@ public static String calculateMD5(Context context, String filePath) {
                             UploadResponse uploadResponse = response.body();
                             String message = uploadResponse.getMessage();
                             
+                            // Log complete JSON response from server
+                            String jsonResponse = gson.toJson(uploadResponse);
+                            Log.i("FileUploader", "Server Response JSON:\n" + jsonResponse);
+                            
+                            // Log file information if available
+                            if (uploadResponse.getFile() != null) {
+                                UploadResponse.FileInfo fileInfo = uploadResponse.getFile();
+                                Log.i("FileUploader", "File ID: " + fileInfo.getId() + ", Filename: " + fileInfo.getFilename());
+                            }
+                            
                             // Only consider upload successful if server confirms with specific messages
                             if (message != null && 
                                 (message.equals("File uploaded successfully!") || 
@@ -525,6 +563,7 @@ public static String calculateMD5(Context context, String filePath) {
                         } else {
                             String errorMsg = response.message() != null ? response.message() : "Unknown error";
                             Log.e("FileUploader", "File upload failed: " + errorMsg);
+                            Log.e("FileUploader", "Response code: " + response.code());
                             scheduleRetryWithoutActivity(filePath, callback);
                         }
                     }
@@ -563,6 +602,20 @@ public static String calculateMD5(Context context, String filePath) {
                         UploadResponse uploadResponse = response.body();
                         String message = uploadResponse.getMessage();
                         
+                        // Log complete JSON response from server
+                        if (BuildConfig.DEBUG) {
+                            String jsonResponse = gson.toJson(uploadResponse);
+                            Log.i("FileUploader", "Server Response JSON:\n" + jsonResponse);
+                        }
+                        
+                        // Log file information if available
+                        if (BuildConfig.DEBUG && uploadResponse.getFile() != null) {
+                            UploadResponse.FileInfo fileInfo = uploadResponse.getFile();
+                            Log.i("FileUploader",
+                                    "File ID: " + fileInfo.getId() +
+                                    ", File name: " + fileInfo.getFilename());
+                        }
+                        
                         // Only consider upload successful if server confirms with specific messages
                         if (message != null && 
                             (message.equals("File uploaded successfully!") || 
@@ -578,6 +631,7 @@ public static String calculateMD5(Context context, String filePath) {
                     } else {
                         String errorMsg = response.message() != null ? response.message() : "Unknown error";
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
+                        Log.e("FileUploader", "Response code: " + response.code());
                         scheduleRetryWithoutActivity(filePath, callback);
                     }
                 }

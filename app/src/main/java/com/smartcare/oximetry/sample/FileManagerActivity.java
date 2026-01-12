@@ -338,13 +338,28 @@ public class FileManagerActivity extends Activity {
 
             // Set click listener for upload button
             uploadButton.setOnClickListener(v -> {
-                FileUploader.uploadFile(FileManagerActivity.this, csvFile.getFile().getAbsolutePath(), new FileUploader.UploadCallback() {
+                File fileToUpload = csvFile.getFile();
+                String filePath = fileToUpload.getAbsolutePath();
+                FileUploader.uploadFile(FileManagerActivity.this, filePath, new FileUploader.UploadCallback() {
                     @Override
                     public void onUploadComplete(boolean success, String message) {
                         // Run on UI thread since we're updating UI
                         runOnUiThread(() -> {
                             if (success) {
-                                // upload and move file in FileUploader
+                                // Move file to Uploaded folder after successful upload
+                                // Check if filePath is a content URI or regular file path
+                                boolean moved;
+                                if (filePath.startsWith("content://")) {
+                                    moved = FileUploader.moveFileToUploadedFolderFromUri(FileManagerActivity.this, filePath);
+                                } else {
+                                    moved = FileUploader.moveFileToUploadedFolder(fileToUpload);
+                                }
+                                if (moved) {
+                                    Log.d(TAG, "File moved to Uploaded folder: " + fileToUpload.getName());
+                                } else {
+                                    Log.e(TAG, "Failed to move file to Uploaded folder: " + fileToUpload.getName());
+                                }
+                                // Refresh both file lists to reflect the changes
                                 loadCsvFiles();
                                 loadUploadedFiles();
                                 Toast.makeText(

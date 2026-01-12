@@ -23,11 +23,18 @@ import java.util.UUID;
 
 public class BluetoothAutoConnector {
     private static final String TAG = "BluetoothAutoConnector";
-    private static final long SCAN_PERIOD = 10000;
+    private static final long SCAN_PERIOD = 2000; // Reduced from 10s to 2s for faster reconnection
     private static final String PREFS_NAME = "AutoConnectorPreferences";
     private static final String KEY_BLOCKED_MACS = "blocked_macs";
     // Standard SPP UUID - this is commonly used for Bluetooth medical devices
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+    private volatile boolean shouldPauseAutoReconnect = false;
+    private static final long PAUSE_RECONNECT_DURATION = 3000; // 3 seconds pause
+    
+    // Retry mechanism variables
+    private int retryCount = 0;
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 500;
 
     private final Context context;
     private final Handler scanHandler = new Handler();
@@ -40,6 +47,9 @@ public class BluetoothAutoConnector {
     private String currentMacAddress;
     private BroadcastReceiver connectionStateReceiver;
     private BluetoothSocket activeSocket;
+
+    private boolean isReconnecting = false;
+
 
     public interface AutoConnectCallback {
         void onDeviceFound(String macAddress);
@@ -67,22 +77,57 @@ public class BluetoothAutoConnector {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 
                 if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
-                    isConnected = false;
                     if (device != null) {
-                        currentMacAddress = null;
-                        // Start scanning for other devices if this wasn't a manual disconnect
-                        if (!blockedMacs.contains(device.getAddress())) {
-                            startAutoConnect();
+                        String disconnectedMac = device.getAddress();
+                        if (disconnectedMac != null && disconnectedMac.equals(currentMacAddress)) {
+                            isConnected = false;
+                            currentMacAddress = null;
+
+                            if (!blockedMacs.contains(disconnectedMac)) {
+                                // Implement retry mechanism
+                                if (retryCount < MAX_RETRY_ATTEMPTS) {
+                                    retryCount++;
+                                    Log.i(TAG, "Attempted reconnection #" + retryCount + " for device: " + disconnectedMac);
+
+                                    scanHandler.postDelayed(() -> {
+                                        if (!isConnected && !shouldPauseAutoReconnect && !isReconnecting) {
+
+                                            isReconnecting = true;
+                                            Log.d(TAG, "Try direct reconnect to: " + disconnectedMac);
+                                            callback.connectToDevice(disconnectedMac);
+                                        }
+                                    }, RETRY_DELAY_MS);
+                                } else {
+                                    Log.i(TAG, "Max retry attempts reached for device: " + disconnectedMac + ". Stopping reconnection attempts.");
+                                    retryCount = 0; // Reset retry count for next connection
+                                }
+                            } else {
+                                // If device is blocked, reset retry count
+                                retryCount = 0;
+                            }
+                            
+                            Log.i(TAG, "Connected device disconnected: " + disconnectedMac);
+                        } else {
+                            Log.d(TAG, "Other device disconnected (not our device): " + disconnectedMac);
                         }
                     }
                 } else if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
                     if (device != null) {
-                        isConnected = true;
-                        currentMacAddress = device.getAddress();
-                        stopDeviceScan();
+                        String connectedMac = device.getAddress();
+                        
+                        if (macAddressQueue.contains(connectedMac) || connectedMac.equals(currentMacAddress)) {
+                            isConnected = true;
+                            isReconnecting = false;
 
-                        // Try setting higher connection priority
-                        setHighPriorityConnection(device);
+                            currentMacAddress = connectedMac;
+                            stopDeviceScan();
+                            retryCount = 0; // Reset retry count on successful connection
+                            setHighPriorityConnection(device);
+                            
+                            Log.i(TAG, "Our device connected: " + connectedMac);
+                        } else {
+                            Log.d(TAG, "Other device connected (not ours): " + connectedMac);
+                        }
                     }
                 }
             }
@@ -95,10 +140,6 @@ public class BluetoothAutoConnector {
         context.registerReceiver(connectionStateReceiver, filter);
     }
 
-    /**
-     * Set high priority for the Bluetooth connection using multiple approaches to ensure compatibility
-     * across different Android versions and manufacturer implementations.
-     */
     private void setHighPriorityConnection(BluetoothDevice device) {
         if (device == null) return;
 
@@ -204,27 +245,23 @@ public class BluetoothAutoConnector {
         }
     }
 
-    // New method to handle initialization flow
     public void initialize() {
-        clearBlockedMacs(); // Clear block list on start
-        startAutoConnect(); // Start scanning for first known device
+        shouldPauseAutoReconnect = false;
+        retryCount = 0; // Reset retry count on initialization
+        clearBlockedMacs();
+        startAutoConnect();
     }
-
-    // New method to handle auto-connect flow
     private void startAutoConnect() {
-        if (!isConnected) {
+        if (!isConnected && !shouldPauseAutoReconnect) {
             startDeviceScan();
         }
     }
-
-    // Modified disconnect method for manual disconnect
     public void manualDisconnect(String macAddress) {
-        blockedMacs.add(macAddress); // Add to block list
+        blockedMacs.add(macAddress);
         saveBlockedMacs();
         currentMacAddress = null;
         isConnected = false;
 
-        // Close active socket if it exists
         if (activeSocket != null) {
             try {
                 activeSocket.close();
@@ -233,23 +270,31 @@ public class BluetoothAutoConnector {
                 Log.e(TAG, "Error closing Bluetooth socket: " + e.getMessage());
             }
         }
-
-        startAutoConnect(); // Start scanning for other known devices
+        pauseAutoReconnect();
+        
+        startAutoConnect();
     }
 
-    // Modified manual connect method
     public void manualConnect(String macAddress) {
+        shouldPauseAutoReconnect = false; // Reset pause flag
+        retryCount = 0; // Reset retry count when manually connecting
         clearBlockedStatus(macAddress); // Remove from block list
         stopDeviceScan(); // Stop any ongoing scan
         currentMacAddress = macAddress;
         callback.connectToDevice(macAddress);
+    }
+    
+
+    private void pauseAutoReconnect() {
+        shouldPauseAutoReconnect = true;
+        scanHandler.postDelayed(() -> shouldPauseAutoReconnect = false, PAUSE_RECONNECT_DURATION);
     }
 
     private final BluetoothAdapter.LeScanCallback leScanCallback = new BluetoothAdapter.LeScanCallback() {
         @Override
         public void onLeScan(final BluetoothDevice device, int rssi, byte[] scanRecord) {
             String newMac = device.getAddress();
-            // Only connect to known devices that aren't blocked
+
             if (macAddressQueue.contains(newMac) && !blockedMacs.contains(newMac)) {
                 stopDeviceScan();
                 callback.onDeviceFound(newMac);
@@ -277,12 +322,11 @@ public class BluetoothAutoConnector {
                     isScanning = false;
                     return;
                 }
-                // Stop scan after SCAN_PERIOD
                 scanHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         stopDeviceScan();
-                        // Restart scan if not connected
+
                         if (!isConnected) {
                             startDeviceScan();
                         }
@@ -329,7 +373,12 @@ public class BluetoothAutoConnector {
                 .putStringSet(KEY_BLOCKED_MACS, blockedMacs)
                 .apply();
     }
-
+    // Public method to allow external apps to signal potential interference
+    public void requestPauseAutoReconnect(long durationMs) {
+        shouldPauseAutoReconnect = true;
+        scanHandler.postDelayed(() -> shouldPauseAutoReconnect = false, durationMs);
+    }
+        
     public void cleanup() {
         stopDeviceScan();
         scanHandler.removeCallbacksAndMessages(null);
@@ -351,6 +400,8 @@ public class BluetoothAutoConnector {
                 // Receiver not registered
             }
         }
+
+        shouldPauseAutoReconnect = false;
     }
 
     private boolean hasRequiredPermissions() {
@@ -368,5 +419,4 @@ public class BluetoothAutoConnector {
                             android.content.pm.PackageManager.PERMISSION_GRANTED;
         }
     }
-
 }

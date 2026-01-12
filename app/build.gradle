@@ -16,7 +16,7 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
-        buildConfigField "String", "BASE_URL", "\"http://103.213.124.230/\""
+        buildConfigField "String", "BASE_URL", "\"http://192.168.137.1:8080/\""
         buildConfigField "String", "API_TOKEN", "\"YOUR_TOKEN_HERE\""
     }
     buildTypes {
