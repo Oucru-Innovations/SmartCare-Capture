@@ -24,7 +24,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class UploadAnnotationWorker extends Worker {
     private static final String TAG = "UploadAnnotWorker";
-    private static final String BASE_URL = "http://vital-ei.oucru.org/";
+    private static final String BASE_URL = "http://vital-ei.oucru.org/"; //luu y 1
     private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
 
     public UploadAnnotationWorker(@NonNull Context context, @NonNull WorkerParameters params) {
@@ -53,7 +53,7 @@ public class UploadAnnotationWorker extends Worker {
 
     public interface ApiService {
         @retrofit2.http.Multipart
-        @retrofit2.http.POST("api/v1/file/smapp/upload")
+        @retrofit2.http.POST("api/v1/file/smapp/upload") //luu y 2
         retrofit2.Call<ResponseBody> uploadFile(
                 @retrofit2.http.Header("x-static-token") String staticToken,
                 @retrofit2.http.Header("x-content-md5") String checksum,

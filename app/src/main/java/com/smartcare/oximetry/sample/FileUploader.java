@@ -46,30 +46,25 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 public class FileUploader {
 
-//    private static final String BASE_URL = "http://13.250.243.25:8080/";
-//    private static final String BASE_URL = "http://103.213.124.230/";
-//    private static final String BASE_URL = "http://vital-ei.oucru.org/";
+    private static final String BASE_URL = ApiConfig.BASE_URL;
+    private static final String STATIC_TOKEN = ApiConfig.API_TOKEN;
+    
     private static final int RETRY_DELAY_MS = 10000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
-//    private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
 
     private static int retryCount = 0;
 
     private static Context appContext;
     
-    // Gson instance for logging JSON response
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
-    // to non activity context
     public static void setAppContext(Context context) {
         appContext = context.getApplicationContext();
     }
 
-    // Interface for handling upload results
     public interface UploadCallback {
         void onUploadComplete(boolean success, String message);
     }
-    // move file when upload is successful
     public static boolean moveFileToUploadedFolder(File file) {
         // Create Uploaded directory if it doesn't exist
         File uploadedDir = new File(file.getParentFile(), "Uploaded");
@@ -518,7 +513,6 @@ public static String calculateMD5(Context context, String filePath) {
                     }
                 }
                 inputStream.close();
-
                 RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), tempFile);
                 MultipartBody.Part body = MultipartBody.Part.createFormData("file", fileName, requestFile);
                 RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);

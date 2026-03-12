@@ -16,8 +16,14 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
-        buildConfigField "String", "BASE_URL", "\"http://192.168.137.1:8080/\""
-        buildConfigField "String", "API_TOKEN", "\"YOUR_TOKEN_HERE\""
+        Properties properties = new Properties()
+        if (project.rootProject.file('local.properties').exists()) {
+            properties.load(project.rootProject.file('local.properties').newDataInputStream())
+        }
+        String apiToken = properties.getProperty('API_TOKEN', 'YOUR_TOKEN_HERE')
+
+        buildConfigField "String", "BASE_URL", "\"http://vital-ei.oucru.org/\""
+        buildConfigField "String", "API_TOKEN", "\"${apiToken}\""
     }
     buildTypes {
         release {
