@@ -1,11 +1,17 @@
 package com.smartcare.oximetry.sample;
 
+import static com.smartcare.oximetry.sample.BuildConfig.BASE_URL;
+
 import android.content.Context;
+import android.content.Intent;
 import android.os.Environment;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
+
+import com.smartcare.oximetry.sample.config.ApiConfig;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -24,8 +30,6 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class UploadAnnotationWorker extends Worker {
     private static final String TAG = "UploadAnnotWorker";
-    private static final String BASE_URL = "http://vital-ei.oucru.org/"; //luu y 1
-    private static final String STATIC_TOKEN = "1c47cc76a192d6e337895baf60b4ce770603213dc03b8954fee1b6c502f7065f";
 
     public UploadAnnotationWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -53,7 +57,7 @@ public class UploadAnnotationWorker extends Worker {
 
     public interface ApiService {
         @retrofit2.http.Multipart
-        @retrofit2.http.POST("api/v1/file/smapp/upload") //luu y 2
+        @retrofit2.http.POST("api/v1/file/smapp/upload")
         retrofit2.Call<ResponseBody> uploadFile(
                 @retrofit2.http.Header("x-static-token") String staticToken,
                 @retrofit2.http.Header("x-content-md5") String checksum,
@@ -65,62 +69,84 @@ public class UploadAnnotationWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        // Build the date string (e.g., "2025-03-11")
-        String currentDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-        // Get the annotation folder
-        File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "OximeterData/Annotation");
+        Log.i(TAG, "Starting daily auto-upload worker...");
+
+        Intent splitIntent = new Intent("com.smartcare.oximetry.ACTION_SPLIT_RECORDING");
+        getApplicationContext().sendBroadcast(splitIntent);
+
+        try {
+            Log.i(TAG, "Waiting 5 seconds for file split to complete...");
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            Log.e(TAG, "Worker wait interrupted", e);
+        }
+
+        // Get the oximeter data folder from internal storage
+        File externalDir = getApplicationContext().getExternalFilesDir(null);
+        File directory = new File(externalDir, "OximeterData");
+
         if (!directory.exists()) {
-            Log.i(TAG, "Annotation directory does not exist.");
+            Log.i(TAG, "Data directory does not exist.");
             return Result.success();
         }
 
-        // Look for a file that matches today's date (ignoring patient code)
-        // For example, "Annotation_{patientCode}_2025-03-11.csv" should contain the substring "_2025-03-11.csv"
-        File annotationFile = null;
-        File[] files = directory.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.getName().contains("_" + currentDate + ".csv")) {
-                    annotationFile = file;
-                    break;
-                }
-            }
+        // Get the Uploaded directory
+        File uploadedDir = new File(directory, "Uploaded");
+        if (!uploadedDir.exists()) {
+            uploadedDir.mkdirs();
         }
 
-        if (annotationFile == null || !annotationFile.exists()) {
-            Log.i(TAG, "No annotation file found for today");
+        // Scan for pending files (.csv and .json)
+        File[] files = directory.listFiles((dir, name) ->
+            (name.toLowerCase().endsWith(".csv") || name.toLowerCase().endsWith(".json"))
+        );
+
+        if (files == null || files.length == 0) {
+            Log.i(TAG, "No pending files found for upload.");
             return Result.success();
         }
-
-        String checksum = calculateMD5(annotationFile);
-        if (checksum == null) {
-            return Result.failure();
-        }
-
-        String ownerName = "Vyyy";  // Use a constant owner if applicable
-        RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), annotationFile);
-        MultipartBody.Part body = MultipartBody.Part.createFormData("file", annotationFile.getName(), requestFile);
-        RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
 
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(BASE_URL)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
         ApiService apiService = retrofit.create(ApiService.class);
-        try {
-            retrofit2.Call<ResponseBody> call = apiService.uploadFile(STATIC_TOKEN, checksum, body, owner);
-            Response<ResponseBody> response = call.execute();  // Synchronous call
-            if (response.isSuccessful()) {
-                Log.i(TAG, "Annotation file upload successful");
-                return Result.success();
-            } else {
-                Log.e(TAG, "Annotation file upload failed: " + response.message());
-                return Result.retry();
+
+        boolean allUploaded = true;
+        for (File file : files) {
+            if (file.isDirectory()) continue;
+
+            Log.i(TAG, "Uploading pending file: " + file.getName());
+            String checksum = calculateMD5(file);
+            if (checksum == null) {
+                allUploaded = false;
+                continue;
             }
-        } catch (IOException e) {
-            Log.e(TAG, "Upload error", e);
-            return Result.retry();
+
+            RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+            MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+            RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), "Auto-Worker");
+
+            try {
+                retrofit2.Call<ResponseBody> call = apiService.uploadFile(ApiConfig.API_TOKEN, checksum, body, owner);
+                Response<ResponseBody> response = call.execute();
+                if (response.isSuccessful()) {
+                    Log.i(TAG, "File uploaded successfully: " + file.getName());
+                    // Move to uploaded folder
+                    File newFile = new File(uploadedDir, file.getName());
+                    if (file.renameTo(newFile)) {
+                        Log.i(TAG, "Moved file to Uploaded folder.");
+                    }
+                } else {
+                    Log.e(TAG, "Upload failed for " + file.getName() + ": " + response.message());
+                    allUploaded = false;
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Error uploading file: " + file.getName(), e);
+                allUploaded = false;
+            }
         }
+
+        return allUploaded ? Result.success() : Result.retry();
     }
 }

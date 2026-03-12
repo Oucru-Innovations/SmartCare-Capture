@@ -1,5 +1,6 @@
 package com.smartcare.oximetry.sample;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,6 +8,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
@@ -22,6 +24,18 @@ public class OximeterDataService extends Service {
     // Service state
     private boolean isRunning = false;
     private PowerManager.WakeLock wakeLock;
+
+    public static final String ACTION_SPLIT_RECORDING = "com.smartcare.oximetry.ACTION_SPLIT_RECORDING";
+
+    private final android.content.BroadcastReceiver splitReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (ACTION_SPLIT_RECORDING.equals(intent.getAction())) {
+                Log.i(TAG, "Received broadcast to split recording for auto-upload");
+                OximeterDataWriterFunctions.forceSplitRecording();
+            }
+        }
+    };
 
 
     private OximeterDataBuffer dataBuffer;
@@ -45,12 +59,20 @@ public class OximeterDataService extends Service {
         return binder;
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     @Override
     public void onCreate() {
         super.onCreate();
         Log.i(TAG, "Oximeter Data Service created");
         createNotificationChannel();
         serviceContext = this;
+
+        IntentFilter filter = new IntentFilter(ACTION_SPLIT_RECORDING);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(splitReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(splitReceiver, filter);
+        }
     }
 
     @Override
@@ -85,7 +107,7 @@ public class OximeterDataService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Oximeter Data Collection",
-                    NotificationManager.IMPORTANCE_LOW);  // Low importance reduces visual distraction
+                    NotificationManager.IMPORTANCE_HIGH);  // Stay high so the system won’t kill you
             channel.setDescription("Channel for oximeter data collection service");
 
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
@@ -117,7 +139,7 @@ public class OximeterDataService extends Service {
             wakeLock = powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
                     "OximeterDataService::WakeLock");
-            wakeLock.acquire(5*60*1000L /*10 minutes*/);
+            wakeLock.acquire(); // keep CPU alive 24/7
         }
     }
 
@@ -166,6 +188,7 @@ public class OximeterDataService extends Service {
 
     @Override
     public void onDestroy() {
+        unregisterReceiver(splitReceiver);
         stopDataCollection();
         stopForeground(true);
         Log.i(TAG, "Oximeter Data Service destroyed");

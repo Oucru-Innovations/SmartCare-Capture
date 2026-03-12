@@ -415,6 +415,14 @@ public class RecordActivity extends Activity {
                     }
 //                    target.mHrDisplay.setText(String.valueOf(latestHeartRateValue));
 //                    target.mSpo2Display.setText(String.valueOf((int) latestSpO2Value));
+
+                    if (target.mControlButton.getText().toString().equals(target.getString(R.string.record_start))) {
+                        target.runOnUiThread(() -> {
+                            target.mControlButton.setText(target.getString(R.string.record_stop));
+                            target.mControlButton.setOnClickListener(v -> target.stopDisconnectExit());
+                        });
+                    }
+
                     long currentTime = System.currentTimeMillis();
                     if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
                         // Update UI with the latest values
@@ -457,12 +465,12 @@ public class RecordActivity extends Activity {
                 // smartcare turn off when it is connected
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
-                    FileLogger.w(TAG, "Bluetooth connection lost (smartcare turn off when it is connecting to app)");
-                    //new
-                    target.isConnected = false; //new
-//                    isRecordingSessionActive = false;
-//                    target.bluetoothAdapter.startDiscovery();
-
+                    FileLogger.w(TAG, "Bluetooth connection lost - forcing stop to save data");
+                    target.isConnected = false;
+                    // Force stop recording to rename 'unknown' file to end timestamp
+                    if (isRecordingSessionActive) {
+                        target.stopDisconnectExit();
+                    }
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
                     data = msg.getData();
@@ -484,6 +492,18 @@ public class RecordActivity extends Activity {
 
                     //new
                     target.isConnected = true;
+                    
+                    target.runOnUiThread(() -> {
+                        target.mControlButton.setText(target.getString(R.string.record_stop));
+                        target.mControlButton.setEnabled(true);
+                        target.mControlButton.setOnClickListener(new OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                target.stopDisconnectExit();
+                            }
+                        });
+                    });
+
 //                    target.bluetoothAdapter.cancelDiscovery();
                     if (ActivityCompat.checkSelfPermission(target, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                         target.bluetoothAdapter.cancelDiscovery();
@@ -536,11 +556,12 @@ public class RecordActivity extends Activity {
                     break;
                 case ConnectionManager.MESSAGE_DEVICE_NOT_FOUND:
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
-                    //new
                     target.isConnected = false;
                     target.bluetoothAdapter.startDiscovery();
-                    // Clear the pending MAC address as the connection failed
-
+                    // If we were recording and lost device, stop to save data
+                    if (isRecordingSessionActive) {
+                        target.stopDisconnectExit();
+                    }
                     break;
                 default:
                     Log.e(target.getString(R.string.app_name), "Unknown message ID from ConnectionManager");
@@ -667,7 +688,7 @@ public class RecordActivity extends Activity {
         @Override
         protected void onPreExecute() {
             Log.i(getString(R.string.app_name), "Disconnector task started");
-            mControlButton.setText(getString(R.string.record_start));
+
             mControlButton.setEnabled(false);
         }
 

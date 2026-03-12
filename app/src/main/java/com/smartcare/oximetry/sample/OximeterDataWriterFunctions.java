@@ -171,6 +171,19 @@ public class OximeterDataWriterFunctions {
         }
     }
 
+    public static void forceSplitRecording() {
+        if (currentWriter != null && currentFile != null) {
+            try {
+                Log.i(TAG, "Force split triggered at: " + formatTimestamp(System.currentTimeMillis()));
+                splitFile(System.currentTimeMillis());
+            } catch (IOException e) {
+                Log.e(TAG, "Error during force split", e);
+            }
+        } else {
+            Log.w(TAG, "No active recording to split");
+        }
+    }
+
     private static void splitFile(long timestamp) throws IOException {
         currentWriter.flush();
         currentWriter.close();
@@ -265,17 +278,29 @@ public class OximeterDataWriterFunctions {
         long endTimestamp = System.currentTimeMillis();
         closeCurrentWriter();
 
-        String newFileName = generateFileName(startTimestamp, formatTimestamp(endTimestamp));
-        File newFile = new File(currentFile.getParent(), newFileName);
-        boolean renamed = currentFile.renameTo(newFile);
+        try {
+            if (currentFile == null || !currentFile.exists()) {
+                Log.e(TAG, "Cannot end recording: currentFile is null or does not exist");
+                return null;
+            }
 
-        if (!renamed) {
-            Log.e(TAG, "Failed to rename file from " + currentFile.getName() + " to " + newFileName);
-            return currentFile.getAbsolutePath();
+            String newFileName = generateFileName(startTimestamp, formatTimestamp(endTimestamp));
+            File newFile = new File(currentFile.getParent(), newFileName);
+            
+            Log.i(TAG, "Attempting to rename " + currentFile.getName() + " to " + newFileName);
+            boolean renamed = currentFile.renameTo(newFile);
+
+            if (!renamed) {
+                Log.e(TAG, "Failed to rename file from " + currentFile.getName() + " to " + newFileName);
+                return currentFile.getAbsolutePath();
+            }
+
+            Log.i(TAG, "Recording ended successfully: " + newFile.getAbsolutePath());
+            return newFile.getAbsolutePath();
+        } catch (Exception e) {
+            Log.e(TAG, "Error during endRecording process", e);
+            return currentFile != null ? currentFile.getAbsolutePath() : null;
         }
-
-        Log.i(TAG, "Recording ended: " + newFile.getAbsolutePath());
-        return newFile.getAbsolutePath();
     }
 
     private static void closeCurrentWriter() {
