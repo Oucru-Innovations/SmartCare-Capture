@@ -49,6 +49,8 @@
 | KA-01 | CPU Persistence (WakeLock) | CPU remains active even when the screen is off (Indefinite WakeLock). | Success |
 | KA-02 | Service Priority | Foreground service notification is set to "High Priority" to prevent system termination under low RAM. | Success |
 | KA-03 | Background Scanning | App continues to scan and reconnect to Bluetooth devices even after 15+ minutes of screen inactivity. | Success |
+| KA-04 | Screen Timeout Data Collection | Setting 30 mins setting to screen off, wear for 30 mins more from turn off timepoint | Total rows ~3600. Validation: **(Last Timestamp - First Timestamp in seconds) ≈ Total Rows** (Ideal rate: 1 record/sec). | Success |
+| KA-05 | Intermittent Device Connection | Same setting as above: 30 mins screen on, 30 mins screen off, device off for 15 mins, device on again for 5 mins | Total rows ~3900. Validation: **Sum of (End Timestamp - Start Timestamp in seconds) of active segments ≈ Total Rows** (Ideal rate: 1 record/sec). | Success |
 
 ---
 

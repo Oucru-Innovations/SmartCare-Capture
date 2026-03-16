@@ -188,6 +188,9 @@ public class RecordActivity extends Activity {
     private Runnable scanRunnable;
     private List<String> blockedList = new ArrayList<>();
     private boolean isConnected = false;
+    private boolean isConnecting = false;
+    private boolean shouldConnectAfterServiceBound = false;
+    private String pendingMacToConnect = null;
 //    test
     private String filePath;
     // Bluetooth Event Interceptor
@@ -558,7 +561,7 @@ public class RecordActivity extends Activity {
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
                     target.isConnected = false;
                     target.bluetoothAdapter.startDiscovery();
-                    // If we were recording and lost device, stop to save data
+
                     if (isRecordingSessionActive) {
                         target.stopDisconnectExit();
                     }
@@ -577,6 +580,11 @@ public class RecordActivity extends Activity {
     private class Connector extends AsyncTask<Void, Void, Boolean> {
         //new
         private String connectedMacAddress;
+        private final String macAddressOrNull;
+
+        private Connector(String macAddressOrNull) {
+            this.macAddressOrNull = macAddressOrNull;
+        }
         @Override
         protected void onPreExecute() {
 
@@ -594,7 +602,20 @@ public class RecordActivity extends Activity {
         //new implement
         @Override
         protected Boolean doInBackground(Void... params) {
-            boolean success = connectionManager.connect();
+            if (bluetoothAdapter != null) {
+                try {
+                    if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                            && bluetoothAdapter.isDiscovering()) {
+                        bluetoothAdapter.cancelDiscovery();
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to cancel discovery before connect", e);
+                }
+            }
+
+            boolean success = (macAddressOrNull != null)
+                    ? connectionManager.connect(macAddressOrNull)
+                    : connectionManager.connect();
             if (success) {
                 connectedMacAddress = connectionManager.getMacAddress();
                 Log.d(TAG, "User click connecttttttttttt");
@@ -635,6 +656,8 @@ public class RecordActivity extends Activity {
                 Log.w(getString(R.string.app_name), "Cannot connect");
                 FileLogger.e(TAG, "Cannot connect to device");
                 mControlButton.setText(getString(R.string.record_start));
+                isConnected = false;
+                isConnecting = false;
 
                 mControlButton.setOnClickListener(new OnClickListener() {
                     @Override
@@ -655,6 +678,11 @@ public class RecordActivity extends Activity {
             connectedMac = connectedMacAddress;
             // new
 
+            // Update interceptor with connected MAC address
+            if (bluetoothInterceptor != null) {
+                bluetoothInterceptor.setConnectedMacAddress(connectedMacAddress);
+            }
+
             mControlButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -662,6 +690,7 @@ public class RecordActivity extends Activity {
                     blockedList.add(connectedMac);
                     //new
                     isConnected = false; //new
+                    isConnecting = false;
                     // Clear interceptor MAC address on disconnect
                     if (bluetoothInterceptor != null) {
                         bluetoothInterceptor.setConnectedMacAddress(null);
@@ -675,6 +704,9 @@ public class RecordActivity extends Activity {
                     Log.d(TAG, "User click buttonnnnnnnnnnnnnnnnnnnnnnnn ");
                 }
             });
+
+            isConnected = true;
+            isConnecting = false;
         }
     }
 
@@ -721,7 +753,7 @@ public class RecordActivity extends Activity {
             }
             isServiceBound = false;
         }
-            //get path from service
+
             filePath = dataService.endRecordFilePath;
             Log.i("RecordActivity", "File path: " + filePath);
             FileLogger.i(TAG, "Recoding ended, file saved: " + filePath);
@@ -782,46 +814,78 @@ public class RecordActivity extends Activity {
 
         boolean hasPermission = checkAppPermissions();
         if (hasPermission) {
-            Log.d(TAG, "Attempting to start OximeterDataService");
+            ensureServiceAndConnect(null);
+        }
+    }
 
-            // Initialize service intent
-            serviceIntent = new Intent(this, OximeterDataService.class);
+    private void ensureServiceAndConnect(String macAddressOrNull) {
+        if (isConnected || isConnecting || shouldConnectAfterServiceBound) {
+            Log.d(TAG, "Skip connect: isConnected=" + isConnected
+                    + ", isConnecting=" + isConnecting
+                    + ", pendingServiceBindConnect=" + shouldConnectAfterServiceBound);
+            return;
+        }
 
-            // Set service parameters
-            serviceIntent.putExtra("patientCode", formattedCode);
+        if (!checkAppPermissions()) {
+            Log.w(TAG, "Missing app permissions; cannot connect.");
+            return;
+        }
 
-            // Get chunk file configuration
+        if (formattedCode == null || formattedCode.trim().isEmpty()) {
+            Log.w(TAG, "Missing patient code; cannot start service/connect.");
+            return;
+        }
+
+        if (isServiceBound && dataService != null) {
+            isConnecting = true;
+            new Connector(macAddressOrNull).execute();
+            return;
+        }
+
+        shouldConnectAfterServiceBound = true;
+        pendingMacToConnect = macAddressOrNull;
+
+        Log.d(TAG, "Attempting to start/bind OximeterDataService before connecting");
+
+        serviceIntent = new Intent(this, OximeterDataService.class);
+        serviceIntent.putExtra("patientCode", formattedCode);
+
+        boolean enableChunk = false;
+        int timeInterval = 3;
+        try {
             ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(this);
-            boolean enableChunk = configPopup.isChunkFileEnabled();
-            int timeInterval = configPopup.getTimeInterval();
+            enableChunk = configPopup.isChunkFileEnabled();
+            timeInterval = configPopup.getTimeInterval();
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to read chunk config; using defaults", e);
+        }
 
-            serviceIntent.putExtra("enableChunkFile", enableChunk);
-            serviceIntent.putExtra("timeInterval", timeInterval);
+        serviceIntent.putExtra("enableChunkFile", enableChunk);
+        serviceIntent.putExtra("timeInterval", timeInterval);
 
-            Log.d(TAG, "Service params: patientCode=" + formattedCode +
-                    ", enableChunkFile=" + enableChunk +
-                    ", timeInterval=" + timeInterval);
-
-            FileLogger.i(TAG, "Initializing OximeterDataService with patientCode: " + formattedCode);
-
-            // Start the service
+        try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Log.d(TAG, "Starting foreground service for Android O+");
                 startForegroundService(serviceIntent);
             } else {
-                Log.d(TAG, "Starting regular service for pre-Android O");
                 startService(serviceIntent);
             }
 
-            // Bind to the service
             bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
-            Log.d(TAG, "Service binding requested");
-
-            FileLogger.i(TAG, "OximeterDataService started and binding requested");
-
-            // Continue with connection to oximeter
-            //new Connector().execute();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start/bind OximeterDataService", e);
+            shouldConnectAfterServiceBound = false;
+            pendingMacToConnect = null;
+            isConnecting = false;
+            return;
         }
+
+        new Handler().postDelayed(() -> {
+            if (shouldConnectAfterServiceBound) {
+                Log.w(TAG, "Service bind timeout; allowing retry");
+                shouldConnectAfterServiceBound = false;
+                pendingMacToConnect = null;
+            }
+        }, 20000);
     }
 
 
@@ -1035,97 +1099,77 @@ public class RecordActivity extends Activity {
             return;
         }
 
-        // Define and initialize the BroadcastReceiver as a class-level variable
         bluetoothReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 String action = intent.getAction();
                 if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                    String deviceMac = device.getAddress();
+                    if (device == null) {
+                        Log.w(TAG, "ACTION_FOUND with null device; ignoring");
+                        return;
+                    }
+
+                    String deviceMac;
+                    try {
+                        deviceMac = device.getAddress();
+                    } catch (SecurityException e) {
+                        Log.w(TAG, "Missing permission to read device address; ignoring ACTION_FOUND");
+                        return;
+                    }
+                    if (deviceMac == null) {
+                        Log.w(TAG, "ACTION_FOUND with null MAC; ignoring");
+                        return;
+                    }
+
+                    String deviceName = "unknown";
+                    try {
+                        String name = device.getName();
+                        if (name != null) deviceName = name;
+                    } catch (SecurityException ignored) {
+                    }
 
                     // Check if device is in macAddressQueue
-                    if (macAddressQueue.contains(deviceMac) && !blockedList.contains(deviceMac) ) {
+                    if (macAddressQueue != null && macAddressQueue.contains(deviceMac) && !blockedList.contains(deviceMac) ) {
 //                        Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]");
 
 
                         if( isConnected == false) {
 //                            Log.i(TAG, "Device found in queue: " + device.getName() + " [" + deviceMac + "]"); //old
                             Log.i(TAG, "Device found in queue: " + " [" + deviceMac + "]");
-//                            connectToPulseOximeter();
-//                            ProgressBar progressBar = RecordActivity.this.findViewById(R.id.progressBar);
-//                            progressBar.setVisibility(View.VISIBLE);
-
-
-                                // Start the service before connecting
-                                serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
-                                serviceIntent.putExtra("patientCode", formattedCode);
-
-                                // Get chunk file configuration
-                                ChunkFileConfigPopup configPopup = new ChunkFileConfigPopup(RecordActivity.this);
-                                boolean enableChunk = configPopup.isChunkFileEnabled();
-                                int timeInterval = configPopup.getTimeInterval();
-
-                                serviceIntent.putExtra("enableChunkFile", enableChunk);
-                                serviceIntent.putExtra("timeInterval", timeInterval);
-                            // Start foreground service
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                startForegroundService(serviceIntent);
-                            } else {
-                                startService(serviceIntent);
-                            }
-
-                            // Bind to service
-                            bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
-
-
-                            boolean success = connectionManager.connect(deviceMac);
-                            if(success){
-                                isConnected = true;
-                                // Update interceptor with connected MAC address
-                                if (bluetoothInterceptor != null) {
-                                    bluetoothInterceptor.setConnectedMacAddress(deviceMac);
-                                }
-                                //pause scanning
-                                Log.i(getString(R.string.app_name), "Connector task started");
-                                mControlButton.setText(getString(R.string.record_stop));
-                                //
-                                Log.i(getString(R.string.app_name), "Ready to start recording.");
-                                connectionManager.startRecording();
-                                //
-                                //
-                                updateMacAddressQueue(deviceMac);
-                                MacAddress = deviceMac;
-                                connectedMac = deviceMac;
-                                mControlButton.setOnClickListener(new OnClickListener() {
-                                    @Override
-                                    public void onClick(View view) {
-                                        stopDisconnectExit();
-                                        blockedList.add(deviceMac);
-                                        isConnected = false;
-//                                        bluetoothAdapter.startDiscovery(); //old
-                                        //new
-                                        if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                                            bluetoothAdapter.startDiscovery();
-                                        } else {
-                                            requestBluetoothPermissions();
-                                        }
-                                    }
-                                });
-                            }
-//                            bluetoothAdapter.cancelDiscovery();
+                            ensureServiceAndConnect(deviceMac);
                         }
 //                        bluetoothAdapter.cancelDiscovery();//
                     } else {
-                        Log.d(TAG, "Discovered device not in queue: " + device.getName() + " [" + deviceMac + "]");
+                        Log.d(TAG, "Discovered device not in queue: " + deviceName + " [" + deviceMac + "]");
 //                        Log.d(TAG, "Discovered device not in queue: " + " [" + deviceMac + "]");
+                    }
+                } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+                    BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    if (device == null) return;
+
+                    String disconnectedMac = null;
+                    try {
+                        disconnectedMac = device.getAddress();
+                    } catch (SecurityException ignored) {
+                    }
+
+                    if (disconnectedMac != null && disconnectedMac.equals(connectedMac)) {
+                        Log.w(TAG, "Connected device disconnected: " + disconnectedMac);
+                        isConnected = false;
+                        isConnecting = false;
+                        shouldConnectAfterServiceBound = false;
+                        pendingMacToConnect = null;
+                        if (bluetoothInterceptor != null) {
+                            bluetoothInterceptor.setConnectedMacAddress(null);
+                        }
                     }
                 }
             }
         };
 
-        // Register the Bluetooth device discovery receiver
         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
         registerReceiver(bluetoothReceiver, filter);
     }
 
@@ -1674,8 +1718,13 @@ public class RecordActivity extends Activity {
             Log.i(TAG, "Successfully bound to OximeterDataService");
             FileLogger.i(TAG, "Successfully bound to OximeterDataService");
 
-            // Execute Connector only after service is successfully bound
-            new Connector().execute();
+            if (shouldConnectAfterServiceBound) {
+                String macToConnect = pendingMacToConnect;
+                shouldConnectAfterServiceBound = false;
+                pendingMacToConnect = null;
+                isConnecting = true;
+                new Connector(macToConnect).execute();
+            }
         }
 
         @Override
