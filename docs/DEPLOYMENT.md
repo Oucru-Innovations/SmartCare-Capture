@@ -2,32 +2,16 @@
 
 This guide helps you set up and deploy the SmartCare Android application on a new development machine or for production builds.
 
-## Environment Variables
+## Configuration Settings
 
-Sensitive variables are currently hardcoded. You should configure them using environment variables in a `config.properties` file instead.
+The application uses predefined configurations and environment variables injected via `local.properties`.
 
-```properties
-# Server Configuration
-SERVER_BASE_URL=
+**Network Configuration (`NetworkConfig.java`):**
+- Connection Timeouts
+- Retry logic: `MAX_RETRY=3` and `RETRY_DELAY_MS=10000`
 
-# Authentication
-API_AUTH_TOKEN=
-
-# Upload Configuration
-UPLOAD_RETRY_DELAY_MS=10000
-UPLOAD_MAX_RETRY_ATTEMPTS=3
-
-# Data Buffer Configuration
-DATA_BUFFER_SIZE=100
-
-# File Chunking
-FILE_CHUNK_SIZE=10
-FILE_SPLIT_INTERVAL_HOURS=6
-
-# Bluetooth Configuration
-BLUETOOTH_SPP_UUID=
-BLUETOOTH_SCAN_PERIOD_MS=
-```
+**API Configuration (`app/build.gradle` and `local.properties`):**
+Configure your `API_TOKEN` and modify the `BASE_URL` if needed.
 
 ---
 
@@ -71,24 +55,23 @@ cd SmartCare-Capture
 
 ## Configuration Setup
 
-### 1. Create Local Configuration File
+### 1. Create/Update Local Configuration File
 
-Create `local.properties` in the project root (this file is git-ignored):
+Ensure `local.properties` in the project root has your Android SDK setup and the required tokens (this file is git-ignored):
 
 ```properties
 # Path to your Android SDK installation
 # Windows example:
 sdk.dir=C\:\\Users\\YourUsername\\AppData\\Local\\Android\\Sdk
 
-# macOS/Linux example:
-# sdk.dir=/Users/YourUsername/Library/Android/sdk
+# Authentication Token
+API_TOKEN=your_authentication_token_here
 ```
 
-**Note:** Android Studio usually creates this file automatically. Update the path if needed.
+**Note:** Android Studio usually creates this file automatically for SDK mapping. You must manually add `API_TOKEN` here. 
 
 ### 2. Configure Environment Variables
-Sensitive variables are currently hardcoded. You should configure them using environment variables in a `config.properties` file instead.
-(See the list of required variables at the top of this document).
+Network and server configurations (e.g. `BASE_URL`) are loaded from `app/build.gradle` into `BuildConfig` and exposed via `ApiConfig.java`. Modify `app/build.gradle` if you plan to target the Nepal Server or different environments.
 
 ## Building the Project
 
@@ -147,8 +130,7 @@ SmartCare-Capture/
 ├── build.gradle                                   # Project-level build config
 ├── gradle.properties                              # Gradle configuration
 ├── settings.gradle                                # Project modules
-├── local.properties                               # Local SDK path (git-ignored)
-├── config.properties                              # App configuration (git-ignored)
+├── local.properties                               # Local SDK path and config options (git-ignored)
 └── keystore.properties                            # Signing config (git-ignored)
 ```
 
@@ -168,14 +150,14 @@ SmartCare-Capture/
   - **Solution**: File → Project Structure → SDK Location → Set JDK to version 8 or 11
 
 - **Issue**: "BuildConfig cannot be resolved"
-  - **Solution**: Ensure `config.properties` exists and Gradle sync is complete
+  - **Solution**: Ensure Gradle sync is complete and parameters in `app/build.gradle` are valid.
 
 ### Runtime Issues
 - **Issue**: "App crashes on startup"
-  - **Solution**: Check `config.properties` values are correct, especially SERVER_BASE_URL
+- **Solution**: Check `local.properties` and `BASE_URL` in `app/build.gradle` are properly mapped.
 
 - **Issue**: "Cannot connect to oximeter"
-  - **Solution**: Verify Bluetooth permissions are granted, device is compatible
+- **Solution**: Verify Bluetooth permissions are granted, device is compatible
 
 ### Library Issues
 - **Issue**: "scolib-2.0.0.aar not found"
@@ -187,7 +169,7 @@ SmartCare-Capture/
 
 ### Before Building Release
 - [ ] Update version name and code in `app/build.gradle`
-- [ ] Verify all configuration values in `config.properties`
+- [ ] Verify all configuration values in `app/build.gradle` and `local.properties`
 - [ ] Test on physical devices (Android 10, 11, 12, 13, 14)
 - [ ] Check all permissions are declared in AndroidManifest.xml
 - [ ] Review ProGuard rules if enabling minification
@@ -206,8 +188,7 @@ SmartCare-Capture/
 ## Security Notes
 
 ### Sensitive Files (NEVER commit these)
-- `local.properties` - Contains local SDK path
-- `config.properties` - Contains API tokens and server URLs
+- `local.properties` - Contains local SDK path AND security tokens (`API_TOKEN`).
 - `keystore.properties` - Contains signing credentials
 - `*.keystore`, `*.jks` - Signing keys
 

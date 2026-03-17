@@ -1,21 +1,21 @@
 # SmartCare Capture - Release & Deployment Guide
 
-## 📋 Current Active Studies
+## Current Active Studies
 
 ### Study 54 & Study 39
-- **Status**: ✅ **Active** - Running from latest commit
+- **Status**: **Active** - Running from latest commit
 - **Branch**: `main`
-- **Server**: OUCRU (`vital-ei.oucru.org`)
+- **Server**: OUCRU (`<OUCRU_SERVER_URL>`)
 - **Configuration**: Standard OUCRU setup
 
 ### Study 62 (Nepal)
-- **Status**: 🚧 **Configuration Required**
+- **Status**: **Configuration Required**
 - **Branch**: `main`
-- **Server**: Nepal (`103.213.124.230`)
+- **Server**: Nepal (`<NEPAL_SERVER_IP_OR_URL>`)
 - **Action Needed**: Change URL before deployment
 
 ### Study 24c (Legacy)
-- **Status**: 📦 **Use Existing APK**
+- **Status**: **Use Existing APK**
 - **Branch**: `android-12-branch` or existing archives
 - **Note**: Reuse old APK in Team installation guide
 
@@ -23,40 +23,40 @@
 For models requiring clinical notes, discuss implementation with:
 ```json
 {
-  "ablett": 2,           // Ablett Score: 1-4 assessment scale
-  "comorbidities": "yes", // Comorbid conditions: yes/no
-  "ventilation": "no",    // Mechanical ventilation: yes/no  
-  "age": 65              // Patient age in years
+  "ablett": 2,           
+  "comorbidities": "yes", 
+  "ventilation": "no",     
+  "age": 65              
 }
 ```
 > **Development Note**: Switch to `server-version` branch for continuous development with clinical note templates. Logic flow design still pending.
-## 🔧 Server Configurations by Study
+## Server Configurations by Study
+
+These settings are no longer hardcoded in `FileUploader.java` and instead managed via environment variables/local configuration that injects into `BuildConfig` and subsequently `ApiConfig`.
 
 ### OUCRU Server (Studies 54, 39)
-```java
-// FileUploader.java - Production Configuration
-BASE_URL = "http://vital-ei.oucru.org/"
-API_ENDPOINT = "api/v1/file/smapp/upload"
-STATIC_TOKEN = "[configured]"
+```properties
+# config.properties or local.properties
+BASE_URL="<OUCRU_SERVER_URL>"
+API_TOKEN="<YOUR_API_TOKEN>"
 ```
 
 ### Nepal Server (Study 62)
-```java
-// FileUploader.java - Nepal Configuration 
-BASE_URL = "http://103.213.124.230/"
-API_ENDPOINT = "api/v1/file/upload"  
-STATIC_TOKEN = null                   
+```properties
+# config.properties or local.properties
+BASE_URL="<NEPAL_SERVER_IP_OR_URL>"
+API_TOKEN="<YOUR_API_TOKEN>"
 ```
 
-> **⚠️ Important**: When building for Nepal (Study 62), update both URL and API endpoint in `FileUploader.java`
+> **Important**: When building for Nepal (Study 62) or other studies, provide the appropriate variables injected into `BuildConfig` to correctly route traffic cleanly without altering code logic.
 
-## 🚀 APK Build Matrix
+## APK Build Matrix
 
 | Study | Branch | Server | API Route | Status | Action Required |
 |-------|--------|--------|-----------|--------|-----------------|
-| **54** | `main` | OUCRU | `smapp/upload` | ✅ **Active** | None - Ready |
-| **39** | `main` | OUCRU | `smapp/upload` | ✅ **Active** | None - Ready |
-| **62** | `main` | Nepal | `upload` | 🚧 **Config Needed** | Update URL + Route |
-| **24c** | `android-12-branch` | Various | Various | 📦 **Use Existing** | Reuse APK |
+| **54** | `main` | OUCRU | `smapp/upload` (via config) | **Active** | None - Ready |
+| **39** | `main` | OUCRU | `smapp/upload` (via config) | **Active** | None - Ready |
+| **62** | `main` | Nepal | `upload` (via config)   | **Config Needed** | Provide Build Variables |
+| **24c** | `android-12-branch` | Various | Various | **Use Existing** | Reuse APK |
 
 ---

@@ -41,11 +41,12 @@ Before using the application, please **check your device’s Android version** a
   - Writes data points to CSV files
   - Manages file chunking based on time intervals
 
-#### File Operations
-- **`FileUploader.java`** - Handles file upload to server
+#### File Operations & Networking
+- **`config/`** - Contains `ApiConfig` and `NetworkConfig` mappings derived from `BuildConfig` for centralized API base URL and tokens.
+- **`network/`** - Uses Retrofit and OkHttp for resilient network communication (`ApiService`, `RetrofitClient`).
+- **`FileUploader.java`** - Orchestrates file upload to server utilizing the `ApiService`.
   - Uploads CSV files and annotation data
   - Manages upload progress and callbacks
-  - Configurable server URL
 
 - **`FileLogger.java`** - Application logging system
   - Logs app events to file for debugging

@@ -17,6 +17,8 @@
 
 **Files:** `RecordActivity.java`, `OximeterDataService.java`, `BluetoothAutoConnector.java`
 
+**Status:** PARTIALLY COMPLETED. Reconnection logic improved (2s delay logic after disconnecting device from Vivalink app, and duplicate connect fix).
+
 ---
 
 ### Data Loss Prevention
@@ -81,6 +83,8 @@
 **Solution:** Centralize configuration values using build configuration or dedicated config classes.
 
 **Files:** `FileUploader.java`, `BluetoothAutoConnector.java`, `OximeterDataBuffer.java`, `app/build.gradle`
+
+**Status:** COMPLETED. Centralized configuration using `BuildConfig`, `ApiConfig`, and `NetworkConfig`.
 
 ---
 
