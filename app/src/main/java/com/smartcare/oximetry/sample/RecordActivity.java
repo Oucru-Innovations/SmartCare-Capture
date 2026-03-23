@@ -93,6 +93,9 @@ import com.androidplot.xy.SimpleXYSeries;
 import com.androidplot.xy.XYPlot;
 import com.github.psambit9791.jdsp.signal.Detrend;
 import com.smartcare.oximetry.library.ConnectionManager;
+// Thêm Adapter mới cho phép thay đổi SDK dễ dàng sau này
+import com.smartcare.oximetry.sample.device.IDeviceAdapter;
+import com.smartcare.oximetry.sample.device.OximeterSDKAdapter;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
@@ -141,7 +144,7 @@ public class RecordActivity extends Activity {
     private static final int REQUEST_REQUIRED_PERMISSIONS = 17;
     private static final int REQUEST_ENABLE_BT = 1;
 //    private static final int REQUEST_REQUIRED_PERMISSIONS = 17;
-    private ConnectionManager connectionManager;
+    private IDeviceAdapter connectionManager;
     private XYPlot mPlot;
     private Button mControlButton;
     private TextView mHrDisplay;
@@ -977,10 +980,10 @@ public class RecordActivity extends Activity {
         FileLogger.i(TAG,"Application started");
 
         AnnotationUploadScheduler.scheduleDailyUpload(this);
-        // Create new ConnectionManager, which will connect to and manage the pulse oximeter.
+        // Create new Adapter wrapping the ConnectionManager, which will connect to and manage the pulse oximeter.
         mHandler = new SmartCareHandler(this);
         if (connectionManager == null) {
-            connectionManager = new ConnectionManager(this, mHandler);
+            connectionManager = new OximeterSDKAdapter(this, mHandler);
         }
         
         // Initialize Bluetooth Event Interceptor

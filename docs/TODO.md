@@ -46,6 +46,8 @@
 
 **Files:** `RecordActivity.java`
 
+**Status:** PARTIALLY COMPLETED. Refactored SDK Connection out of RecordActivity by introducing the `OximeterSDKAdapter` Proxy Pattern.
+
 ---
 
 ### Permission Management
@@ -115,5 +117,38 @@ Implement unit and integration tests for core components. Consider starting with
 - File uploads use Retrofit 2.9.0 and OkHttp 4.9.0
 - Background work uses AndroidX WorkManager 2.7.1
 - Signal processing uses jDSP 0.2.0
+
+---
+
+## Device SDK Integration Guide
+Whenever the manufacturer provides a new SDK file (e.g., `.aar`), follow these 3 exact steps to replace the hardware layer without modifying any UI or plotting logic in `RecordActivity.java`.
+
+### Step 1: Update the Library
+Place the new `.aar` or `.jar` file into the `app/libs` directory. Open `app/build.gradle` and update the dependency name to match the new SDK file. 
+
+### Step 2: Edit `OximeterSDKAdapter.java`
+Open `app/src/main/java/com/smartcare/oximetry/sample/device/OximeterSDKAdapter.java`. This is the **ONLY** file you need to modify.
+1. Update your `import` statements to load the new SDK.
+2. Inside `OximeterSDKAdapter`, replace the instantiation of the old SDK with the new one.
+3. Update the `connect()`, `disconnect()` and `startRecording()` methods to trigger the corresponding methods of the new SDK.
+
+### Step 3: Map Data back via Handler Message
+When your new SDK triggers a callback reflecting a successful connection or new data (SpO2, heart rate, etc.), you must construct a fake `Message` mimicking the old SDK's structure, and send it through the `Handler`.
+
+Example Template inside `OximeterSDKAdapter.java`:
+```java
+// On receiving data from the New SDK...
+Message msg = handler.obtainMessage(ConnectionManager.MESSAGE_PACKET);
+Bundle data = new Bundle();
+
+// Map new SDK values using the REQUIRED standard Keys
+// data.putInt(ConnectionManager.KEY_DATA_PULSE, newSdkHeartRate);
+// data.putDouble(ConnectionManager.KEY_DATA_SPO2, newSdkSpO2);
+// data.putInt(ConnectionManager.KEY_DATA_PLETH, newSdkPlethValue);
+
+// msg.setData(data);
+// handler.sendMessage(msg); // This dispatches everything flawlessly to RecordActivity
+```
+Done! You are not required to open or modify `RecordActivity.java`.
 
 
