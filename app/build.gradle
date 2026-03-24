@@ -57,7 +57,7 @@ repositories {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation name: 'scolib-2.0.0', ext: 'aar'
+    implementation name: 'scolib-2.3.0', ext: 'aar'
     implementation 'com.androidplot:androidplot-core:0.6.1'
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
     implementation 'com.opencsv:opencsv:4.1'
