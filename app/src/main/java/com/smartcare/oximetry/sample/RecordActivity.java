@@ -78,10 +78,12 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -1376,11 +1378,101 @@ public class RecordActivity extends Activity {
             updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
         });
 
+        Button scanBtn = popupView.findViewById(R.id.scanNewDeviceBtn);
+        ListView scanList = popupView.findViewById(R.id.scannedDevicesList);
+        
+        final ArrayList<String> scannedDevices = new ArrayList<>();
+        final ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, scannedDevices);
+        scanList.setAdapter(adapter);
+
+        scanBtn.setOnClickListener(v -> {
+            scanList.setVisibility(View.VISIBLE);
+            scannedDevices.clear();
+            adapter.notifyDataSetChanged();
+            scanBtn.setText("Scanning...");
+            if (bluetoothAdapter != null) {
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                    return;
+                }
+                if (bluetoothAdapter.isDiscovering()) {
+                    bluetoothAdapter.cancelDiscovery();
+                }
+                bluetoothAdapter.startDiscovery();
+            }
+        });
+
+        scanList.setOnItemClickListener((parent, view, position, id) -> {
+            String item = adapter.getItem(position);
+            if (item != null && item.contains("\n")) {
+                String mac = item.split("\n")[1].trim();
+                String name = item.split("\n")[0].trim();
+                
+                if (!macAddressQueue.contains(mac)) {
+                    macAddressQueue.offer(mac);
+                    deviceNames.put(mac, name);
+                    saveMacAddressQueueAndDeviceNames();
+                    updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
+                }
+
+                Toast.makeText(this, "Connecting to device...", Toast.LENGTH_SHORT).show();
+
+                // Stop scanning before attempting to connect to ensure clean bandwidth
+                if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
+                    bluetoothAdapter.cancelDiscovery();
+                }
+
+                ensureServiceAndConnect(mac);
+
+                if (devicesDialog != null && devicesDialog.isShowing()) {
+                    devicesDialog.dismiss();
+                }
+            }
+        });
+
+        BroadcastReceiver tempReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (BluetoothDevice.ACTION_FOUND.equals(intent.getAction())) {
+                    BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    if (device != null) {
+                        String name = "Unknown Device";
+                        try {
+                            if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                                name = device.getName() != null ? device.getName() : "Unknown Device";
+                            }
+                        } catch (Exception e) { }
+                        String mac = device.getAddress();
+                        String display = name + "\n" + mac;
+                        if (!scannedDevices.contains(display)) {
+                            scannedDevices.add(display);
+                            adapter.notifyDataSetChanged();
+                        }
+                    }
+                } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(intent.getAction())) {
+                    if (scanBtn != null) scanBtn.setText("Scan new device");
+                }
+            }
+        };
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(BluetoothDevice.ACTION_FOUND);
+        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        registerReceiver(tempReceiver, filter);
+
         builder.setView(popupView);
 //        builder.setTitle("Connected Devices");
-        builder.setPositiveButton("Close", null);
+        builder.setPositiveButton("Close", (dialog, which) -> {
+            if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
+                bluetoothAdapter.cancelDiscovery();
+            }
+        });
 
         devicesDialog = builder.create();
+        devicesDialog.setOnDismissListener(dialog -> {
+            try {
+                unregisterReceiver(tempReceiver);
+            } catch (Exception e) { }
+        });
         devicesDialog.show();
 
         Window window = devicesDialog.getWindow();

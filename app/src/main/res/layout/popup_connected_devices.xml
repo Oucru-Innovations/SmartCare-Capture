@@ -51,7 +51,8 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:padding="8dp"
-        android:background="@drawable/edit_text_background">
+        android:background="@drawable/edit_text_background"
+        android:layout_marginBottom="16dp">
 
         <TextView
             android:id="@+id/queuedMac"
@@ -71,5 +72,21 @@
             android:tint="@android:color/holo_red_dark"
             android:contentDescription="Delete device 2" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/scanNewDeviceBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Scan new device"
+        android:textColor="@android:color/white"
+        android:backgroundTint="#FF9800"
+        android:layout_marginTop="8dp"/>
+
+    <ListView
+        android:id="@+id/scannedDevicesList"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:visibility="gone"
+        android:layout_marginTop="8dp"/>
 
 </LinearLayout>
