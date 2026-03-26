@@ -32,7 +32,7 @@ public class OximeterSDKAdapter implements IDeviceAdapter {
             dField.setAccessible(true);
             String[] names = (String[]) dField.get(null);
             if (names != null && names.length > 0) {
-                names[0] = "FC0392";
+                names[0] = ""; // Bypass name filter entirely; matches ANY device.
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to inject custom device name", e);

@@ -389,6 +389,10 @@ public class RecordActivity extends Activity {
                         target.mSeries.removeFirst();
                     }
                     target.mSeries.addLast(null, latestPlethValue);
+                    
+                    if (seriesIsFull) {
+                        target.mPlot.redraw();
+                    }
 
                     //detrend data
 
@@ -399,31 +403,6 @@ public class RecordActivity extends Activity {
 
 
 
-                    if (seriesIsFull) {
-                        // Detrend mSeries and calculate the trend line
-                        double[] plethValues = new double[(int) UI_BUFFER_SIZE_SAMPLES];
-                        for (int i = 0; i < UI_BUFFER_SIZE_SAMPLES; i++) {
-                            plethValues[i] = target.mSeries.getY(i).doubleValue();
-                        }
-//                        Log.d(TAG, "Pleth Values: " + Arrays.toString(plethValues));
-
-                        Detrend detrend = new Detrend(plethValues,"linear");
-                        double[] detrendedData = detrend.detrendSignal();
-//                        Log.d(TAG, "Detrended data: " + Arrays.toString(detrendedData));
-
-                        double[] trendLine = detrend.getTrendLine();
-//                        Log.d(TAG, "Trend line data: " + Arrays.toString(trendLine));
-
-                        // Clear mTrendSeries and add the new trend line values
-                        target.mTrendSeries.setModel(new LinkedList<>(), SimpleXYSeries.ArrayFormat.Y_VALS_ONLY);
-                        for (double value : trendLine) {
-                            target.mTrendSeries.addLast(null, value);
-                        }
-                        target.mPlot.redraw();
-                    }
-//                    target.mHrDisplay.setText(String.valueOf(latestHeartRateValue));
-//                    target.mSpo2Display.setText(String.valueOf((int) latestSpO2Value));
-
                     if (target.mControlButton.getText().toString().equals(target.getString(R.string.record_start))) {
                         target.runOnUiThread(() -> {
                             target.mControlButton.setText(target.getString(R.string.record_stop));
@@ -433,6 +412,23 @@ public class RecordActivity extends Activity {
 
                     long currentTime = System.currentTimeMillis();
                     if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
+                        if (seriesIsFull) {
+                            // Throttled: Detrend mSeries and calculate the trend line
+                            double[] plethValues = new double[(int) UI_BUFFER_SIZE_SAMPLES];
+                            for (int i = 0; i < UI_BUFFER_SIZE_SAMPLES; i++) {
+                                plethValues[i] = target.mSeries.getY(i).doubleValue();
+                            }
+
+                            Detrend detrend = new Detrend(plethValues,"linear");
+                            double[] trendLine = detrend.getTrendLine();
+
+                            // Clear mTrendSeries and add the new trend line values
+                            target.mTrendSeries.setModel(new LinkedList<>(), SimpleXYSeries.ArrayFormat.Y_VALS_ONLY);
+                            for (double value : trendLine) {
+                                target.mTrendSeries.addLast(null, value);
+                            }
+                        }
+
                         // Update UI with the latest values
                         target.runOnUiThread(() -> {
                             String heartRateText = String.valueOf(latestHeartRateValue);
