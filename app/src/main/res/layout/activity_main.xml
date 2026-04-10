@@ -48,6 +48,7 @@
     android:gravity="center"
     android:orientation="vertical"
     android:padding="16dp"
+    android:fitsSystemWindows="true"
     android:background="#FEF9F2"> <!-- Light background color -->
 
 
