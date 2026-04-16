@@ -188,6 +188,7 @@ public class RecordActivity extends Activity {
     //auto
     private BluetoothAdapter bluetoothAdapter;
     private BroadcastReceiver bluetoothReceiver;
+    private boolean isBluetoothReceiverRegistered = false;
     private static final long SCAN_INTERVAL = 5000; // 10 seconds
     private Handler scanHandler;
     private Runnable scanRunnable;
@@ -532,7 +533,7 @@ public class RecordActivity extends Activity {
                     FileLogger.i(TAG, "Disconnected from oximetry");
 //                    FileUploader.uploadFile(target, target.filePath);
                     target.isConnected = false; //new
-                    target.bluetoothAdapter.startDiscovery(); // new
+                    target.startBluetoothDiscoveryIfPermitted();
                     target.connectedMac = null;
 //                    target.updateMacAddressDisplay();
                     // Device has disconnected.
@@ -547,7 +548,7 @@ public class RecordActivity extends Activity {
 
 //                    new
                     target.isConnected = false; //new
-                    target.bluetoothAdapter.startDiscovery(); // new
+                    target.startBluetoothDiscoveryIfPermitted();
 //                    target.bluetoothAdapter.startDiscovery();
                     //target.mPlot.clear();
                     //target.mPlot.redraw();
@@ -561,7 +562,7 @@ public class RecordActivity extends Activity {
                 case ConnectionManager.MESSAGE_DEVICE_NOT_FOUND:
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
                     target.isConnected = false;
-                    target.bluetoothAdapter.startDiscovery();
+                    target.startBluetoothDiscoveryIfPermitted();
 
                     if (isRecordingSessionActive) {
                         target.stopDisconnectExit();
@@ -736,49 +737,53 @@ public class RecordActivity extends Activity {
         protected void onPostExecute(Boolean result) {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
             isRecordingSessionActive = false;
-//            filePath = OximeterDataWriterFunctions.endRecording(); //old path from activity
-                    // First attempt to stop the service directly
-        Intent serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
-        stopService(serviceIntent);
+            String completedFilePath = null;
 
-        // Then clean up the binding if it exists
-        if (isServiceBound) {
-            try {
-                if (dataService != null) {
-                    dataService.stopDataCollection();
-                }
-                unbindService(serviceConnection);
-            } catch (IllegalArgumentException e) {
-                // This happens if the service wasn't bound
-                Log.w(TAG, "Service wasn't bound when trying to unbind");
+            if (isServiceBound && dataService != null) {
+                dataService.stopDataCollection();
+                completedFilePath = dataService.endRecordFilePath;
             }
-            isServiceBound = false;
-        }
 
-            filePath = dataService.endRecordFilePath;
+            Intent serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
+            stopService(serviceIntent);
+
+            if (isServiceBound) {
+                try {
+                    unbindService(serviceConnection);
+                } catch (IllegalArgumentException e) {
+                    Log.w(TAG, "Service wasn't bound when trying to unbind");
+                }
+                isServiceBound = false;
+            }
+
+            filePath = completedFilePath;
             Log.i("RecordActivity", "File path: " + filePath);
             FileLogger.i(TAG, "Recoding ended, file saved: " + filePath);
             FileLogger.i("FileUploader", "Server URL: " + FileUploader.getBaseUrl());
-            //end annotation
-//            ShowAnnotate.stopAnnotationSession();
-            new Handler().postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    FileUploader.uploadFile(RecordActivity.this, filePath, new FileUploader.UploadCallback() {
-                        @Override
-                        public void onUploadComplete(boolean success, String message) {
-                            if (success) {
-                                Log.i("FileUploader-RA", "File upload successful");
-                                FileLogger.i(TAG, "File upload successful: "+ filePath);
-                                FileUploader.moveFileToUploadedFolder(new File(filePath));
-                            } else {
-                                Log.e("FileUploader-RA", "File upload failed: " + message);
-                                FileLogger.e(TAG, "File upload failed: " + message);
+
+            if (!TextUtils.isEmpty(filePath)) {
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        FileUploader.uploadFile(RecordActivity.this, filePath, new FileUploader.UploadCallback() {
+                            @Override
+                            public void onUploadComplete(boolean success, String message) {
+                                if (success) {
+                                    Log.i("FileUploader-RA", "File upload successful");
+                                    FileLogger.i(TAG, "File upload successful: "+ filePath);
+                                    FileUploader.moveFileToUploadedFolder(new File(filePath));
+                                } else {
+                                    Log.e("FileUploader-RA", "File upload failed: " + message);
+                                    FileLogger.e(TAG, "File upload failed: " + message);
+                                }
                             }
-                        }
-                    });
-                }
-            }, 2000); // 2-second delay
+                        });
+                    }
+                }, 2000); // 2-second delay
+            } else {
+                Log.w(TAG, "No recording file path available after disconnect; skipping upload");
+                FileLogger.w(TAG, "No recording file path available after disconnect; skipping upload");
+            }
 //            connectedMac = null;
 //            updateMacAddressDisplay();
 
@@ -1172,6 +1177,7 @@ public class RecordActivity extends Activity {
         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
         registerReceiver(bluetoothReceiver, filter);
+        isBluetoothReceiverRegistered = true;
     }
 
     private void startBluetoothBackgroundScan() {
@@ -1214,6 +1220,55 @@ public class RecordActivity extends Activity {
 
         // Start the first scan
         scanHandler.post(scanRunnable);
+    }
+
+    private boolean hasBluetoothDiscoveryPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+                    == PackageManager.PERMISSION_GRANTED;
+        }
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void startBluetoothDiscoveryIfPermitted() {
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+            return;
+        }
+        if (!hasBluetoothDiscoveryPermission()) {
+            Log.w(TAG, "Missing Bluetooth discovery permission; skipping discovery start");
+            return;
+        }
+        if (!bluetoothAdapter.isDiscovering()) {
+            bluetoothAdapter.startDiscovery();
+        }
+    }
+
+    private void cancelBluetoothDiscoveryIfPermitted() {
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+            return;
+        }
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "Missing Bluetooth connect permission; skipping discovery cancel");
+            return;
+        }
+        if (bluetoothAdapter.isDiscovering()) {
+            bluetoothAdapter.cancelDiscovery();
+        }
+    }
+
+    private void unregisterBluetoothReceiverIfNeeded() {
+        if (!isBluetoothReceiverRegistered || bluetoothReceiver == null) {
+            return;
+        }
+        try {
+            unregisterReceiver(bluetoothReceiver);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "Bluetooth receiver was already unregistered", e);
+        } finally {
+            isBluetoothReceiverRegistered = false;
+        }
     }
 
     //trend line
@@ -1442,6 +1497,7 @@ public class RecordActivity extends Activity {
                         if (!scannedDevices.contains(display)) {
                             scannedDevices.add(display);
                             adapter.notifyDataSetChanged();
+
                         }
                     }
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(intent.getAction())) {
@@ -1729,7 +1785,7 @@ public class RecordActivity extends Activity {
         mPlot.getGraphWidget().getRangeOriginLabelPaint().setAlpha(0);
         mPlot.getGraphWidget().getRangeGridLinePaint().setAlpha(0);
         mPlot.getGraphWidget().getDomainGridLinePaint().setAlpha(0);
-        mPlot.setPlotPadding(-61, -25, -10, -37); // L,T,R,B
+        mPlot.setPlotPadding(-61, -25, -10, -37);
         mPlot.setMarkupEnabled(false);
         mPlot.getGraphWidget().setCursorPosition(-1, -1);
         mPlot.getGraphWidget().getCursorLabelPaint().setAlpha(0);
@@ -1828,14 +1884,11 @@ public class RecordActivity extends Activity {
     };
 
     //end
-    /**
-     * Called when the Activity is destroyed. Where possible, the Bluetooth connection should be
-     * shut down gracefully by the ConnectionManager.
-     */
+
     @Override
     protected void onDestroy() {
 
-        if (connectionManager.isRecording()) {
+        if (connectionManager != null && connectionManager.isRecording()) {
             connectionManager.disconnect();
         }
         //new code
@@ -1864,21 +1917,11 @@ public class RecordActivity extends Activity {
             isServiceBound = false;
         }
 
-        super.onDestroy();
-
-
         // Stop ongoing Bluetooth discovery and remove the scan handler callback
 //        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
 //            bluetoothAdapter.cancelDiscovery();
 //        }
-        //new code
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-            if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
-                bluetoothAdapter.cancelDiscovery();
-            }
-        } else {
-            requestBluetoothPermissions();
-        }
+        cancelBluetoothDiscoveryIfPermitted();
 
         if (scanHandler != null && scanRunnable != null) {
             scanHandler.removeCallbacks(scanRunnable);
@@ -1891,7 +1934,9 @@ public class RecordActivity extends Activity {
         }
 
         // Unregister Bluetooth receiver to prevent memory leaks
-        unregisterReceiver(bluetoothReceiver);
+        unregisterBluetoothReceiverIfNeeded();
+
+        super.onDestroy();
 
     }
 
