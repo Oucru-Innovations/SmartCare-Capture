@@ -49,11 +49,6 @@ public class FileUploader {
     private static final String BASE_URL = ApiConfig.BASE_URL;
     private static final String STATIC_TOKEN = ApiConfig.API_TOKEN;
     
-    private static final int RETRY_DELAY_MS = 10000;
-    private static final int MAX_RETRY_ATTEMPTS = 3;
-
-    private static int retryCount = 0;
-
     private static Context appContext;
     
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -211,6 +206,9 @@ public class FileUploader {
 //        }
 //    }
 public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
+    if (activity != null) {
+        setAppContext(activity.getApplicationContext());
+    }
     // Check if this is a content URI
     if (filePath.startsWith("content://")) {
         Uri sourceUri = Uri.parse(filePath);
@@ -293,7 +291,6 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                              message.equals("File uploaded successfully"))) {
                             Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
                             Log.i("FileUploader", "File upload successful: " + message);
-                            retryCount = 0;
                             callback.onUploadComplete(true, message);
                         } else {
                             String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
@@ -306,7 +303,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                         Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
                         Log.e("FileUploader", "Response code: " + response.code());
-                        scheduleRetry(activity, filePath, callback);
+                        callback.onUploadComplete(false, errorMsg);
                     }
                 }
 
@@ -315,7 +312,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                     tempFile.delete(); // Clean up temp file
                     Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "Error uploading file", t);
-                    scheduleRetry(activity, filePath, callback);
+                    callback.onUploadComplete(false, t.getMessage() != null ? t.getMessage() : "Upload error");
                 }
             });
 
@@ -361,7 +358,6 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                          message.equals("File uploaded successfully"))) {
                         Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
                         Log.i("FileUploader", "File upload successful: " + message);
-                        retryCount = 0;
                         callback.onUploadComplete(true, message);
                     } else {
                         String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
@@ -374,7 +370,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
                     Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "File upload failed: " + errorMsg);
                     Log.e("FileUploader", "Response code: " + response.code());
-                    scheduleRetry(activity, filePath, callback);
+                    callback.onUploadComplete(false, errorMsg);
                 }
             }
 
@@ -382,7 +378,7 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
             public void onFailure(Call<UploadResponse> call, Throwable t) {
                 Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                 Log.e("FileUploader", "Error uploading file", t);
-                scheduleRetry(activity, filePath, callback);
+                callback.onUploadComplete(false, t.getMessage() != null ? t.getMessage() : "Upload error");
             }
         });
     }
@@ -422,18 +418,6 @@ public static String calculateMD5(Context context, String filePath) {
         return null;
     }
 }
-    // schedule retry for upload (activity)
-    private static void scheduleRetry(Activity activity, String filePath, UploadCallback callback) {
-        if (retryCount < MAX_RETRY_ATTEMPTS) {
-            retryCount++;
-            Handler handler = new Handler(Looper.getMainLooper());
-            handler.postDelayed(() -> uploadFile(activity, filePath, callback), RETRY_DELAY_MS);
-        } else {
-            Toast.makeText(activity, "Max retry attempts reached. Upload failed.", Toast.LENGTH_SHORT).show();
-            Log.e("FileUploader", "Max retry attempts reached. Upload failed.");
-            callback.onUploadComplete(false, "Max retry attempts reached");
-        }
-    }
     // upload without activity
 //    public static void uploadFile(String filePath, UploadCallback callback) {
 //        File file = new File(filePath);
@@ -468,6 +452,11 @@ public static String calculateMD5(Context context, String filePath) {
 //        });
 //    }
     public static void uploadFile(String filePath, UploadCallback callback) {
+        if (appContext == null) {
+            Log.e("FileUploader", "App context is not initialized; cannot upload file safely");
+            callback.onUploadComplete(false, "Uploader context is not initialized");
+            return;
+        }
         // Since we don't have an activity context here, we need app context for content URIs
         if (filePath.startsWith("content://") && appContext != null) {
             // Handle content URIs similar to the activity version but without toasts
@@ -547,7 +536,6 @@ public static String calculateMD5(Context context, String filePath) {
                                 (message.equals("File uploaded successfully!") || 
                                  message.equals("File uploaded successfully"))) {
                                 Log.i("FileUploader", "File upload successful: " + message);
-                                retryCount = 0;
                                 callback.onUploadComplete(true, message);
                             } else {
                                 String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
@@ -558,7 +546,7 @@ public static String calculateMD5(Context context, String filePath) {
                             String errorMsg = response.message() != null ? response.message() : "Unknown error";
                             Log.e("FileUploader", "File upload failed: " + errorMsg);
                             Log.e("FileUploader", "Response code: " + response.code());
-                            scheduleRetryWithoutActivity(filePath, callback);
+                            callback.onUploadComplete(false, errorMsg);
                         }
                     }
 
@@ -566,7 +554,7 @@ public static String calculateMD5(Context context, String filePath) {
                     public void onFailure(Call<UploadResponse> call, Throwable t) {
                         tempFile.delete(); // Clean up temp file
                         Log.e("FileUploader", "Error uploading file", t);
-                        scheduleRetryWithoutActivity(filePath, callback);
+                        callback.onUploadComplete(false, t.getMessage() != null ? t.getMessage() : "Upload error");
                     }
                 });
 
@@ -615,7 +603,6 @@ public static String calculateMD5(Context context, String filePath) {
                             (message.equals("File uploaded successfully!") || 
                              message.equals("File uploaded successfully"))) {
                             Log.i("FileUploader", "File upload successful: " + message);
-                            retryCount = 0;
                             callback.onUploadComplete(true, message);
                         } else {
                             String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
@@ -626,26 +613,16 @@ public static String calculateMD5(Context context, String filePath) {
                         String errorMsg = response.message() != null ? response.message() : "Unknown error";
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
                         Log.e("FileUploader", "Response code: " + response.code());
-                        scheduleRetryWithoutActivity(filePath, callback);
+                        callback.onUploadComplete(false, errorMsg);
                     }
                 }
 
                 @Override
                 public void onFailure(Call<UploadResponse> call, Throwable t) {
                     Log.e("FileUploader", "Error uploading file", t);
-                    scheduleRetryWithoutActivity(filePath, callback);
+                    callback.onUploadComplete(false, t.getMessage() != null ? t.getMessage() : "Upload error");
                 }
             });
-        }
-    }
-    private static void scheduleRetryWithoutActivity(String filePath, UploadCallback callback) {
-        if (retryCount < MAX_RETRY_ATTEMPTS) {
-            retryCount++;
-            Handler handler = new Handler(Looper.getMainLooper());
-            handler.postDelayed(() -> uploadFile(filePath, callback), RETRY_DELAY_MS);
-        } else {
-            Log.e("FileUploader", "Max retry attempts reached. Upload failed.");
-            callback.onUploadComplete(false, "Max retry attempts reached");
         }
     }
 //    private static class RetrofitClient {
@@ -678,4 +655,3 @@ public static String calculateMD5(Context context, String filePath) {
         return ApiConfig.BASE_URL;
     }
 }
-

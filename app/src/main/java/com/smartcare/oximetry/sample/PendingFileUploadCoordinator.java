@@ -1,0 +1,136 @@
+package com.smartcare.oximetry.sample;
+
+import android.app.Activity;
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.TextUtils;
+import android.util.Log;
+
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Central upload flow: per-file retry (max 3 attempts), network check, move to Uploaded on success.
+ */
+public final class PendingFileUploadCoordinator {
+    private static final String TAG = "PendingUpload";
+    private static final int MAX_ATTEMPTS = 3;
+    private static final int RETRY_DELAY_MS = 10_000;
+
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static final ConcurrentHashMap<String, AtomicInteger> ATTEMPTS = new ConcurrentHashMap<>();
+    private static final Set<String> IN_FLIGHT = ConcurrentHashMap.newKeySet();
+
+    private PendingFileUploadCoordinator() {
+    }
+
+    public static void uploadSessionFile(Context context, String fileUri) {
+        uploadSessionFile(context, null, fileUri);
+    }
+
+    public static void uploadSessionFile(Context context, Activity activity, String fileUri) {
+        if (context == null || TextUtils.isEmpty(fileUri)) {
+            return;
+        }
+        FileUploader.setAppContext(context.getApplicationContext());
+        uploadWithRetry(context.getApplicationContext(), activity, fileUri, true);
+    }
+
+    public static int uploadAllPending(Context context) {
+        if (context == null) {
+            return 0;
+        }
+        Context app = context.getApplicationContext();
+        FileUploader.setAppContext(app);
+
+        String openUri = OximeterDataWriterFunctions.getCurrentOpenFileUriString();
+        List<OximeterDataFileIndex.FileEntry> pending =
+                OximeterDataFileIndex.queryPendingFiles(app);
+
+        int queued = 0;
+        for (OximeterDataFileIndex.FileEntry entry : pending) {
+            if (entry.uri == null) {
+                continue;
+            }
+            String uriStr = entry.uri.toString();
+            if (uriStr.equals(openUri)) {
+                continue;
+            }
+            if (entry.displayName != null && entry.displayName.contains("_unknown")) {
+                continue;
+            }
+            uploadWithRetry(app, null, uriStr, false);
+            queued++;
+        }
+        FileLogger.logEvent("UPLOAD", "PENDING_BATCH_QUEUED",
+                "queued=" + queued + " totalListed=" + pending.size());
+        return queued;
+    }
+
+    private static void uploadWithRetry(Context appContext, Activity activity,
+                                        String fileUri, boolean sessionUpload) {
+        if (IN_FLIGHT.contains(fileUri)) {
+            return;
+        }
+
+        int attempt = incrementAttempt(fileUri);
+        if (attempt > MAX_ATTEMPTS) {
+            ATTEMPTS.remove(fileUri);
+            String msg = "Max retry attempts reached";
+            Log.e(TAG, msg + ": " + fileUri);
+            FileLogger.e(TAG, (sessionUpload ? "Session file upload failed: "
+                    : "Pending upload failed: ") + msg);
+            return;
+        }
+
+        IN_FLIGHT.add(fileUri);
+
+        if (!NetworkHelper.isNetworkAvailable(appContext)) {
+            IN_FLIGHT.remove(fileUri);
+            Log.w(TAG, "No network (attempt " + attempt + "/" + MAX_ATTEMPTS + "): " + fileUri);
+            FileLogger.logWarningEvent("UPLOAD", "UPLOAD_WAIT_NETWORK",
+                    "uri=" + fileUri + " attempt=" + attempt);
+            scheduleRetry(appContext, activity, fileUri, sessionUpload);
+            return;
+        }
+
+        FileUploader.UploadCallback callback = new FileUploader.UploadCallback() {
+            @Override
+            public void onUploadComplete(boolean success, String message) {
+                IN_FLIGHT.remove(fileUri);
+                if (success) {
+                    ATTEMPTS.remove(fileUri);
+                    boolean moved = FileUploader.moveFileToUploadedFolderFromUri(appContext, fileUri);
+                    if (moved) {
+                        FileLogger.i(TAG, "Upload OK, moved to Uploaded: " + fileUri);
+                    } else {
+                        FileLogger.w(TAG, "Upload OK but move failed: " + fileUri);
+                    }
+                    return;
+                }
+
+                Log.w(TAG, "Upload failed (attempt " + attempt + "/" + MAX_ATTEMPTS + "): " + message);
+                scheduleRetry(appContext, activity, fileUri, sessionUpload);
+            }
+        };
+
+        if (activity != null) {
+            FileUploader.uploadFile(activity, fileUri, callback);
+        } else {
+            FileUploader.uploadFile(fileUri, callback);
+        }
+    }
+
+    private static void scheduleRetry(Context appContext, Activity activity,
+                                      String fileUri, boolean sessionUpload) {
+        MAIN.postDelayed(() -> uploadWithRetry(appContext, activity, fileUri, sessionUpload),
+                RETRY_DELAY_MS);
+    }
+
+    private static int incrementAttempt(String fileUri) {
+        return ATTEMPTS.computeIfAbsent(fileUri, k -> new AtomicInteger(0)).incrementAndGet();
+    }
+}

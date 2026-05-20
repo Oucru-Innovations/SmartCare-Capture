@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-<!--    <external-path-->
-<!--        name="downloads"-->
-<!--        path="Download/OximeterData/" />-->
+    <!-- Public Downloads folder: Tablet\Download\OximeterData\ -->
+    <external-path
+        name="downloads"
+        path="Download/OximeterData/" />
+    <!-- App private external storage (fallback / Logs) -->
     <external-files-path name="external_files" path="." />
     <external-path name="external" path="." />
 </paths>
