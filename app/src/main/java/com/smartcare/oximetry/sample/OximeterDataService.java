@@ -23,7 +23,9 @@ public class OximeterDataService extends Service {
 
     // Service state
     private boolean isRunning = false;
+    private boolean recordingFinalized = false;
     private PowerManager.WakeLock wakeLock;
+    private long lastAddDataPointDropLogMs = 0;
 
     public static final String ACTION_SPLIT_RECORDING = "com.smartcare.oximetry.ACTION_SPLIT_RECORDING";
 
@@ -31,8 +33,9 @@ public class OximeterDataService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (ACTION_SPLIT_RECORDING.equals(intent.getAction())) {
-                Log.i(TAG, "Received broadcast to split recording for auto-upload");
-                OximeterDataWriterFunctions.forceSplitRecording();
+                Log.i(TAG, "Received broadcast for daily cutoff split");
+                FileLogger.logEvent("SERVICE", "DAILY_CUTOFF_SPLIT", "17:00 file rotation");
+                OximeterDataWriterFunctions.splitForDailyCutoff();
             }
         }
     };
@@ -64,6 +67,8 @@ public class OximeterDataService extends Service {
     public void onCreate() {
         super.onCreate();
         Log.i(TAG, "Oximeter Data Service created");
+        FileLogger.logEvent("SERVICE", "SERVICE_CREATED", "OximeterDataService onCreate");
+        FileUploader.setAppContext(getApplicationContext());
         createNotificationChannel();
         serviceContext = this;
 
@@ -77,28 +82,32 @@ public class OximeterDataService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent == null) {
+            FileLogger.logWarningEvent("SERVICE", "SERVICE_RESTART_NULL_INTENT",
+                    "onStartCommand with null intent (START_STICKY after system kill); isRunning=" + isRunning
+                            + " dataBuffer=" + (dataBuffer != null));
+        } else if ((flags & START_FLAG_REDELIVERY) != 0) {
+            FileLogger.logWarningEvent("SERVICE", "SERVICE_REDELIVERED",
+                    "Service restarted after being killed; patientCode=" + patientCode);
+        }
+
         if (intent != null) {
-            // Extract data from the intent if available
             if (intent.hasExtra("patientCode")) {
                 patientCode = intent.getStringExtra("patientCode");
                 enableChunkFile = intent.getBooleanExtra("enableChunkFile", false);
                 timeInterval = intent.getIntExtra("timeInterval", 3);
 
-                // Start service in foreground to prevent it from being killed
                 startForeground(NOTIFICATION_ID, createNotification());
-
-                // Acquire wake lock to keep CPU running when screen is off
                 acquireWakeLock();
-
-                // Initialize data collection
-//                startDataCollection();
 
                 isRunning = true;
                 Log.i(TAG, "Oximeter Data Service started with patient code: " + patientCode);
+                FileLogger.logEvent("SERVICE", "SERVICE_STARTED",
+                        "foreground started patientCode=" + patientCode
+                                + " chunk=" + enableChunkFile + " interval=" + timeInterval);
             }
         }
 
-        // If service is killed by the system, restart it
         return START_STICKY;
     }
 
@@ -145,15 +154,25 @@ public class OximeterDataService extends Service {
 
     public void startDataCollection(long timestamp, String patientIdentifier, boolean enableChunkFile, int timeInterval) {
         dataBuffer = new OximeterDataBuffer();
+        recordingFinalized = false;
 
-        // Initialize data recording
-//        OximeterDataWriterFunctions.setActivity(null);  // No need for Activity reference in service
         OximeterDataWriterFunctions.initialize(serviceContext);
         OximeterDataWriterFunctions.startNewRecording(
                 timestamp,
                 patientIdentifier,
                 enableChunkFile,
                 timeInterval);
+        FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STARTED",
+                "patient=" + patientIdentifier + " timestamp=" + timestamp);
+    }
+
+    public boolean ensureRecordingActive(long timestamp, String patientIdentifier,
+                                         boolean enableChunkFile, int timeInterval) {
+        if (!OximeterDataWriterFunctions.isRecordingActive()) {
+            startDataCollection(timestamp, patientIdentifier, enableChunkFile, timeInterval);
+            return true;
+        }
+        return false;
     }
 
     // Method to receive new data from RecordActivity
@@ -164,32 +183,70 @@ public class OximeterDataService extends Service {
         if (isRunning && dataBuffer != null) {
             dataBuffer.addDataPoint(spo2Val, spo2Status, redAdc, battery, hrVal, irAdc,
                     perfusionIndex, counter, macAddress, packageReceived, plethVal, timestamp);
+        } else {
+            long now = System.currentTimeMillis();
+            if (now - lastAddDataPointDropLogMs > 10_000L) {
+                lastAddDataPointDropLogMs = now;
+                FileLogger.logWarningEvent("SERVICE", "DATA_POINT_DROPPED",
+                        "addDataPoint ignored: isRunning=" + isRunning
+                                + " dataBuffer=" + (dataBuffer != null)
+                                + " patientCode=" + patientCode);
+            }
         }
     }
 
     public void stopDataCollection() {
-        if (isRunning) {
-            // Stop data collection and save files
-            String filePath = OximeterDataWriterFunctions.endRecording();
-            Log.i(TAG, "Data collection stopped, file saved: " + filePath);
-
-            // Release wake lock if held
-            if (wakeLock != null && wakeLock.isHeld()) {
-                wakeLock.release();
-                wakeLock = null;
-            }
-
-            isRunning = false;
-            dataBuffer = null;
-
-            endRecordFilePath = filePath;
+        if (recordingFinalized) {
+            FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STOP_SKIPPED",
+                    "already finalized; isRunning=" + isRunning);
+            return;
         }
+        recordingFinalized = true;
+
+        FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STOP_REQUESTED",
+                "isRunning=" + isRunning + " hadBuffer=" + (dataBuffer != null));
+
+        String filePath = OximeterDataWriterFunctions.endRecording();
+        if (filePath != null) {
+            Log.i(TAG, "Data collection stopped, file saved: " + filePath);
+            endRecordFilePath = filePath;
+            FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STOPPED",
+                    "file saved uri/path=" + filePath);
+        } else {
+            Log.w(TAG, "Data collection stopped but no active recording file to finalize");
+            FileLogger.logWarningEvent("SERVICE", "DATA_COLLECTION_STOPPED_NO_FILE",
+                    "endRecording returned null; isRunning=" + isRunning);
+        }
+
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            wakeLock = null;
+        }
+
+        isRunning = false;
+        dataBuffer = null;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        FileLogger.logWarningEvent("USER", "SERVICE_TASK_REMOVED",
+                "User removed app from recent tasks; service will stop"
+                        + " isRunning=" + isRunning + " recordingFinalized=" + recordingFinalized,
+                getApplicationContext());
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
+        FileLogger.logEvent("SERVICE", "SERVICE_DESTROY",
+                "onDestroy isRunning=" + isRunning
+                        + " recordingFinalized=" + recordingFinalized
+                        + " | finalizing recording if still active",
+                getApplicationContext());
         unregisterReceiver(splitReceiver);
-        stopDataCollection();
+        if (!recordingFinalized) {
+            stopDataCollection();
+        }
         stopForeground(true);
         Log.i(TAG, "Oximeter Data Service destroyed");
         super.onDestroy();
