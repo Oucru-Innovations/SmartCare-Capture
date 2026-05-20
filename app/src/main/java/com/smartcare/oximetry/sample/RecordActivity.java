@@ -190,7 +190,10 @@ public class RecordActivity extends Activity {
     private BroadcastReceiver bluetoothReceiver;
     private boolean isBluetoothReceiverRegistered = false;
     private static final long SCAN_INTERVAL = 5000; // 10 seconds
-    private static final long AUTO_RECONNECT_INTERVAL_MS = 5000;
+    /** Delay before the first reconnect attempt after disconnect (30 seconds). */
+    private static final long AUTO_RECONNECT_INITIAL_DELAY_MS = 30L * 1000L;
+    /** Delay between subsequent reconnect attempts (3 minutes). */
+    private static final long AUTO_RECONNECT_INTERVAL_MS = 3L * 60L * 1000L;
     private Handler scanHandler;
     private Runnable scanRunnable;
     private Handler autoReconnectHandler;
@@ -688,7 +691,7 @@ public class RecordActivity extends Activity {
                 isConnecting = false;
 
                 if (macAddressOrNull != null && !blockedList.contains(macAddressOrNull)) {
-                    scheduleAutoReconnect(macAddressOrNull, AUTO_RECONNECT_INTERVAL_MS);
+                    scheduleAutoReconnect(macAddressOrNull, AUTO_RECONNECT_INITIAL_DELAY_MS);
                 }
 
                 mControlButton.setOnClickListener(new OnClickListener() {
@@ -835,7 +838,7 @@ public class RecordActivity extends Activity {
             isDisconnectFlowInProgress = false;
             startBluetoothDiscoveryIfPermitted();
             if (!TextUtils.isEmpty(reconnectMac) && !blockedList.contains(reconnectMac)) {
-                scheduleAutoReconnect(reconnectMac, 1000);
+                scheduleAutoReconnect(reconnectMac, AUTO_RECONNECT_INITIAL_DELAY_MS);
             }
             //new
 //
@@ -1238,7 +1241,7 @@ public class RecordActivity extends Activity {
                         shouldConnectAfterServiceBound = false;
                         pendingMacToConnect = null;
                         if (!blockedList.contains(disconnectedMac)) {
-                            scheduleAutoReconnect(disconnectedMac, AUTO_RECONNECT_INTERVAL_MS);
+                            scheduleAutoReconnect(disconnectedMac, AUTO_RECONNECT_INITIAL_DELAY_MS);
                         }
                         if (bluetoothInterceptor != null) {
                             bluetoothInterceptor.setConnectedMacAddress(null);

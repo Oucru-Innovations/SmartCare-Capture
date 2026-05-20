@@ -44,7 +44,13 @@ public class BluetoothEventInterceptor {
                     return;
                 }
                 
-                String deviceMac = device.getAddress();
+                String deviceMac;
+                try {
+                    deviceMac = device.getAddress();
+                } catch (SecurityException e) {
+                    Log.w(TAG, "Cannot read Bluetooth device address: " + e.getMessage());
+                    return;
+                }
                 
                 if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
                     // Check if the device is connected.
