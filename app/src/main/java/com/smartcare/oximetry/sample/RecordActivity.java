@@ -190,13 +190,17 @@ public class RecordActivity extends Activity {
     private BroadcastReceiver bluetoothReceiver;
     private boolean isBluetoothReceiverRegistered = false;
     private static final long SCAN_INTERVAL = 5000; // 10 seconds
+    private static final long AUTO_RECONNECT_INTERVAL_MS = 5000;
     private Handler scanHandler;
     private Runnable scanRunnable;
+    private Handler autoReconnectHandler;
+    private Runnable autoReconnectRunnable;
     private List<String> blockedList = new ArrayList<>();
     private boolean isConnected = false;
     private boolean isConnecting = false;
     private boolean shouldConnectAfterServiceBound = false;
     private String pendingMacToConnect = null;
+    private String autoReconnectMac = null;
 //    test
     private String filePath;
     // Bluetooth Event Interceptor
@@ -216,6 +220,10 @@ public class RecordActivity extends Activity {
     public static double annotationSpO2 = 0.f;
     // handle service target.isServiceBound && target.dataService false
     private long lastReconnectAttempt = 0;
+    private long lastConnectFailLogMs = 0;
+    private static final long CONNECT_FAIL_LOG_INTERVAL_MS = 60_000L;
+    private volatile boolean isDisconnectFlowInProgress = false;
+    private volatile boolean isActivityDestroyed = false;
     // Save Logs to file
     private FileLogger logger;
     /**
@@ -239,6 +247,9 @@ public class RecordActivity extends Activity {
         @Override
         public void handleMessage(Message msg) {
             final RecordActivity target = mmTarget.get();
+            if (target == null || target.isActivityUnavailable()) {
+                return;
+            }
             Bundle data;
 
             // Each message contains an identification code in the Message,what field.
@@ -317,10 +328,14 @@ public class RecordActivity extends Activity {
 //                        Log.i(TAG, "Chunk file: " + target.isEnabled + " ---- Interval: " + target.interval);
 //                        target.writeDataToCSV(latestPlethValue, latestHeartRateValue, latestSpO2Value, deviceId, latestBatteryValue, latestCounterValue, latestSpO2Status,timestamp);
                         if (!isRecordingSessionActive) {
-//                            OximeterDataWriterFunctions.startNewRecording(latestPackageReceived, target.formattedCode, target.isEnabled, target.interval);
-                            target.dataService.startDataCollection(latestPackageReceived,target.formattedCode, target.isEnabled, target.interval);
-//                          ShowAnnotate.startAnnotationSession();
+                            target.dataService.startDataCollection(latestPackageReceived,
+                                    target.formattedCode, target.isEnabled, target.interval);
                             isRecordingSessionActive = true;
+                        } else if (!OximeterDataWriterFunctions.isRecordingActive()) {
+                            target.dataService.ensureRecordingActive(latestPackageReceived,
+                                    target.formattedCode, target.isEnabled, target.interval);
+                            FileLogger.logEvent("SERVICE", "WRITER_RESUMED_AFTER_RECONNECT",
+                                    "Opened new CSV writer; session was still active");
                         }
 //                        OximeterDataWriterFunctions.startNewRecording(latestPackageReceived);
                         // Write data to CSV file by activity
@@ -359,9 +374,12 @@ public class RecordActivity extends Activity {
                             );
                         }
                         else {
-                            // Service is unavailable - attempt to reconnect
                             Log.w("RecordActivity", "Service unavailable, attempting reconnection");
-                            FileLogger.w(TAG, "Service unavailable, attempting reconnection");
+                            FileLogger.logWarningEvent("SERVICE", "SERVICE_UNAVAILABLE",
+                                    "Cannot write data: isServiceBound=" + target.isServiceBound
+                                            + " dataService=" + (target.dataService != null)
+                                            + " recordingSession=" + isRecordingSessionActive
+                                            + " connected=" + target.isConnected);
                             // Avoid spamming reconnection attempts - use a timestamp to throttle
                             long currentTime = System.currentTimeMillis();
                             if (currentTime - target.lastReconnectAttempt > 15000) { // Only try every 15 seconds
@@ -373,7 +391,7 @@ public class RecordActivity extends Activity {
 
                     } catch (Exception e) {
                         Log.e("RecordActivity", "Error writing CSV data", e);
-                        FileLogger.e("RecordActivity", "Error writing CSV data: " + e.getMessage());
+                        FileLogger.e(TAG, "Error writing CSV data", e);
                     }
 
                     //end
@@ -470,7 +488,9 @@ public class RecordActivity extends Activity {
                 // smartcare turn off when it is connected
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
                     Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
-                    FileLogger.w(TAG, "Bluetooth connection lost - forcing stop to save data");
+                    FileLogger.logWarningEvent("BLUETOOTH", "CONNECTION_LOST",
+                            "Bluetooth connection lost - forcing stop to save data | "
+                                    + MemoryDiagnostics.formatSnapshot(target));
                     target.isConnected = false;
                     // Force stop recording to rename 'unknown' file to end timestamp
                     if (isRecordingSessionActive) {
@@ -533,6 +553,7 @@ public class RecordActivity extends Activity {
                     FileLogger.i(TAG, "Disconnected from oximetry");
 //                    FileUploader.uploadFile(target, target.filePath);
                     target.isConnected = false; //new
+                    target.isDisconnectFlowInProgress = false;
                     target.startBluetoothDiscoveryIfPermitted();
                     target.connectedMac = null;
 //                    target.updateMacAddressDisplay();
@@ -562,6 +583,7 @@ public class RecordActivity extends Activity {
                 case ConnectionManager.MESSAGE_DEVICE_NOT_FOUND:
                     Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
                     target.isConnected = false;
+                    target.isDisconnectFlowInProgress = false;
                     target.startBluetoothDiscoveryIfPermitted();
 
                     if (isRecordingSessionActive) {
@@ -655,11 +677,19 @@ public class RecordActivity extends Activity {
             mControlButton.setEnabled(true);
 
             if (!result) {
-                Log.w(getString(R.string.app_name), "Cannot connect");
-                FileLogger.e(TAG, "Cannot connect to device");
+                long now = System.currentTimeMillis();
+                if (now - lastConnectFailLogMs >= CONNECT_FAIL_LOG_INTERVAL_MS) {
+                    lastConnectFailLogMs = now;
+                    Log.w(getString(R.string.app_name), "Cannot connect");
+                    FileLogger.e(TAG, "Cannot connect to device");
+                }
                 mControlButton.setText(getString(R.string.record_start));
                 isConnected = false;
                 isConnecting = false;
+
+                if (macAddressOrNull != null && !blockedList.contains(macAddressOrNull)) {
+                    scheduleAutoReconnect(macAddressOrNull, AUTO_RECONNECT_INTERVAL_MS);
+                }
 
                 mControlButton.setOnClickListener(new OnClickListener() {
                     @Override
@@ -684,10 +714,12 @@ public class RecordActivity extends Activity {
             if (bluetoothInterceptor != null) {
                 bluetoothInterceptor.setConnectedMacAddress(connectedMacAddress);
             }
+            stopAutoReconnect();
 
             mControlButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    stopAutoReconnect();
                      stopDisconnectExit();
                     blockedList.add(connectedMac);
                     //new
@@ -722,7 +754,9 @@ public class RecordActivity extends Activity {
         @Override
         protected void onPreExecute() {
             Log.i(getString(R.string.app_name), "Disconnector task started");
-
+            FileLogger.logEvent("USER", "DISCONNECT_FLOW_STARTED",
+                    "User stop or connection lost; recordingSession=" + isRecordingSessionActive
+                            + " connectedMac=" + connectedMac);
             mControlButton.setEnabled(false);
         }
 
@@ -737,13 +771,24 @@ public class RecordActivity extends Activity {
         protected void onPostExecute(Boolean result) {
             Log.i(getString(R.string.app_name), "Disconnector task finished");
             isRecordingSessionActive = false;
+            isConnected = false;
+            isConnecting = false;
+            shouldConnectAfterServiceBound = false;
+            pendingMacToConnect = null;
+            final String reconnectMac = connectedMac;
             String completedFilePath = null;
 
             if (isServiceBound && dataService != null) {
                 dataService.stopDataCollection();
                 completedFilePath = dataService.endRecordFilePath;
+            } else {
+                FileLogger.logWarningEvent("SERVICE", "DISCONNECT_NO_SERVICE",
+                        "stopDataCollection skipped: isServiceBound=" + isServiceBound
+                                + " dataService=" + (dataService != null));
             }
 
+            FileLogger.logEvent("SERVICE", "SERVICE_STOP_REQUESTED",
+                    "stopService called after disconnect");
             Intent serviceIntent = new Intent(RecordActivity.this, OximeterDataService.class);
             stopService(serviceIntent);
 
@@ -755,6 +800,7 @@ public class RecordActivity extends Activity {
                 }
                 isServiceBound = false;
             }
+            dataService = null;
 
             filePath = completedFilePath;
             Log.i("RecordActivity", "File path: " + filePath);
@@ -762,24 +808,9 @@ public class RecordActivity extends Activity {
             FileLogger.i("FileUploader", "Server URL: " + FileUploader.getBaseUrl());
 
             if (!TextUtils.isEmpty(filePath)) {
-                new Handler().postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        FileUploader.uploadFile(RecordActivity.this, filePath, new FileUploader.UploadCallback() {
-                            @Override
-                            public void onUploadComplete(boolean success, String message) {
-                                if (success) {
-                                    Log.i("FileUploader-RA", "File upload successful");
-                                    FileLogger.i(TAG, "File upload successful: "+ filePath);
-                                    FileUploader.moveFileToUploadedFolder(new File(filePath));
-                                } else {
-                                    Log.e("FileUploader-RA", "File upload failed: " + message);
-                                    FileLogger.e(TAG, "File upload failed: " + message);
-                                }
-                            }
-                        });
-                    }
-                }, 2000); // 2-second delay
+                final String uploadPath = filePath;
+                new Handler().postDelayed(() -> PendingFileUploadCoordinator.uploadSessionFile(
+                        RecordActivity.this, RecordActivity.this, uploadPath), 2000);
             } else {
                 Log.w(TAG, "No recording file path available after disconnect; skipping upload");
                 FileLogger.w(TAG, "No recording file path available after disconnect; skipping upload");
@@ -788,6 +819,24 @@ public class RecordActivity extends Activity {
 //            updateMacAddressDisplay();
 
             connectedMac = null;
+            if (bluetoothInterceptor != null) {
+                bluetoothInterceptor.setConnectedMacAddress(null);
+            }
+
+            mControlButton.setText(getString(R.string.record_start));
+            mControlButton.setEnabled(true);
+            mControlButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    connectToPulseOximeter();
+                }
+            });
+
+            isDisconnectFlowInProgress = false;
+            startBluetoothDiscoveryIfPermitted();
+            if (!TextUtils.isEmpty(reconnectMac) && !blockedList.contains(reconnectMac)) {
+                scheduleAutoReconnect(reconnectMac, 1000);
+            }
             //new
 //
         }
@@ -825,6 +874,10 @@ public class RecordActivity extends Activity {
     }
 
     private void ensureServiceAndConnect(String macAddressOrNull) {
+        if (isDisconnectFlowInProgress) {
+            Log.d(TAG, "Skip connect while disconnect flow is still in progress");
+            return;
+        }
         if (isConnected || isConnecting || shouldConnectAfterServiceBound) {
             Log.d(TAG, "Skip connect: isConnected=" + isConnected
                     + ", isConnecting=" + isConnecting
@@ -900,6 +953,18 @@ public class RecordActivity extends Activity {
      * finished and resources are tidied up when we receive the relevant message in the Handler.
      */
     private void stopDisconnectExit() {
+        if (isActivityUnavailable()) {
+            Log.w(TAG, "Skip disconnect flow because activity is unavailable");
+            FileLogger.logWarningEvent("USER", "DISCONNECT_SKIPPED",
+                    "Activity unavailable (destroyed or finishing)");
+            return;
+        }
+        if (isDisconnectFlowInProgress) {
+            Log.d(TAG, "Disconnect flow already in progress; ignoring duplicate request");
+            FileLogger.d(TAG, "Disconnect flow already in progress; ignoring duplicate");
+            return;
+        }
+        isDisconnectFlowInProgress = true;
 //        move to Disconnector
 //        // First attempt to stop the service directly
 //        Intent serviceIntent = new Intent(this, OximeterDataService.class);
@@ -920,6 +985,10 @@ public class RecordActivity extends Activity {
 //        }
 
         new Disconnector().execute();
+    }
+
+    private boolean isActivityUnavailable() {
+        return isActivityDestroyed || isFinishing() || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed());
     }
 
     /**
@@ -980,7 +1049,9 @@ public class RecordActivity extends Activity {
 
         //Initialize FileLogger
         logger = FileLogger.getInstance(this);
-        FileLogger.i(TAG,"Application started");
+        FileUploader.setAppContext(getApplicationContext());
+        FileLogger.logEvent("USER", "RECORD_SCREEN_OPENED",
+                MemoryDiagnostics.formatDeviceSummary(this) + " | RecordActivity onCreate", this);
 
         AnnotationUploadScheduler.scheduleDailyUpload(this);
         // Create new Adapter wrapping the ConnectionManager, which will connect to and manage the pulse oximeter.
@@ -1166,6 +1237,9 @@ public class RecordActivity extends Activity {
                         isConnecting = false;
                         shouldConnectAfterServiceBound = false;
                         pendingMacToConnect = null;
+                        if (!blockedList.contains(disconnectedMac)) {
+                            scheduleAutoReconnect(disconnectedMac, AUTO_RECONNECT_INTERVAL_MS);
+                        }
                         if (bluetoothInterceptor != null) {
                             bluetoothInterceptor.setConnectedMacAddress(null);
                         }
@@ -1204,8 +1278,8 @@ public class RecordActivity extends Activity {
                 }
 
                 if (hasPermission) {
-                    if (!bluetoothAdapter.isDiscovering()) {
-                        bluetoothAdapter.startDiscovery();
+                    if (!isBluetoothDiscoveryActive()) {
+                        startBluetoothDiscoverySafely();
                         Log.d(TAG, "Started Bluetooth device discovery");
                     }
                 } else {
@@ -1231,6 +1305,74 @@ public class RecordActivity extends Activity {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    private boolean isBluetoothDiscoveryActive() {
+        if (bluetoothAdapter == null || !hasBluetoothDiscoveryPermission()) {
+            return false;
+        }
+        try {
+            return bluetoothAdapter.isDiscovering();
+        } catch (SecurityException e) {
+            Log.w(TAG, "Cannot read Bluetooth discovery state", e);
+            return false;
+        }
+    }
+
+    private boolean startBluetoothDiscoverySafely() {
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled() || !hasBluetoothDiscoveryPermission()) {
+            return false;
+        }
+        try {
+            return bluetoothAdapter.startDiscovery();
+        } catch (SecurityException e) {
+            Log.w(TAG, "Cannot start Bluetooth discovery", e);
+            return false;
+        }
+    }
+
+    private void scheduleAutoReconnect(String macAddress, long delayMs) {
+        if (TextUtils.isEmpty(macAddress) || blockedList.contains(macAddress)) {
+            return;
+        }
+
+        autoReconnectMac = macAddress;
+        if (autoReconnectHandler == null) {
+            autoReconnectHandler = new Handler();
+        }
+        if (autoReconnectRunnable != null) {
+            autoReconnectHandler.removeCallbacks(autoReconnectRunnable);
+        }
+
+        autoReconnectRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (isActivityUnavailable()) {
+                    return;
+                }
+                if (TextUtils.isEmpty(autoReconnectMac) || blockedList.contains(autoReconnectMac)) {
+                    return;
+                }
+                if (isConnected || isConnecting || isDisconnectFlowInProgress) {
+                    autoReconnectHandler.postDelayed(this, AUTO_RECONNECT_INTERVAL_MS);
+                    return;
+                }
+
+                Log.i(TAG, "Attempting direct auto reconnect to: " + autoReconnectMac);
+                ensureServiceAndConnect(autoReconnectMac);
+                autoReconnectHandler.postDelayed(this, AUTO_RECONNECT_INTERVAL_MS);
+            }
+        };
+
+        autoReconnectHandler.postDelayed(autoReconnectRunnable, Math.max(0, delayMs));
+    }
+
+    private void stopAutoReconnect() {
+        autoReconnectMac = null;
+        if (autoReconnectHandler != null && autoReconnectRunnable != null) {
+            autoReconnectHandler.removeCallbacks(autoReconnectRunnable);
+        }
+        autoReconnectRunnable = null;
+    }
+
     private void startBluetoothDiscoveryIfPermitted() {
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
             return;
@@ -1239,8 +1381,8 @@ public class RecordActivity extends Activity {
             Log.w(TAG, "Missing Bluetooth discovery permission; skipping discovery start");
             return;
         }
-        if (!bluetoothAdapter.isDiscovering()) {
-            bluetoothAdapter.startDiscovery();
+        if (!isBluetoothDiscoveryActive()) {
+            startBluetoothDiscoverySafely();
         }
     }
 
@@ -1807,8 +1949,10 @@ public class RecordActivity extends Activity {
     // reconnect service to prevent not write data to file
     private void reconnectToService() {
         Log.i(TAG, "Attempting to reconnect to OximeterDataService");
+        FileLogger.logEvent("SERVICE", "SERVICE_RECONNECT",
+                "reconnectToService; recordingSession=" + isRecordingSessionActive
+                        + " isServiceBound=" + isServiceBound);
 
-        // If there's an existing service connection, clean it up
         if (isServiceBound) {
             try {
                 unbindService(serviceConnection);
@@ -1865,6 +2009,12 @@ public class RecordActivity extends Activity {
             Log.i(TAG, "Successfully bound to OximeterDataService");
             FileLogger.i(TAG, "Successfully bound to OximeterDataService");
 
+            if (isRecordingSessionActive) {
+                FileLogger.logWarningEvent("SERVICE", "SERVICE_REBOUND_DURING_RECORDING",
+                        "Service rebound while recordingSession active; startDataCollection is NOT called again"
+                                + " — data may not be written until disconnect");
+            }
+
             if (shouldConnectAfterServiceBound) {
                 String macToConnect = pendingMacToConnect;
                 shouldConnectAfterServiceBound = false;
@@ -1879,14 +2029,46 @@ public class RecordActivity extends Activity {
             isServiceBound = false;
             dataService = null;
             Log.w(TAG, "OximeterDataService disconnected unexpectedly");
-            FileLogger.w(TAG, "OximeterDataService disconnected unexpectedly");
+            FileLogger.logWarningEvent("SERVICE", "SERVICE_BINDING_LOST",
+                    "onServiceDisconnected (service process died or was killed); recordingSession="
+                            + isRecordingSessionActive + " btConnected=" + isConnected);
         }
     };
 
     //end
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        if (!isChangingConfigurations()) {
+            FileLogger.logEvent("USER", "RECORD_SCREEN_STOPPED",
+                    "RecordActivity onStop; recordingSession=" + isRecordingSessionActive
+                            + " isFinishing=" + isFinishing());
+        }
+    }
+
+    @Override
     protected void onDestroy() {
+        isActivityDestroyed = true;
+
+        String destroyReason = isFinishing() ? "USER_FINISH_OR_BACK" : "SYSTEM";
+        if (isChangingConfigurations()) {
+            destroyReason += "_CONFIG_CHANGE";
+        }
+        boolean abnormalDestroy = !isFinishing() && !isChangingConfigurations();
+        String destroyDetail = "RecordActivity onDestroy reason=" + destroyReason
+                + " recordingSession=" + isRecordingSessionActive
+                + " btRecording=" + (connectionManager != null && connectionManager.isRecording());
+        if (abnormalDestroy || (isRecordingSessionActive && !isFinishing())) {
+            FileLogger.logWarningEvent("USER", "RECORD_SCREEN_DESTROY",
+                    destroyDetail, this);
+        } else {
+            FileLogger.logEvent("USER", "RECORD_SCREEN_DESTROY", destroyDetail);
+        }
+
+        if (mHandler != null) {
+            mHandler.removeCallbacksAndMessages(null);
+        }
 
         if (connectionManager != null && connectionManager.isRecording()) {
             connectionManager.disconnect();
@@ -1900,22 +2082,24 @@ public class RecordActivity extends Activity {
 //            unbindService(serviceConnection);
 //            isServiceBound = false;
 //        }
-        // Stop the service if it's running
         Intent serviceIntent = new Intent(this, OximeterDataService.class);
-        stopService(serviceIntent);
-
         if (isServiceBound) {
             try {
-                // Stop data collection before unbinding
                 if (dataService != null) {
+                    FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STOP_ON_DESTROY",
+                            "Stopping data collection because RecordActivity is being destroyed");
                     dataService.stopDataCollection();
                 }
                 unbindService(serviceConnection);
             } catch (IllegalArgumentException e) {
                 Log.w(TAG, "Service wasn't bound when trying to unbind");
+                FileLogger.w(TAG, "Service wasn't bound when trying to unbind on destroy");
             }
             isServiceBound = false;
         }
+        FileLogger.logEvent("SERVICE", "SERVICE_STOP_ON_DESTROY",
+                "stopService from RecordActivity.onDestroy");
+        stopService(serviceIntent);
 
         // Stop ongoing Bluetooth discovery and remove the scan handler callback
 //        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
@@ -1926,6 +2110,7 @@ public class RecordActivity extends Activity {
         if (scanHandler != null && scanRunnable != null) {
             scanHandler.removeCallbacks(scanRunnable);
         }
+        stopAutoReconnect();
         
         // Cleanup Bluetooth Event Interceptor
         if (bluetoothInterceptor != null) {
@@ -1935,6 +2120,11 @@ public class RecordActivity extends Activity {
 
         // Unregister Bluetooth receiver to prevent memory leaks
         unregisterBluetoothReceiverIfNeeded();
+
+        if (connectionManager != null) {
+            connectionManager.onDestroy();
+            connectionManager = null;
+        }
 
         super.onDestroy();
 
