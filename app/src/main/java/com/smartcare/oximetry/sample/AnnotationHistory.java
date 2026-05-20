@@ -234,8 +234,9 @@ public class AnnotationHistory {
     }
 
     private static File getAnnotationFile(Context context) {
-        File externalDir = context.getExternalFilesDir(null);
-        File oximeterDataDir = new File(externalDir, "OximeterData");
+        File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS);
+        File oximeterDataDir = new File(downloadsDir, "OximeterData");
         File annotationDir = new File(oximeterDataDir, "Annotation");
         return new File(annotationDir, "Annotations.json");
     }

@@ -1,14 +1,19 @@
 package com.smartcare.oximetry.sample;
 
 import android.content.Context;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
+
 import java.util.Calendar;
 import java.util.concurrent.TimeUnit;
 
 public class AnnotationUploadScheduler {
+    private static final String UNIQUE_DAILY_WORK = "smartcare_daily_17h_maintenance";
+
     public static void scheduleDailyUpload(Context context) {
-        // Calculate delay until 9 PM today; if already past, schedule for tomorrow at 9 PM.
         Calendar current = Calendar.getInstance();
         Calendar target = Calendar.getInstance();
         target.set(Calendar.HOUR_OF_DAY, 17);
@@ -20,10 +25,18 @@ public class AnnotationUploadScheduler {
         }
         long initialDelay = target.getTimeInMillis() - current.getTimeInMillis();
 
-        OneTimeWorkRequest uploadWork = new OneTimeWorkRequest.Builder(UploadAnnotationWorker.class)
-                .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build();
 
-        WorkManager.getInstance(context).enqueue(uploadWork);
+        OneTimeWorkRequest uploadWork = new OneTimeWorkRequest.Builder(UploadAnnotationWorker.class)
+                .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+                .setConstraints(constraints)
+                .build();
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+                UNIQUE_DAILY_WORK,
+                ExistingWorkPolicy.REPLACE,
+                uploadWork);
     }
 }

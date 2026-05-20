@@ -239,8 +239,9 @@ public class ShowAnnotate {
             saveAnnotations(annotations);
 
             // Create single note JSON file for server
-            File oximeterDataDir = context.getExternalFilesDir(null);
-            File mainFolder = new File(oximeterDataDir, "OximeterData");
+            java.io.File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS);
+            java.io.File mainFolder = new java.io.File(downloadsDir, "OximeterData");
             if (!mainFolder.exists()) {
                 mainFolder.mkdirs();
             }
@@ -365,8 +366,9 @@ public class ShowAnnotate {
 
     // Helper method to get annotation directory
     private File getAnnotationDirectory() {
-        File externalDir = context.getExternalFilesDir(null);
-        File oximeterDataDir = new File(externalDir, "OximeterData");
+        File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS);
+        File oximeterDataDir = new File(downloadsDir, "OximeterData");
         return new File(oximeterDataDir, "Annotation");
     }
 
