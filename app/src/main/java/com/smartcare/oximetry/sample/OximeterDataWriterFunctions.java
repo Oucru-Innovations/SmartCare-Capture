@@ -8,7 +8,10 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.text.TextUtils;
 import android.util.Log;
+
+import androidx.annotation.Nullable;
 
 import com.opencsv.CSVWriter;
 import java.io.IOException;
@@ -28,9 +31,9 @@ public class OximeterDataWriterFunctions {
     private static final String FOLDER_NAME = "OximeterData";
     private static final String TAG = "OximeterDataWriter";
 
-    private static final long DEFAULT_SPLIT_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+    private static final long DEFAULT_SPLIT_INTERVAL = RecordingConstants.SPLIT_INTERVAL_MS;
     /** Minimum recording duration before an automatic (non-daily) split. */
-    private static final long MIN_AUTO_SPLIT_MS = 60 * 1000L;
+    private static final long MIN_AUTO_SPLIT_MS = RecordingConstants.MIN_SEGMENT_MS;
 
     private static final Object SPLIT_LOCK = new Object();
 
@@ -79,6 +82,46 @@ public class OximeterDataWriterFunctions {
         return currentFileUri != null ? currentFileUri.toString() : null;
     }
 
+    /** Duration of the currently open CSV segment (unknown file), in milliseconds. */
+    public static long getRecordingSegmentDurationMs() {
+        synchronized (SPLIT_LOCK) {
+            if (!isRecordingActive() || startTimestamp <= 0) {
+                return 0L;
+            }
+            return System.currentTimeMillis() - startTimestamp;
+        }
+    }
+
+    /**
+     * Close the current segment when BLE reports {@code MESSAGE_RECORDING_ENDED} (brief drop).
+     * Opens a new unknown file so the session can continue after reconnect without losing the night.
+     *
+     * @return display name of the completed segment, or null if nothing was split
+     */
+    public static String splitFileOnBlePause() {
+        synchronized (SPLIT_LOCK) {
+            if (currentWriter == null || currentFileUri == null) {
+                return null;
+            }
+            try {
+                long now = System.currentTimeMillis();
+                if ((now - startTimestamp) < MIN_AUTO_SPLIT_MS) {
+                    Log.d(TAG, "Skipping BLE pause split: segment too short");
+                    return null;
+                }
+                String completedName = generateFileName(startTimestamp, formatTimestamp(now));
+                splitFileLocked(now, false);
+                Log.i(TAG, "File split (BLE pause): " + completedName);
+                FileLogger.i(TAG, "File split (BLE pause): " + completedName);
+                return completedName;
+            } catch (IOException e) {
+                Log.e(TAG, "Error during BLE pause split", e);
+                FileLogger.e(TAG, "BLE pause split failed", e);
+                return null;
+            }
+        }
+    }
+
     private static Uri createMediaStoreEntry(String fileName, String relativePath) {
         ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
@@ -94,8 +137,12 @@ public class OximeterDataWriterFunctions {
     private static void renameMediaStoreEntry(Uri uri, String newFileName) {
         ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, newFileName);
+        values.put(MediaStore.Downloads.RELATIVE_PATH,
+                Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER_NAME + "/");
         int updated = appContext.getContentResolver().update(uri, values, null, null);
         Log.i(TAG, "MediaStore rename to [" + newFileName + "] rows updated: " + updated);
+        OximeterDataFileIndex.notifyUriUpdated(appContext, uri);
+        AppRecordingRegistry.registerCompletedRecording(appContext, uri, newFileName);
     }
 
     public static String getFileNameFromUri(Uri uri) {
@@ -241,7 +288,9 @@ public class OximeterDataWriterFunctions {
         currentOutputStream = null;
 
         String completedFileName = generateFileName(startTimestamp, endFormatted);
+        Uri completedUri = currentFileUri;
         renameMediaStoreEntry(currentFileUri, completedFileName);
+        OximeterDataFileIndex.notifyRecordingSaved(appContext, completedUri, completedFileName);
         Log.i(TAG, "File split: " + completedFileName);
         FileLogger.i(TAG, "File split: " + completedFileName);
 
@@ -291,12 +340,17 @@ public class OximeterDataWriterFunctions {
                 return null;
             }
 
-            String newFileName = generateFileName(startTimestamp, formatTimestamp(endTimestamp));
+            String endPart = formatTimestamp(endTimestamp);
+            if (formatTimestamp(startTimestamp).equals(endPart)) {
+                endPart = formatTimestamp(endTimestamp + 1000L);
+            }
+            String newFileName = generateFileName(startTimestamp, endPart);
             Log.i(TAG, "Attempting to rename to: " + newFileName);
             renameMediaStoreEntry(currentFileUri, newFileName);
 
             Log.i(TAG, "Recording ended successfully: " + currentFileUri);
             String uriStr = currentFileUri.toString();
+            OximeterDataFileIndex.notifyRecordingSaved(appContext, Uri.parse(uriStr), newFileName);
             currentFileUri = null;
             startTimestamp = 0;
             return uriStr;
@@ -348,9 +402,13 @@ public class OximeterDataWriterFunctions {
     }
 
     private static String generateFileName(long startTs, String endTimestampPart) {
-        String prefix = "SmartCareCsv";
+        return buildFileName(patientCode, startTs, endTimestampPart);
+    }
+
+    private static String buildFileName(String patientIdentifier, long startTs, String endTimestampPart) {
         String startTime = formatTimestamp(startTs);
-        return String.format(Locale.US, "%s_%s_%s_%s.csv", prefix, patientCode, startTime, endTimestampPart);
+        return String.format(Locale.US, "SmartCareCsv_%s_%s_%s.csv",
+                patientIdentifier, startTime, endTimestampPart);
     }
 
     public static String formatTimestamp(long timestamp) {

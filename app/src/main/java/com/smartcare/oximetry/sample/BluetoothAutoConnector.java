@@ -173,75 +173,8 @@ public class BluetoothAutoConnector {
             Log.d(TAG, "Successfully requested high priority connection");
         } catch (Exception e) {
             Log.d(TAG, "Error setting connection priority with primary method: " + e.getMessage());
-
-            // Method 2: Try to use lower-level approach with socket options
-            new Thread(() -> {
-                try {
-                    if (!hasRequiredPermissions()) {
-                        Log.e(TAG, "Missing required Bluetooth permissions");
-                        return;
-                    }
-
-//                    BluetoothSocket socket = device.createRfcommSocketToServiceRecord(SPP_UUID);
-//                    socket.connect();
-                    BluetoothSocket socket;
-                    try {
-                        socket = device.createRfcommSocketToServiceRecord(SPP_UUID);
-                    } catch (SecurityException err) {
-                        Log.e(TAG, "Security exception creating RFCOMM socket: " + e.getMessage());
-                        return;
-                    } catch (IOException err) {
-                        Log.e(TAG, "IOException creating RFCOMM socket", e);
-                        return;
-                    }
-
-                    try {
-                        socket.connect();
-                    } catch (SecurityException err) {
-                        Log.e(TAG, "Security exception connecting socket: " + e.getMessage());
-                        try {
-                            socket.close();
-                        } catch (IOException ignored) {}
-                        return;
-                    } catch (IOException err) {
-                        Log.e(TAG, "Failed to connect: " + e.getMessage());
-                        try {
-                            socket.close();
-                        } catch (IOException ignored) {}
-                        return;
-                    }
-                    if (socket.isConnected()) {
-                        // Use reflection to access & modify socket parameters
-                        try {
-                            Method setSocketOpt = socket.getClass().getMethod("setSocketOpt", int.class, int.class, int.class, byte[].class);
-                            int CONNECTION_PRIORITY = 21; // This is a private connection priority constant
-                            int HIGH_PRIORITY = 1;
-                            setSocketOpt.invoke(socket, CONNECTION_PRIORITY, 0, HIGH_PRIORITY, null);
-                            Log.d(TAG, "Successfully set high priority through socket options");
-                        } catch (Exception e2) {
-                            Log.d(TAG, "Error setting socket options: " + e2.getMessage());
-                        }
-
-                        // Keep socket reference to keep priority settings active
-                        if (activeSocket != null) {
-                            try {
-                                activeSocket.close();
-                            } catch (IOException closeEx) {
-                                // Ignore
-                            }
-                        }
-                        activeSocket = socket;
-                    }
-//                } catch (IOException e2) {
-//                    Log.e(TAG, "Failed to establish socket connection: " + e2.getMessage());
-//                    try {
-//                        if (activeSocket != null) activeSocket.close();
-//                    } catch (IOException ignored) {}
-//                }
-                } catch (Exception err) {
-                    Log.e(TAG, "Error in socket connection thread", err);
-                }
-            }).start();
+            // Do not open a second RFCOMM socket here — scolib ConnectionManager already owns SPP.
+            // A parallel socket caused frequent BLE drops on older SmartCare devices.
         }
     }
 

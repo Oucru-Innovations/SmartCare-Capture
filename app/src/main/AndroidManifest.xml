@@ -13,7 +13,6 @@
 
     <!-- Location permissions (required for Bluetooth device discovery) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- Notification permission for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -23,6 +22,11 @@
         android:maxSdkVersion="28"
         tools:replace="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <!-- Broad access to Download/OximeterData on API 30+ without Storage Access Framework folder pick.
+         Google Play: requires a declaration; suitable for sideload / enterprise builds. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Internet permission for file uploads -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -34,9 +38,8 @@
     <!-- Wake lock and battery optimization permissions -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Required for location-based foreground service on Android 14+ -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Foreground service for continuous Bluetooth oximeter capture (24h sessions). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <application
         android:name=".SmartCareApplication"
@@ -59,7 +62,7 @@
 <!--        this is service-->
         <service
             android:name=".OximeterDataService"
-            android:foregroundServiceType="location|dataSync"
+            android:foregroundServiceType="connectedDevice"
             android:enabled="true"
             android:exported="false" />
 <!--        end -->

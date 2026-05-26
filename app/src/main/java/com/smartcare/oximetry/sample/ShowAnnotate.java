@@ -300,6 +300,7 @@ public class ShowAnnotate {
 
             try (FileWriter writer = new FileWriter(singleNoteFile)) {
                 gson.toJson(serverNote, writer);
+                OximeterDataFileIndex.refreshMediaStore(context);
 
                 // Upload the file to server
                 FileUploader.uploadFile(singleNoteFile.getAbsolutePath(), new FileUploader.UploadCallback() {
