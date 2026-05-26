@@ -129,6 +129,7 @@ public class FileUploader {
 
                     // Delete the original file
                     contentResolver.delete(sourceUri, null, null);
+                    AppRecordingRegistry.markUploaded(context, uriPath);
 
                     return true;
                 }
