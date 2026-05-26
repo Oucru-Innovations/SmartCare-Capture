@@ -48,4 +48,16 @@
     <string name="menu_patient_info">Patient Info</string>
     <string name="menu_config_info">Configuration</string>
     <string name="unknown_device">Oximeter</string>
+    <string name="file_manager_grant_folder">Choose OximeterData folder…</string>
+    <string name="file_manager_grant_folder_hint">If the list stays empty after allowing storage, the app will ask once to confirm the OximeterData folder with the system.</string>
+    <string name="file_manager_saf_rationale_title">Show files on this device</string>
+    <string name="file_manager_saf_rationale_message">Some devices (e.g. Samsung) need a one-time confirmation to read Download/OximeterData. Tap Continue, select the OximeterData folder, then Allow. You only do this once; File Manager will then open with the full list.</string>
+    <string name="file_manager_saf_continue">Continue</string>
+    <string name="file_manager_saf_cancel">Not now</string>
+    <string name="file_manager_choose_folder_manual">Choose folder</string>
+    <string name="file_manager_manage_all_files_title">Allow access to all files</string>
+    <string name="file_manager_manage_all_files_message">On this Android version, normal “Storage” permission does not let the app read every file in Download/OximeterData. Open settings once and turn on “All files access” (or the equivalent) for SmartCare Capture — then return here. No folder picker is needed.</string>
+    <string name="file_manager_manage_all_files_open_settings">Open settings</string>
+    <string name="file_manager_manage_all_files_not_now">Not now</string>
+    <string name="file_manager_manage_all_files_unavailable">Could not open storage settings. Use “Choose folder” if the list stays empty.</string>
 </resources>

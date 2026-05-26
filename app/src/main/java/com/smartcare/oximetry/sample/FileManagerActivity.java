@@ -1,10 +1,18 @@
 package com.smartcare.oximetry.sample;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.DocumentsContract;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,6 +26,9 @@ import android.widget.TabHost;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
@@ -29,6 +40,9 @@ import java.util.Locale;
 
 public class FileManagerActivity extends Activity {
     private static final String TAG = "FileManagerActivity";
+    private static final int REQUEST_READ_STORAGE = 301;
+    private static final int REQUEST_OPEN_DOCUMENT_TREE = 302;
+    private static final String EXTERNAL_STORAGE_PROVIDER = "com.android.externalstorage.documents";
 
     private TabHost tabHost;
     private ListView fileListView;
@@ -37,6 +51,19 @@ public class FileManagerActivity extends Activity {
     private TextView emptyUploadedTextView;
     private Button refreshButton;
     private Button backButton;
+    private Button folderAccessButton;
+
+    /** Shown at most once per File Manager visit when list is empty (API 30+ all-files settings). */
+    private boolean manageAllFilesAutoPromptShown;
+    /** User tapped "Not now" on All files access; fall back to SAF. */
+    private boolean manageAllFilesDeclinedThisSession;
+    private boolean manageAllFilesDialogShowing;
+
+    /** User chose "Not now" on the automatic folder-access explanation. */
+    private boolean autoSafDeclinedThisSession;
+    private boolean autoSafDialogShowing;
+    private Runnable pendingAutoSafRunnable;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private final ArrayList<CsvFile> csvFiles = new ArrayList<>();
     private final ArrayList<CsvFile> uploadedFiles = new ArrayList<>();
@@ -65,8 +92,22 @@ public class FileManagerActivity extends Activity {
         FileLogger.logEvent("USER", "FILE_MANAGER_OPENED",
                 MemoryDiagnostics.formatDeviceSummary(this) + " | FileManagerActivity onCreate", this);
 
-        loadCsvFiles();
-        loadUploadedFiles();
+        ensureStorageAccessThenLoad();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (pendingAutoSafRunnable != null) {
+            mainHandler.removeCallbacks(pendingAutoSafRunnable);
+            pendingAutoSafRunnable = null;
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshFileListsQuiet();
     }
 
     private void initializeViews() {
@@ -77,9 +118,217 @@ public class FileManagerActivity extends Activity {
         emptyUploadedTextView = findViewById(R.id.emptyUploadedTextView);
         refreshButton = findViewById(R.id.refreshButton);
         backButton = findViewById(R.id.backButton);
+        folderAccessButton = findViewById(R.id.folderAccessButton);
 
         refreshButton.setOnClickListener(v -> refreshFileLists());
         backButton.setOnClickListener(v -> navigateToRecordActivity());
+        folderAccessButton.setText(R.string.file_manager_choose_folder_manual);
+        folderAccessButton.setVisibility(View.GONE);
+        folderAccessButton.setOnClickListener(v -> openOximeterDataFolderPicker());
+        folderAccessButton.setOnLongClickListener(v -> {
+            OximeterDataTreeAccess.clearPersistedTreeUri(this);
+            autoSafDeclinedThisSession = false;
+            Toast.makeText(this, "Saved folder access cleared", Toast.LENGTH_SHORT).show();
+            refreshFileListsQuiet();
+            return true;
+        });
+    }
+
+    /**
+     * SAF fallback when {@link OximeterDataFileIndex} disk + MediaStore return nothing (seen on
+     * Samsung SM-T295 while MTP still shows files under {@code Download/OximeterData}).
+     */
+    private void openOximeterDataFolderPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                Uri initial = DocumentsContract.buildDocumentUri(
+                        EXTERNAL_STORAGE_PROVIDER, "primary:Download");
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial);
+            } catch (Exception e) {
+                Log.w(TAG, "Could not set EXTRA_INITIAL_URI", e);
+            }
+        }
+        startActivityForResult(intent, REQUEST_OPEN_DOCUMENT_TREE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_OPEN_DOCUMENT_TREE || resultCode != RESULT_OK || data == null) {
+            return;
+        }
+        Uri treeUri = data.getData();
+        if (treeUri == null) {
+            return;
+        }
+        try {
+            getContentResolver().takePersistableUriPermission(treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        } catch (SecurityException e) {
+            Log.e(TAG, "takePersistableUriPermission failed", e);
+            Toast.makeText(this,
+                    "Could not keep folder access. Open the picker again from the app.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        OximeterDataTreeAccess.persistTreeUri(this, treeUri);
+        FileLogger.logEvent("FILES", "FILE_MANAGER_SAF_TREE", "uri=" + treeUri, this);
+        autoSafDeclinedThisSession = false;
+        Toast.makeText(this, "Folder access saved. Refreshing…", Toast.LENGTH_SHORT).show();
+        refreshFileLists();
+    }
+
+    /**
+     * On some devices, disk + MediaStore stay empty until the user grants a tree URI once.
+     * We guide them automatically the first time the list is empty (no extra hunt for a button).
+     */
+    private void scheduleAutoFolderAccessIfStillEmpty() {
+        if (!csvFiles.isEmpty()) {
+            return;
+        }
+        if (OximeterDataTreeAccess.getPersistedTreeUri(this) != null) {
+            return;
+        }
+        if (autoSafDeclinedThisSession || autoSafDialogShowing) {
+            return;
+        }
+        if (pendingAutoSafRunnable != null) {
+            mainHandler.removeCallbacks(pendingAutoSafRunnable);
+            pendingAutoSafRunnable = null;
+        }
+        pendingAutoSafRunnable = () -> {
+            pendingAutoSafRunnable = null;
+            if (isFinishing()) {
+                return;
+            }
+            if (!csvFiles.isEmpty() || OximeterDataTreeAccess.getPersistedTreeUri(this) != null) {
+                return;
+            }
+            if (autoSafDeclinedThisSession || autoSafDialogShowing
+                    || manageAllFilesDialogShowing) {
+                return;
+            }
+            promptNextEmptyListAccessStep();
+        };
+        mainHandler.postDelayed(pendingAutoSafRunnable, 450);
+    }
+
+    /**
+     * Prefer "All files access" (one Settings toggle on API 30+) so {@code File} paths under
+     * {@code Download/OximeterData} work without SAF. Falls back to SAF if declined or unavailable.
+     */
+    private void promptNextEmptyListAccessStep() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            if (!manageAllFilesAutoPromptShown && !manageAllFilesDeclinedThisSession) {
+                manageAllFilesAutoPromptShown = true;
+                showManageAllFilesAccessRationaleDialog();
+                return;
+            }
+        }
+        showAutoFolderAccessRationaleDialog();
+    }
+
+    private void openManageAllFilesAccessSettings() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION failed", e);
+            try {
+                Intent fallback = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                fallback.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(fallback);
+            } catch (Exception e2) {
+                Log.e(TAG, "Could not open app settings", e2);
+                Toast.makeText(this, R.string.file_manager_manage_all_files_unavailable, Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private void showManageAllFilesAccessRationaleDialog() {
+        manageAllFilesDialogShowing = true;
+        FileLogger.logEvent("FILES", "FILE_MANAGER_MANAGE_ALL_FILES_PROMPT", "showing", this);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.file_manager_manage_all_files_title)
+                .setMessage(R.string.file_manager_manage_all_files_message)
+                .setPositiveButton(R.string.file_manager_manage_all_files_open_settings, (d, w) -> {
+                    manageAllFilesDialogShowing = false;
+                    openManageAllFilesAccessSettings();
+                })
+                .setNegativeButton(R.string.file_manager_manage_all_files_not_now, (d, w) -> {
+                    manageAllFilesDialogShowing = false;
+                    manageAllFilesDeclinedThisSession = true;
+                    promptNextEmptyListAccessStep();
+                })
+                .setOnCancelListener(d -> {
+                    manageAllFilesDialogShowing = false;
+                    manageAllFilesDeclinedThisSession = true;
+                    promptNextEmptyListAccessStep();
+                })
+                .show();
+    }
+
+    private void showAutoFolderAccessRationaleDialog() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            return;
+        }
+        autoSafDialogShowing = true;
+        FileLogger.logEvent("FILES", "FILE_MANAGER_SAF_AUTO_PROMPT", "showing", this);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.file_manager_saf_rationale_title)
+                .setMessage(R.string.file_manager_saf_rationale_message)
+                .setPositiveButton(R.string.file_manager_saf_continue, (d, w) -> {
+                    autoSafDialogShowing = false;
+                    openOximeterDataFolderPicker();
+                })
+                .setNegativeButton(R.string.file_manager_saf_cancel, (d, w) -> {
+                    autoSafDialogShowing = false;
+                    autoSafDeclinedThisSession = true;
+                    updateActiveFileList();
+                })
+                .setOnCancelListener(d -> {
+                    autoSafDialogShowing = false;
+                    autoSafDeclinedThisSession = true;
+                    updateActiveFileList();
+                })
+                .show();
+    }
+
+    /**
+     * Disk listing under {@code Download/OximeterData} needs {@link Manifest.permission#READ_EXTERNAL_STORAGE}
+     * on API 29–32. MediaStore merge still runs without it so MTP-visible files can appear.
+     */
+    private void ensureStorageAccessThenLoad() {
+        refreshFileListsQuiet();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                        REQUEST_READ_STORAGE);
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_READ_STORAGE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                OximeterDataFileIndex.refreshMediaStoreDeep(this);
+            } else {
+                Toast.makeText(this,
+                        "Storage not granted: listing uses MediaStore only; tap Refresh after granting in Settings.",
+                        Toast.LENGTH_LONG).show();
+            }
+            refreshFileListsQuiet();
+        }
     }
 
     private void setupTabs() {
@@ -98,13 +347,19 @@ public class FileManagerActivity extends Activity {
         tabHost.setCurrentTab(0);
     }
 
-    private void refreshFileLists() {
-        Log.d(TAG, "Refreshing file lists from MediaStore...");
-        Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
-
+    private void refreshFileListsQuiet() {
+        Log.d(TAG, "Refreshing file lists (disk scan: SmartCareCsv*.csv, Annotation_*.json)...");
         loadCsvFiles();
         loadUploadedFiles();
+        scheduleAutoFolderAccessIfStillEmpty();
+    }
 
+    private void refreshFileLists() {
+        Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
+        OximeterDataFileIndex.refreshMediaStoreDeep(this);
+        loadCsvFiles();
+        loadUploadedFiles();
+        scheduleAutoFolderAccessIfStillEmpty();
         Toast.makeText(this, "File lists refreshed", Toast.LENGTH_SHORT).show();
     }
 
@@ -115,7 +370,8 @@ public class FileManagerActivity extends Activity {
         Log.d(TAG, "Number of active CSV files found: " + entries.size());
 
         if (entries.isEmpty()) {
-            emptyTextView.setText("No CSV files found in OximeterData folder");
+            emptyTextView.setText("No files found. Expected SmartCareCsv*.csv or Annotation_*.json under Download/OximeterData (spelling: Oximeter). "
+                    + getString(R.string.file_manager_grant_folder_hint));
             updateActiveFileList();
             return;
         }
@@ -134,7 +390,7 @@ public class FileManagerActivity extends Activity {
         Log.d(TAG, "Number of uploaded CSV files found: " + entries.size());
 
         if (entries.isEmpty()) {
-            emptyUploadedTextView.setText("No uploaded CSV files found");
+            emptyUploadedTextView.setText("No uploaded SmartCareCsv / Annotation files found");
             updateUploadedFileList();
             return;
         }
@@ -150,9 +406,12 @@ public class FileManagerActivity extends Activity {
         adapter.notifyDataSetChanged();
 
         if (csvFiles.isEmpty()) {
+            folderAccessButton.setVisibility(
+                    autoSafDeclinedThisSession ? View.VISIBLE : View.GONE);
             fileListView.setVisibility(View.GONE);
             emptyTextView.setVisibility(View.VISIBLE);
         } else {
+            folderAccessButton.setVisibility(View.GONE);
             fileListView.setVisibility(View.VISIBLE);
             emptyTextView.setVisibility(View.GONE);
         }
