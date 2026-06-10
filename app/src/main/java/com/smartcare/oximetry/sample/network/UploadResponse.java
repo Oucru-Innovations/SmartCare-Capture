@@ -2,6 +2,9 @@ package com.smartcare.oximetry.sample.network;
 
 import com.google.gson.annotations.SerializedName;
 
+/**
+ * DTO Gson cho response upload; thành công được xác định qua trường {@code message}.
+ */
 public class UploadResponse {
     @SerializedName("message")
     private String message;
@@ -9,6 +12,9 @@ public class UploadResponse {
     @SerializedName("file")
     private FileInfo file;
 
+    /**
+     * Trả về message từ server, dùng để kiểm tra upload có thành công hay không.
+     */
     public String getMessage() {
         return message;
     }
@@ -25,6 +31,9 @@ public class UploadResponse {
         this.file = file;
     }
 
+    /**
+     * Thông tin file do server trả về (id, filename) sau khi upload thành công.
+     */
     public static class FileInfo {
         @SerializedName("id")
         private Integer id;

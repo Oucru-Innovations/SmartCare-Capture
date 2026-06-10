@@ -44,6 +44,10 @@ import java.io.OutputStream;
 // For logging JSON response
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+/**
+ * Thực hiện upload HTTP multipart thực tế cho content-URI hoặc file path, xác thực message từ server
+ * và chuyển file thành công sang thư mục Uploaded/. Lớp này KHÔNG tự retry — caller chịu trách nhiệm retry.
+ */
 public class FileUploader {
 
     private static final String BASE_URL = ApiConfig.BASE_URL;
@@ -53,13 +57,22 @@ public class FileUploader {
     
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
+    /**
+     * Lưu application context để overload upload không có Activity vẫn dùng được ContentResolver.
+     */
     public static void setAppContext(Context context) {
         appContext = context.getApplicationContext();
     }
 
+    /**
+     * Callback báo kết quả upload bất đồng bộ về cho caller (thành công/thất bại kèm message).
+     */
     public interface UploadCallback {
         void onUploadComplete(boolean success, String message);
     }
+    /**
+     * Di chuyển file thường sang thư mục con Uploaded/ và cập nhật lại thời gian sửa đổi.
+     */
     public static boolean moveFileToUploadedFolder(File file) {
         // Create Uploaded directory if it doesn't exist
         File uploadedDir = new File(file.getParentFile(), "Uploaded");
@@ -80,6 +93,10 @@ public class FileUploader {
         return moveSuccess;
     }
     // move file with MediaStore
+    /**
+     * Di chuyển file dạng content-URI sang Download/OximeterData/Uploaded thông qua MediaStore,
+     * copy nội dung rồi xóa bản gốc và đánh dấu đã upload trong registry.
+     */
     public static boolean moveFileToUploadedFolderFromUri(Context context, String uriPath) {
         try {
             // Get the content resolver
@@ -206,6 +223,10 @@ public class FileUploader {
 //            return null;
 //        }
 //    }
+/**
+ * Upload file (content-URI hoặc đường dẫn thường) kèm Activity để hiển thị Toast cho người dùng;
+ * chỉ coi là thành công khi server trả về đúng message xác nhận.
+ */
 public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
     if (activity != null) {
         setAppContext(activity.getApplicationContext());
@@ -384,6 +405,9 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
         });
     }
 }
+/**
+ * Tính MD5 checksum của file (hỗ trợ cả content-URI và file path), trả về null nếu lỗi đọc/thuật toán.
+ */
 public static String calculateMD5(Context context, String filePath) {
     try {
         MessageDigest digest = MessageDigest.getInstance("MD5");
@@ -452,6 +476,10 @@ public static String calculateMD5(Context context, String filePath) {
 //            }
 //        });
 //    }
+    /**
+     * Upload file dùng application context (không có Activity, không Toast) — dành cho background/Worker;
+     * yêu cầu setAppContext đã được gọi trước đó.
+     */
     public static void uploadFile(String filePath, UploadCallback callback) {
         if (appContext == null) {
             Log.e("FileUploader", "App context is not initialized; cannot upload file safely");

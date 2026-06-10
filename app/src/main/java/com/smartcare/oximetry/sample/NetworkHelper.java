@@ -14,6 +14,9 @@ public final class NetworkHelper {
     private NetworkHelper() {
     }
 
+    /**
+     * Kiểm tra thiết bị có mạng có khả năng truy cập Internet hay không, dùng API phù hợp theo SDK.
+     */
     public static boolean isNetworkAvailable(Context context) {
         if (context == null) {
             return false;

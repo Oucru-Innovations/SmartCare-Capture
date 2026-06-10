@@ -9,11 +9,17 @@ import okhttp3.OkHttpClient;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
+/**
+ * Singleton factory thread-safe tạo Retrofit instance đã cấu hình dùng chung cho toàn app.
+ */
 public final class RetrofitClient {
     private static Retrofit retrofit;
 
     private RetrofitClient(){}
 
+    /**
+     * Trả về Retrofit dùng chung, khởi tạo lazy với ApiConfig.BASE_URL và các timeout của NetworkConfig.
+     */
     public static Retrofit getInstance(){
         if (retrofit == null) {
             OkHttpClient client = new OkHttpClient.Builder()

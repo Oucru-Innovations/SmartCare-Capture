@@ -8,8 +8,14 @@ import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.Part;
 
+/**
+ * Retrofit interface khai báo endpoint multipart upload của server.
+ */
 public interface ApiService {
 
+    /**
+     * Gửi POST api/v1/file/upload dạng multipart: phần {@code file} và field {@code owner}.
+     */
     @Multipart
     @POST("api/v1/file/upload")
     Call<UploadResponse> uploadFile(

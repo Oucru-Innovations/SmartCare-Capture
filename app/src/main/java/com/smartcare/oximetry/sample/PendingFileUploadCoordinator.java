@@ -17,7 +17,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class PendingFileUploadCoordinator {
     private static final String TAG = "PendingUpload";
+    /** Số lần thử upload tối đa cho mỗi file trước khi bỏ cuộc. */
     private static final int MAX_ATTEMPTS = 3;
+    /** Khoảng chờ giữa các lần retry upload (ms). */
     private static final int RETRY_DELAY_MS = 10_000;
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -27,18 +29,37 @@ public final class PendingFileUploadCoordinator {
     private PendingFileUploadCoordinator() {
     }
 
+    /**
+     * Upload một file session (không kèm Activity) thông qua overload đầy đủ.
+     */
     public static void uploadSessionFile(Context context, String fileUri) {
         uploadSessionFile(context, null, fileUri);
     }
 
+    /**
+     * Upload một file session kèm Activity; bỏ qua nếu fileUri trùng file đang ghi (currently-open)
+     * để không làm hỏng writer đang mở.
+     */
     public static void uploadSessionFile(Context context, Activity activity, String fileUri) {
         if (context == null || TextUtils.isEmpty(fileUri)) {
+            return;
+        }
+        // Never upload the file that is still being written: moving it to the Uploaded folder
+        // invalidates the writer's open URI and makes the next CSV split/end fail.
+        String openUri = OximeterDataWriterFunctions.getCurrentOpenFileUriString();
+        if (fileUri.equals(openUri)) {
+            Log.w(TAG, "Refusing to upload the currently-open recording file: " + fileUri);
+            FileLogger.logWarningEvent("UPLOAD", "UPLOAD_SKIP_OPEN_FILE", "uri=" + fileUri);
             return;
         }
         FileUploader.setAppContext(context.getApplicationContext());
         uploadWithRetry(context.getApplicationContext(), activity, fileUri, true);
     }
 
+    /**
+     * Duyệt toàn bộ file đang chờ (pending), bỏ qua file đang ghi/file rỗng và đưa phần còn lại vào hàng đợi upload.
+     * Trả về số file đã được đưa vào hàng đợi.
+     */
     public static int uploadAllPending(Context context) {
         if (context == null) {
             return 0;
@@ -56,10 +77,7 @@ public final class PendingFileUploadCoordinator {
                 continue;
             }
             String uriStr = entry.uri.toString();
-            if (uriStr.equals(openUri)) {
-                continue;
-            }
-            if (entry.displayName != null && entry.displayName.contains("_unknown")) {
+            if (shouldSkipPendingEntry(entry, uriStr, openUri)) {
                 continue;
             }
             uploadWithRetry(app, null, uriStr, false);
@@ -68,6 +86,25 @@ public final class PendingFileUploadCoordinator {
         FileLogger.logEvent("UPLOAD", "PENDING_BATCH_QUEUED",
                 "queued=" + queued + " totalListed=" + pending.size());
         return queued;
+    }
+
+    /**
+     * Safety policy for unknown files:
+     * - Always skip the currently-open recording file.
+     * - Skip unknown files only when they're empty (0 bytes), which are usually failed placeholders.
+     * - Allow non-empty unknown files so crash/power-loss data is not lost.
+     */
+    private static boolean shouldSkipPendingEntry(OximeterDataFileIndex.FileEntry entry,
+                                                  String uriStr, String openUri) {
+        if (uriStr.equals(openUri)) {
+            return true;
+        }
+        if (entry.displayName != null
+                && entry.displayName.contains("_unknown")
+                && entry.sizeBytes <= 0L) {
+            return true;
+        }
+        return false;
     }
 
     private static void uploadWithRetry(Context appContext, Activity activity,
