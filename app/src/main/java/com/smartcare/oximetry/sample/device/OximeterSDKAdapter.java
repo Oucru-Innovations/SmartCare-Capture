@@ -13,6 +13,11 @@ import android.util.Log;
 
 import com.smartcare.oximetry.library.ConnectionManager;
 
+/**
+ * Implementation thực tế của {@link IDeviceAdapter} — là file DUY NHẤT cần sửa khi đổi phần cứng
+ * thiết bị. Lớp này chỉ là wrapper mỏng bọc quanh {@link ConnectionManager} của vendor SDK; các
+ * SDK event (data, connect, disconnect...) được đẩy về app qua các message của {@link Handler}.
+ */
 public class OximeterSDKAdapter implements IDeviceAdapter {
     private static final String TAG = "OximeterSDKAdapter";
     
@@ -20,6 +25,12 @@ public class OximeterSDKAdapter implements IDeviceAdapter {
     private Context context;
     private Handler handler;
     
+    /**
+     * Khởi tạo adapter và áp dụng reflection workaround để vô hiệu hoá bộ lọc tên thiết bị
+     * hardcoded trong SDK. SDK lọc thiết bị bằng mảng tên cố định (class {@code ...library.a},
+     * field {@code d}); ta set {@code names[0] = ""} để mọi thiết bị đều khớp (match ANY device).
+     * LƯU Ý: phụ thuộc vào tên obfuscated nội bộ của SDK nên PHẢI kiểm tra lại mỗi khi nâng cấp .aar.
+     */
     public OximeterSDKAdapter(Context context, Handler handler) {
         this.context = context;
         this.handler = handler;
@@ -41,6 +52,9 @@ public class OximeterSDKAdapter implements IDeviceAdapter {
         this.connectionManager = new ConnectionManager(context, handler);
     }
     
+    /**
+     * No-op: dữ liệu không đi qua listener này; tất cả event được chuyển qua {@link Handler}.
+     */
     @Override
     public void setListener(OximeterDataListener listener) {
     }
@@ -61,6 +75,9 @@ public class OximeterSDKAdapter implements IDeviceAdapter {
         return false;
     }
 
+    /**
+     * Chỉ disconnect khi đang recording, tránh ngắt kết nối thừa khi thiết bị không hoạt động.
+     */
     @Override
     public void disconnect() {
         if (connectionManager != null && connectionManager.isRecording()) {

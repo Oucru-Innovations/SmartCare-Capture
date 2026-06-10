@@ -1,5 +1,9 @@
 package com.smartcare.oximetry.sample.device;
 
+/**
+ * POJO value object (legacy) đại diện cho MỘT sample đo. Hiện KHÔNG được dùng: app live giải nén
+ * trực tiếp Bundle nhận từ {@code ConnectionManager} thay vì map vào object này.
+ */
 public class OximeterDataPacket {
     public int pleth;
     public int pulse;

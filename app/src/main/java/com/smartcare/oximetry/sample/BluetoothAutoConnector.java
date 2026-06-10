@@ -21,6 +21,10 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Tiện ích auto-connect/auto-reconnect Bluetooth (LEGACY/UNUSED). Hiện KHÔNG còn dùng vì
+ * RecordActivity tự cài đặt cơ chế scan/reconnect riêng. Giữ lại để tham khảo.
+ */
 public class BluetoothAutoConnector {
     private static final String TAG = "BluetoothAutoConnector";
     private static final long SCAN_PERIOD = 2000; // Reduced from 10s to 2s for faster reconnection
@@ -178,6 +182,9 @@ public class BluetoothAutoConnector {
         }
     }
 
+    /**
+     * Reset trạng thái (pause flag, retry count, blocked MACs) và bắt đầu auto-connect scan.
+     */
     public void initialize() {
         shouldPauseAutoReconnect = false;
         retryCount = 0; // Reset retry count on initialization
@@ -189,6 +196,10 @@ public class BluetoothAutoConnector {
             startDeviceScan();
         }
     }
+    /**
+     * Ngắt kết nối theo chủ ý người dùng: thêm MAC vào blocked list để auto-reconnect không tự nối
+     * lại, đóng socket và tạm dừng reconnect một khoảng trước khi quét tiếp.
+     */
     public void manualDisconnect(String macAddress) {
         blockedMacs.add(macAddress);
         saveBlockedMacs();
@@ -208,6 +219,10 @@ public class BluetoothAutoConnector {
         startAutoConnect();
     }
 
+    /**
+     * Kết nối theo chủ ý người dùng tới một MAC cụ thể: bỏ block, dừng scan và uỷ quyền việc kết nối
+     * cho callback.
+     */
     public void manualConnect(String macAddress) {
         shouldPauseAutoReconnect = false; // Reset pause flag
         retryCount = 0; // Reset retry count when manually connecting
@@ -312,6 +327,9 @@ public class BluetoothAutoConnector {
         scanHandler.postDelayed(() -> shouldPauseAutoReconnect = false, durationMs);
     }
         
+    /**
+     * Giải phóng tài nguyên: dừng scan, xoá callback, đóng socket và huỷ đăng ký receiver.
+     */
     public void cleanup() {
         stopDeviceScan();
         scanHandler.removeCallbacksAndMessages(null);

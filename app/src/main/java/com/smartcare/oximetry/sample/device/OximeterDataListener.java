@@ -1,5 +1,9 @@
 package com.smartcare.oximetry.sample.device;
 
+/**
+ * Callback contract (legacy) cho các sự kiện oximeter. Hiện KHÔNG được implement/dùng: đã được
+ * thay thế bằng cơ chế {@code ConnectionManager} + {@link android.os.Handler}.
+ */
 public interface OximeterDataListener {
     void onDataReceived(OximeterDataPacket data);
     

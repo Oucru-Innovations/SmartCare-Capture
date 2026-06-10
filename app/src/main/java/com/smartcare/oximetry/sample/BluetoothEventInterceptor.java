@@ -25,6 +25,10 @@ public class BluetoothEventInterceptor {
     private String connectedMacAddress;
     private SharedPreferences preferences;
     
+    /**
+     * Khôi phục MAC của thiết bị mục tiêu từ SharedPreferences (bền qua restart) rồi đăng ký
+     * receiver. {@code macAddressQueue} chứa danh sách MAC được phép để nhận diện thiết bị của app.
+     */
     public BluetoothEventInterceptor(Context context, Queue<String> macAddressQueue) {
         this.context = context;
         this.macAddressQueue = macAddressQueue;
@@ -117,6 +121,10 @@ public class BluetoothEventInterceptor {
         Log.i(TAG, "Bluetooth Event Interceptor registered with SYSTEM_HIGH_PRIORITY");
     }
     
+    /**
+     * Cập nhật MAC của thiết bị đang kết nối (persist vào prefs) để interceptor biết event nào là
+     * của thiết bị mục tiêu; truyền {@code null} để xoá khi đã ngắt kết nối.
+     */
     //Update Mac Address of connected device
     public void setConnectedMacAddress(String macAddress) {
         this.connectedMacAddress = macAddress;
@@ -134,6 +142,9 @@ public class BluetoothEventInterceptor {
         return connectedMacAddress;
     }
     
+    /**
+     * Huỷ đăng ký BroadcastReceiver để tránh leak; BẮT BUỘC gọi khi Activity bị destroy.
+     */
     // Cleanup - must call when Activity is destroyed
     public void cleanup() {
         if (interceptor != null) {
