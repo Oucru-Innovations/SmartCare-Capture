@@ -40,6 +40,10 @@ public final class MemoryDiagnostics {
                 installedRamMb);
     }
 
+    /**
+     * Tạo chuỗi snapshot bộ nhớ hiện tại: RAM khả dụng/tổng/ngưỡng của thiết bị, cờ lowMemory và
+     * heap đã dùng/tối đa của app — dùng để chẩn đoán nguy cơ bị OOM-kill trong file log.
+     */
     public static String formatSnapshot(Context context) {
         if (context == null) {
             return "memory=unavailable (null context)";
@@ -82,6 +86,7 @@ public final class MemoryDiagnostics {
                 bytesToMb(heapMax));
     }
 
+    /** Đổi mã onTrimMemory level sang tên dễ đọc (kèm giá trị số) để ghi log rõ ràng hơn. */
     public static String trimLevelName(int level) {
         switch (level) {
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE:

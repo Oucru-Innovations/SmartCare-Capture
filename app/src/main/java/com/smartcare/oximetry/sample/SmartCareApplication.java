@@ -14,6 +14,10 @@ public class SmartCareApplication extends Application {
     private int startedActivityCount = 0;
     private Thread.UncaughtExceptionHandler defaultExceptionHandler;
 
+    /**
+     * Khởi tạo các thành phần toàn cục khi process bắt đầu: FileLogger, FileUploader, crash handler,
+     * theo dõi lifecycle của activity và đặt lịch upload hằng ngày lúc 17:00.
+     */
     @Override
     public void onCreate() {
         super.onCreate();
@@ -31,6 +35,10 @@ public class SmartCareApplication extends Application {
         AnnotationUploadScheduler.scheduleDailyUpload(this);
     }
 
+    /**
+     * Cài đặt uncaught exception handler để ghi crash ra file log (qua FileLogger) trước khi
+     * chuyển tiếp cho handler mặc định, giúp giữ lại bằng chứng chẩn đoán khi app sập.
+     */
     private void installCrashHandler() {
         defaultExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
@@ -123,6 +131,10 @@ public class SmartCareApplication extends Application {
         }
     };
 
+    /**
+     * Ghi cảnh báo LOW_MEMORY khi hệ thống yêu cầu giải phóng bộ nhớ ở mức nghiêm trọng,
+     * dùng để chẩn đoán các trường hợp app bị kill trong lúc recording dài.
+     */
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);

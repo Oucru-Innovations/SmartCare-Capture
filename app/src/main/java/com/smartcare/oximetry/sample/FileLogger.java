@@ -1,6 +1,5 @@
 package com.smartcare.oximetry.sample;
 
-import android.content.ContentResolver;
 import android.content.Context;
 import android.os.Build;
 import android.util.Log;
@@ -19,6 +18,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * Bộ ghi log bền vững của app vào {externalFilesDir}/Logs, tự xoay vòng (rotation) khi file đạt 10MB.
+ */
 public class FileLogger {
     private static final String TAG = "FileLogger";
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
@@ -26,6 +28,7 @@ public class FileLogger {
     private static final String LOG_FILE_DATE_FORMAT = "yyyyMMdd";
     private static final String CURRENT_LOG_FILENAME = "smartcare_app_log.txt";
     private static final String ARCHIVED_LOG_PATTERN = "smartcare_app_log_%s.txt";
+    /** Mức độ log theo thứ tự tăng dần độ nghiêm trọng, dùng để lọc và quyết định flush. */
     public enum LogLevel {
         VERBOSE, DEBUG, INFO, WARN, ERROR
     }
@@ -35,6 +38,9 @@ public class FileLogger {
 
     private FileLogger() {}
 
+    /**
+     * Trả về singleton FileLogger, khởi tạo context và dọn log cũ ở lần gọi đầu tiên.
+     */
     public static synchronized FileLogger getInstance(Context context) {
         if (instance == null) {
             instance = new FileLogger();
@@ -47,6 +53,9 @@ public class FileLogger {
     // Main logging method with filtering
     //
     //
+    /**
+     * Ghi một dòng log có timestamp vào file; tự flush ngay với mức WARN trở lên. Bỏ qua nếu chưa init.
+     */
     public static void writeLog(LogLevel level, String tag, String message) {
         if (instance == null || appContext == null) {
             return;
@@ -58,9 +67,6 @@ public class FileLogger {
             String logEntry = String.format("[%s] %s/%s: %s%n", timestamp, level.name(), tag, message);
 
             appendToLogFile(logFile, logEntry, level.ordinal() >= LogLevel.WARN.ordinal());
-
-            // Write to secondary location (Downloads/OximeterData) using MediaStore
-            writeToDownloadsFolder(logEntry);
 
         } catch (IOException e) {
             Log.e(TAG, "Error writing to log file", e);
@@ -95,61 +101,6 @@ public class FileLogger {
         }
     }
 
-    private static void writeToDownloadsFolder(String logEntry) {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
-            return; // Only works on Android 10+
-        }
-
-        try {
-            ContentResolver resolver = appContext.getContentResolver();
-
-            // Query for existing file first
-            String selection = android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=? AND " +
-                    android.provider.MediaStore.MediaColumns.RELATIVE_PATH + "=?";
-            String[] selectionArgs = {CURRENT_LOG_FILENAME,
-                    android.os.Environment.DIRECTORY_DOWNLOADS + "/OximeterData/FileLogger/"};
-
-            android.database.Cursor cursor = resolver.query(
-                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    new String[]{android.provider.MediaStore.MediaColumns._ID},
-                    selection,
-                    selectionArgs,
-                    null);
-
-            android.net.Uri fileUri;
-
-            if (cursor != null && cursor.moveToFirst()) {
-                // File exists - get its URI
-                long id = cursor.getLong(0);
-                fileUri = android.content.ContentUris.withAppendedId(
-                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, id);
-                cursor.close();
-            } else {
-                // File doesn't exist - create it
-                if (cursor != null) cursor.close();
-
-                android.content.ContentValues values = new android.content.ContentValues();
-                values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, CURRENT_LOG_FILENAME);
-                values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-                values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
-                        android.os.Environment.DIRECTORY_DOWNLOADS + "/OximeterData/FileLogger");
-
-                fileUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            }
-
-            // Write/append to file
-            if (fileUri != null) {
-                try (java.io.OutputStream outputStream = resolver.openOutputStream(fileUri, "wa")) {
-                    if (outputStream != null) {
-                        outputStream.write(logEntry.getBytes());
-                    }
-                }
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Error writing to Downloads folder", e);
-        }
-    }
     // Convenience methods for different log levels
     public static void v(String tag, String message) {
         writeLog(LogLevel.VERBOSE, tag, message);
@@ -198,6 +149,9 @@ public class FileLogger {
         logEvent(category, event, enriched);
     }
 
+    /**
+     * Ghi sự kiện lifecycle ở mức WARN dạng có cấu trúc (category/event/detail) để dễ chẩn đoán.
+     */
     public static void logWarningEvent(String category, String event, String detail) {
         writeLog(LogLevel.WARN, "AppLifecycle",
                 "category=" + category + " event=" + event + " detail=" + detail);
@@ -211,6 +165,9 @@ public class FileLogger {
         logWarningEvent(category, event, enriched);
     }
 
+    /**
+     * Ghi block log sự cố (crash) kèm thông tin thread/thiết bị/bộ nhớ và stack trace, rồi flush xuống đĩa ngay.
+     */
     public static void logCrash(Thread thread, Throwable throwable) {
         String threadName = thread != null ? thread.getName() : "unknown";
         String memory = appContext != null
@@ -250,7 +207,6 @@ public class FileLogger {
                 }
             }
             appendToLogFile(logFile, block.toString(), true);
-            writeToDownloadsFolder(block.toString());
         } catch (IOException e) {
             Log.e(TAG, "Error writing crash log", e);
         }
@@ -279,6 +235,9 @@ public class FileLogger {
     }
 
     // Get logs filtered by level and time
+    /**
+     * Đọc file log hiện tại và trả về các dòng có mức log >= minLevel (dùng cho màn hình xem log).
+     */
     public static List<String> getFilteredLogs(LogLevel minLevel) {
         List<String> filteredLogs = new ArrayList<>();
         File logFile = getLogFile();
