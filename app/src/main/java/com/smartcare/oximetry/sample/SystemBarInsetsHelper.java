@@ -18,6 +18,10 @@ public final class SystemBarInsetsHelper {
     private SystemBarInsetsHelper() {
     }
 
+    /**
+     * Áp dụng window insets cho content view của {@code activity}: thêm padding theo status bar,
+     * navigation bar và display cutout để nội dung không bị che bởi system bars (edge-to-edge safe).
+     */
     public static void apply(Activity activity) {
         Window window = activity.getWindow();
         if (window == null) {

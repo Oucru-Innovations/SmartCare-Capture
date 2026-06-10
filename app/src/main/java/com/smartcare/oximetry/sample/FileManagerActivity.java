@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,6 +13,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -37,7 +39,14 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+/**
+ * Màn hình quản lý file dạng tab: duyệt các file CSV và annotation đang chờ (pending) và đã upload
+ * trong {@code Download/OximeterData}. Hỗ trợ upload thủ công, fallback bằng SAF khi không truy cập
+ * được file trực tiếp, và lắng nghe MediaStore để tự cập nhật danh sách khi đang recording.
+ */
 public class FileManagerActivity extends Activity {
     private static final String TAG = "FileManagerActivity";
     private static final int REQUEST_READ_STORAGE = 301;
@@ -64,12 +73,24 @@ public class FileManagerActivity extends Activity {
     private boolean autoSafDialogShowing;
     private Runnable pendingAutoSafRunnable;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService fileQueryExecutor = Executors.newSingleThreadExecutor();
+    private int refreshGeneration;
+    private boolean refreshInProgress;
+    private long lastRefreshAtMs;
 
     private final ArrayList<CsvFile> csvFiles = new ArrayList<>();
     private final ArrayList<CsvFile> uploadedFiles = new ArrayList<>();
     private CsvFileAdapter adapter;
     private UploadedFileAdapter uploadedAdapter;
 
+    /** Fires when the recording flow inserts/renames/deletes a MediaStore Downloads entry. */
+    private ContentObserver downloadsObserver;
+    private final Runnable observerRefreshRunnable = this::refreshFileListsQuiet;
+
+    /**
+     * Khởi tạo view, tab, adapter cho hai danh sách file và đảm bảo có quyền truy cập storage
+     * trước khi nạp danh sách lần đầu.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -101,13 +122,62 @@ public class FileManagerActivity extends Activity {
             mainHandler.removeCallbacks(pendingAutoSafRunnable);
             pendingAutoSafRunnable = null;
         }
+        mainHandler.removeCallbacks(observerRefreshRunnable);
+        unregisterDownloadsObserver();
+        fileQueryExecutor.shutdownNow();
         super.onDestroy();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        refreshFileListsQuiet();
+        // Live-update the list while a recording is in progress: new/renamed CSV segments show
+        // up without the user having to leave and re-enter or tap Refresh.
+        registerDownloadsObserver();
+        // Avoid running an expensive re-query immediately after onCreate().
+        if (System.currentTimeMillis() - lastRefreshAtMs > 1200L) {
+            refreshFileListsQuiet();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mainHandler.removeCallbacks(observerRefreshRunnable);
+        unregisterDownloadsObserver();
+    }
+
+    private void registerDownloadsObserver() {
+        if (downloadsObserver != null) {
+            return;
+        }
+        downloadsObserver = new ContentObserver(mainHandler) {
+            @Override
+            public void onChange(boolean selfChange, Uri uri) {
+                // MediaStore can emit a burst of notifications; coalesce them into one refresh.
+                mainHandler.removeCallbacks(observerRefreshRunnable);
+                mainHandler.postDelayed(observerRefreshRunnable, 800L);
+            }
+        };
+        try {
+            getContentResolver().registerContentObserver(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, true, downloadsObserver);
+        } catch (Exception e) {
+            Log.w(TAG, "registerContentObserver failed", e);
+            downloadsObserver = null;
+        }
+    }
+
+    private void unregisterDownloadsObserver() {
+        if (downloadsObserver == null) {
+            return;
+        }
+        try {
+            getContentResolver().unregisterContentObserver(downloadsObserver);
+        } catch (Exception e) {
+            Log.w(TAG, "unregisterContentObserver failed", e);
+        }
+        downloadsObserver = null;
     }
 
     private void initializeViews() {
@@ -137,6 +207,10 @@ public class FileManagerActivity extends Activity {
     /**
      * SAF fallback when {@link OximeterDataFileIndex} disk + MediaStore return nothing (seen on
      * Samsung SM-T295 while MTP still shows files under {@code Download/OximeterData}).
+     */
+    /**
+     * Mở System SAF picker tại {@code Download/OximeterData} để người dùng cấp quyền tree URI,
+     * dùng làm phương án dự phòng khi truy cập file trực tiếp/MediaStore không trả về kết quả.
      */
     private void openOximeterDataFolderPicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -348,58 +422,82 @@ public class FileManagerActivity extends Activity {
     }
 
     private void refreshFileListsQuiet() {
-        Log.d(TAG, "Refreshing file lists (disk scan: SmartCareCsv*.csv, Annotation_*.json)...");
-        loadCsvFiles();
-        loadUploadedFiles();
-        scheduleAutoFolderAccessIfStillEmpty();
+        refreshFileListsInternal(false, false);
     }
 
+    /** Làm mới hai danh sách file có hiển thị toast (kèm ép quét lại MediaStore); dùng khi user bấm Refresh. */
     private void refreshFileLists() {
-        Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
-        OximeterDataFileIndex.refreshMediaStoreDeep(this);
-        loadCsvFiles();
-        loadUploadedFiles();
-        scheduleAutoFolderAccessIfStillEmpty();
-        Toast.makeText(this, "File lists refreshed", Toast.LENGTH_SHORT).show();
+        refreshFileListsInternal(true, true);
     }
 
-    private void loadCsvFiles() {
-        csvFiles.clear();
+    private void refreshFileListsInternal(boolean forceMediaRefresh, boolean showToast) {
+        if (showToast) {
+            Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
+        }
+        final int generation = ++refreshGeneration;
+        if (refreshInProgress) {
+            Log.d(TAG, "Refresh requested while in progress; scheduling latest generation=" + generation);
+        }
+        refreshInProgress = true;
+        fileQueryExecutor.execute(() -> {
+            try {
+                if (forceMediaRefresh) {
+                    OximeterDataFileIndex.refreshMediaStoreDeep(this);
+                }
+                List<OximeterDataFileIndex.FileEntry> pending =
+                        OximeterDataFileIndex.queryPendingFiles(this);
+                List<OximeterDataFileIndex.FileEntry> uploaded =
+                        OximeterDataFileIndex.queryUploadedFiles(this);
+                mainHandler.post(() -> applyLoadedEntries(generation, pending, uploaded, showToast));
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to refresh file lists", e);
+                mainHandler.post(() -> {
+                    if (generation == refreshGeneration) {
+                        refreshInProgress = false;
+                    }
+                    if (showToast) {
+                        Toast.makeText(this, "Refresh failed", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        });
+    }
 
-        List<OximeterDataFileIndex.FileEntry> entries = OximeterDataFileIndex.queryPendingFiles(this);
-        Log.d(TAG, "Number of active CSV files found: " + entries.size());
-
-        if (entries.isEmpty()) {
-            emptyTextView.setText("No files found. Expected SmartCareCsv*.csv or Annotation_*.json under Download/OximeterData (spelling: Oximeter). "
-                    + getString(R.string.file_manager_grant_folder_hint));
-            updateActiveFileList();
+    private void applyLoadedEntries(int generation,
+                                    List<OximeterDataFileIndex.FileEntry> pendingEntries,
+                                    List<OximeterDataFileIndex.FileEntry> uploadedEntries,
+                                    boolean showToast) {
+        if (generation != refreshGeneration || isFinishing()) {
             return;
         }
-
-        for (OximeterDataFileIndex.FileEntry entry : entries) {
-            csvFiles.add(new CsvFile(entry));
-        }
-
-        updateActiveFileList();
-    }
-
-    private void loadUploadedFiles() {
+        refreshInProgress = false;
+        lastRefreshAtMs = System.currentTimeMillis();
+        csvFiles.clear();
         uploadedFiles.clear();
 
-        List<OximeterDataFileIndex.FileEntry> entries = OximeterDataFileIndex.queryUploadedFiles(this);
-        Log.d(TAG, "Number of uploaded CSV files found: " + entries.size());
-
-        if (entries.isEmpty()) {
-            emptyUploadedTextView.setText("No uploaded SmartCareCsv / Annotation files found");
-            updateUploadedFileList();
-            return;
+        Log.d(TAG, "Number of active CSV files found: " + pendingEntries.size());
+        for (OximeterDataFileIndex.FileEntry entry : pendingEntries) {
+            csvFiles.add(new CsvFile(entry));
         }
-
-        for (OximeterDataFileIndex.FileEntry entry : entries) {
+        Log.d(TAG, "Number of uploaded CSV files found: " + uploadedEntries.size());
+        for (OximeterDataFileIndex.FileEntry entry : uploadedEntries) {
             uploadedFiles.add(new CsvFile(entry));
         }
 
+        if (pendingEntries.isEmpty()) {
+            emptyTextView.setText("No files found. Expected SmartCareCsv*.csv or Annotation_*.json under Download/OximeterData (spelling: Oximeter). "
+                    + getString(R.string.file_manager_grant_folder_hint));
+        }
+        if (uploadedEntries.isEmpty()) {
+            emptyUploadedTextView.setText("No uploaded SmartCareCsv / Annotation files found");
+        }
+
+        updateActiveFileList();
         updateUploadedFileList();
+        scheduleAutoFolderAccessIfStillEmpty();
+        if (showToast) {
+            Toast.makeText(this, "File lists refreshed", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void updateActiveFileList() {
@@ -435,6 +533,7 @@ public class FileManagerActivity extends Activity {
                 openCsvFile(uploadedFiles.get(position)));
     }
 
+    /** Hỏi xác nhận rồi xoá file đã upload khỏi thiết bị và cập nhật lại danh sách Uploaded. */
     private void deleteUploadedFile(CsvFile csvFile, int position) {
         new AlertDialog.Builder(this)
                 .setTitle("Delete File")
@@ -457,6 +556,7 @@ public class FileManagerActivity extends Activity {
                 .show();
     }
 
+    /** Mở file CSV bằng ứng dụng ngoài qua ACTION_VIEW với content URI (FileProvider) tạm cấp quyền đọc. */
     private void openCsvFile(CsvFile csvFile) {
         try {
             Uri fileUri = csvFile.getContentUri(this);
@@ -478,6 +578,7 @@ public class FileManagerActivity extends Activity {
         finish();
     }
 
+    /** Adapter cho tab "Pending": mỗi dòng hiển thị tên/kích thước/ngày file kèm nút upload thủ công. */
     private class CsvFileAdapter extends BaseAdapter {
         @Override
         public int getCount() {
@@ -531,6 +632,7 @@ public class FileManagerActivity extends Activity {
         }
     }
 
+    /** Adapter cho tab "Uploaded": mỗi dòng hiển thị tên/ngày upload kèm nút xoá file. */
     private class UploadedFileAdapter extends BaseAdapter {
         @Override
         public int getCount() {
@@ -577,6 +679,10 @@ public class FileManagerActivity extends Activity {
         }
     }
 
+    /**
+     * Bọc một {@link OximeterDataFileIndex.FileEntry} để hiển thị trên UI: cung cấp tên, kích thước,
+     * ngày đã định dạng, content URI và thao tác xoá, hỗ trợ cả nguồn content:// lẫn file path.
+     */
     private static class CsvFile {
         private final OximeterDataFileIndex.FileEntry entry;
 

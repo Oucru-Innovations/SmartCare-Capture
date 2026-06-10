@@ -254,6 +254,10 @@ public class RecordActivity extends Activity {
             mmTarget = new WeakReference<>(target);
         }
 
+        /**
+         * Điều phối message từ SDK theo {@code msg.what}: ví dụ MESSAGE_PACKET cập nhật UI (PPG/HR/
+         * SpO2/pin) và ghi mẫu qua service, các mã khác xử lý kết nối/ngắt/lỗi và tự kết nối lại.
+         */
         @Override
         public void handleMessage(Message msg) {
             final RecordActivity target = mmTarget.get();
@@ -916,6 +920,10 @@ public class RecordActivity extends Activity {
 //
 //    }
     //service foreground, new connection
+    /**
+     * Điểm vào kết nối thủ công: kiểm tra quyền cần thiết rồi ủy quyền cho
+     * {@link #ensureServiceAndConnect} để khởi động service và bắt đầu kết nối thiết bị.
+     */
     private void connectToPulseOximeter() {
 
 
@@ -925,6 +933,11 @@ public class RecordActivity extends Activity {
         }
     }
 
+    /**
+     * Đảm bảo {@link OximeterDataService} đã chạy/bound (kèm cấu hình chunk file và patient code)
+     * trước khi chạy {@link Connector}. Bỏ qua nếu đang kết nối/ngắt hoặc thiếu quyền/patient code;
+     * nếu service chưa bound thì hoãn kết nối lại sau khi bind xong (có timeout an toàn).
+     */
     private void ensureServiceAndConnect(String macAddressOrNull) {
         if (isDisconnectFlowInProgress) {
             Log.d(TAG, "Skip connect while disconnect flow is still in progress");
@@ -1012,9 +1025,18 @@ public class RecordActivity extends Activity {
                 sessionCollectionStartMs);
     }
 
+    /**
+     * Khi BLE bị tạm ngắt, flush phần dữ liệu còn trong buffer rồi đóng/tách segment CSV hiện tại
+     * để không mất phần đuôi, sau đó bắt đầu segment mới và lưu lại trạng thái phiên ghi.
+     */
     private void splitCsvOnBlePause() {
         if (!isRecordingSessionActive) {
             return;
+        }
+        // Write the partial sample batch into the current segment before it is split/closed so
+        // the segment's tail isn't lost (the buffer only auto-writes every 100 samples).
+        if (isServiceBound && dataService != null) {
+            dataService.flushBufferedData();
         }
         String completed = OximeterDataWriterFunctions.splitFileOnBlePause();
         if (completed != null) {
@@ -1029,23 +1051,23 @@ public class RecordActivity extends Activity {
         if (!isRecordingSessionActive || dataService == null || TextUtils.isEmpty(formattedCode)) {
             return;
         }
-        if (OximeterDataWriterFunctions.isRecordingActive()) {
-            serviceDiedDuringSession = false;
-            return;
-        }
-        long resumeTs = sessionCollectionStartMs > 0
-                ? sessionCollectionStartMs
-                : System.currentTimeMillis();
-        boolean opened = dataService.ensureRecordingActive(resumeTs, formattedCode,
-                isEnabled, interval);
-        if (opened) {
-            FileLogger.logEvent("SERVICE", "WRITER_RECOVERED_ON_BIND",
-                    "patient=" + formattedCode + " resumeTs=" + resumeTs
-                            + " afterServiceDeath=" + serviceDiedDuringSession);
+        // Do NOT open a CSV file on bind. Opening here created empty header-only (89B) files
+        // whenever the session was merely armed (e.g. restored from prefs after an unclean exit)
+        // with no device connected. The writer is reopened by the next real data packet via
+        // ensureRecordingActive (see the MESSAGE_PACKET handler), so the file is only created when
+        // measurement data actually arrives.
+        if (!OximeterDataWriterFunctions.isRecordingActive()) {
+            FileLogger.logEvent("SERVICE", "WRITER_DEFERRED_ON_BIND",
+                    "patient=" + formattedCode + " afterServiceDeath=" + serviceDiedDuringSession
+                            + "; CSV opens on next data sample");
         }
         serviceDiedDuringSession = false;
     }
 
+    /**
+     * Khôi phục phiên ghi đang dở sau khi app bị kill/khởi động lại: nếu prefs còn lưu phiên active
+     * khớp patient code hiện tại thì bật lại trạng thái recording và bind service để tiếp tục ghi.
+     */
     private void restoreRecordingSessionFromPrefsIfNeeded() {
         RecordingSessionPrefs.Session session = RecordingSessionPrefs.load(this);
         if (!session.active || TextUtils.isEmpty(session.patientCode)) {
@@ -1098,6 +1120,7 @@ public class RecordActivity extends Activity {
         }
     }
 
+    /** Dừng và ngắt kết nối kết thúc toàn bộ phiên ghi (tương đương người dùng bấm Stop). */
     private void stopDisconnectExit() {
         stopDisconnectExit(true);
     }
@@ -1212,6 +1235,10 @@ public class RecordActivity extends Activity {
         super.onResume();
 
     }
+    /**
+     * Bắt buộc chọn/nhập research code khi mở app: hiện PatientInfoPopup không cho hủy và khóa các
+     * chức năng (ghi, annotate) cho tới khi có mã hợp lệ, nhằm tránh ghi dữ liệu thiếu mã bệnh nhân.
+     */
     private void checkAndRequestPatientCode() {
         // Always show the popup on app startup, regardless of whether a code exists
         Handler handler = new Handler();
@@ -1467,6 +1494,10 @@ public class RecordActivity extends Activity {
         }
     }
 
+    /**
+     * Lên lịch tự kết nối lại tới {@code macAddress} sau {@code delayMs}, rồi lặp lại theo
+     * {@link #AUTO_RECONNECT_INTERVAL_MS} cho tới khi kết nối được. Bỏ qua nếu MAC rỗng/bị chặn.
+     */
     private void scheduleAutoReconnect(String macAddress, long delayMs) {
         if (TextUtils.isEmpty(macAddress) || blockedList.contains(macAddress)) {
             return;
@@ -2193,6 +2224,10 @@ public class RecordActivity extends Activity {
         }
     }
 
+    /**
+     * Dọn dẹp khi activity bị hủy: đánh dấu đã destroy, gỡ receiver/handler và giải phóng tài nguyên.
+     * Lưu ý phiên ghi nền vẫn do {@link OximeterDataService} tiếp tục nếu chưa kết thúc.
+     */
     @Override
     protected void onDestroy() {
         isActivityDestroyed = true;
@@ -2378,6 +2413,10 @@ public class RecordActivity extends Activity {
                 REQUEST_STORAGE_PERMISSION);
     }
 
+    /**
+     * Kiểm tra (và yêu cầu nếu thiếu) các quyền cần để quét/kết nối BLE và ghi dữ liệu theo từng
+     * mức API. Trả về true nếu đã đủ quyền để bắt đầu kết nối, false nếu phải chờ người dùng cấp.
+     */
     public boolean checkAppPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
 

@@ -27,6 +27,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
+/**
+ * Popup nhập/chọn mã nghiên cứu bệnh nhân (research code). Lưu thông tin vào SharedPreferences,
+ * giữ lịch sử 5 mã gần nhất để chọn lại, và chặn (gate) app khi khởi động cho tới khi có mã hợp lệ.
+ */
 public class PatientInfoPopup {
     private static final String PREFS_NAME = "PatientInfoPrefs";
     private static final String KEY_RESEARCH_CODE = "research_code";
@@ -139,6 +143,7 @@ public class PatientInfoPopup {
     }
 
     // Check if code is saved
+    /** Trả về true nếu đã có research code được lưu (dùng để quyết định có cần gate app hay không). */
     public boolean isCodeSaved() {
         String savedCode = preferences.getString(KEY_RESEARCH_CODE, "");
         return !savedCode.isEmpty();
@@ -152,6 +157,7 @@ public class PatientInfoPopup {
     }
 
     // Make it non-cancelable for first run
+    /** Đặt popup có thể đóng hay không; lần chạy đầu để false nhằm bắt buộc nhập mã. */
     public void setCancelable(boolean cancelable) {
         this.isCancelable = cancelable;
     }
@@ -168,6 +174,10 @@ public class PatientInfoPopup {
         this.onPatientInfoSavedListener = listener;
     }
 
+    /**
+     * Hiển thị popup nhập thông tin bệnh nhân neo vào {@code anchorView}. Nếu đóng mà chưa có mã
+     * hợp lệ thì tự mở lại để đảm bảo luôn có research code trước khi dùng app.
+     */
     public void show(View anchorView) {
         LayoutInflater inflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         View popupView = inflater.inflate(R.layout.patient_info_popup, null);
@@ -374,6 +384,7 @@ public class PatientInfoPopup {
     }
 
     // Method to get saved patient info
+    /** Lấy thông tin bệnh nhân đã lưu (research/location code, serial) để gắn vào dữ liệu recording. */
     public PatientInfo getSavedPatientInfo() {
         return new PatientInfo(
                 preferences.getString(KEY_RESEARCH_CODE, ""),
