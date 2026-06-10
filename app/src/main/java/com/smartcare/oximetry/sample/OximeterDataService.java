@@ -52,6 +52,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 
 
+/**
+ * Foreground service chạy dài hạn để ghi dữ liệu oximeter ra CSV. Dữ liệu được đệm qua
+ * {@link OximeterDataBuffer} và ghi xuống file qua {@link OximeterDataWriterFunctions}; service giữ
+ * partial wake lock để CPU không ngủ. Sống sót qua việc bị kill bằng START_STICKY kết hợp
+ * {@link RecordingSessionPrefs} để khôi phục phiên ghi sau khi process bị khởi động lại.
+ */
 public class OximeterDataService extends Service {
 
     private static final String TAG = "OximeterDataService";
@@ -96,7 +102,10 @@ public class OximeterDataService extends Service {
 
                 FileLogger.logEvent("SERVICE", "DAILY_CUTOFF_SPLIT", "17:00 file rotation");
 
-                ioExecutor.execute(OximeterDataWriterFunctions::splitForDailyCutoff);
+                ioExecutor.execute(() -> {
+                    flushBufferedDataQuietly();
+                    OximeterDataWriterFunctions.splitForDailyCutoff();
+                });
 
             }
 
@@ -126,6 +135,9 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Binder cho bound connection, cho phép Activity lấy tham chiếu trực tiếp tới service đang chạy.
+     */
     public class LocalBinder extends Binder {
 
         OximeterDataService getService() {
@@ -190,6 +202,11 @@ public class OximeterDataService extends Service {
 
     @Override
 
+    /**
+     * Điểm vào mỗi lần service được start. Intent null nghĩa là process bị system kill rồi khởi động
+     * lại (START_STICKY) nên ta khôi phục phiên ghi; trả về START_STICKY khi còn phiên active,
+     * ngược lại START_NOT_STICKY để không bị tái tạo vô ích.
+     */
     public int onStartCommand(Intent intent, int flags, int startId) {
 
         if (intent == null) {
@@ -230,12 +247,11 @@ public class OximeterDataService extends Service {
 
             isRunning = true;
 
-            RecordingSessionPrefs.Session session =
-                    RecordingSessionPrefs.load(getApplicationContext());
-            long collectionStart = session.collectionStartMs > 0
-                    ? session.collectionStartMs
-                    : System.currentTimeMillis();
-            startDataCollection(collectionStart, patientCode, enableChunkFile, timeInterval);
+            // Arm the session (foreground + buffer) but DO NOT open a CSV file here. The file is
+            // created lazily when the first real data sample arrives (see startDataCollection /
+            // ensureRecordingActive on the first packet), so starting/binding the service without
+            // a connected device no longer produces an empty header-only file.
+            prepareForDataCollection(patientCode, enableChunkFile, timeInterval);
 
             Log.i(TAG, "Oximeter Data Service started with patient code: " + patientCode);
 
@@ -281,6 +297,10 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Khôi phục phiên ghi từ {@link RecordingSessionPrefs} sau khi process bị kill và restart: nạp
+     * lại patientCode/cấu hình, dựng lại buffer rồi vào lại foreground để tiếp tục ghi.
+     */
     private void restoreSessionAfterProcessRestart() {
 
         RecordingSessionPrefs.Session session = RecordingSessionPrefs.load(getApplicationContext());
@@ -391,6 +411,10 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Lấy partial wake lock để CPU tiếp tục chạy việc ghi dữ liệu khi màn hình tắt; idempotent
+     * (không lấy lại nếu đang giữ).
+     */
     private void acquireWakeLock() {
 
         if (wakeLock != null && wakeLock.isHeld()) {
@@ -419,9 +443,42 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Bắt đầu thu thập dữ liệu: chuẩn bị phiên rồi mở segment CSV mới nếu writer chưa active. Dùng
+     * thời điểm mở file thật (không phải session start) làm mốc cho từng segment để tránh trùng tên
+     * file và lệch lịch split.
+     */
     public void startDataCollection(long timestamp, String patientIdentifier, boolean enableChunkFile,
 
                                     int timeInterval) {
+
+        prepareForDataCollection(patientIdentifier, enableChunkFile, timeInterval);
+
+        if (!OximeterDataWriterFunctions.isRecordingActive()) {
+
+            // Each CSV segment starts when its file is actually opened. Using the persisted
+            // session start here would label every restart's segment with the same time, which
+            // (a) collided into "_unknown (1)" files and (b) corrupted the split schedule.
+            OximeterDataWriterFunctions.startNewRecording(System.currentTimeMillis(), patientIdentifier,
+
+                    enableChunkFile, timeInterval);
+
+        }
+
+        FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STARTED",
+
+                "patient=" + patientIdentifier + " collectionStartMs=" + timestamp);
+
+    }
+
+    /**
+     * Prepares the recording session (foreground buffer, split interval, flags) WITHOUT opening a
+     * CSV file. The actual file is opened lazily by {@link #startDataCollection} or
+     * {@link #ensureRecordingActive} on the first real data sample, so arming/binding the service
+     * with no connected device does not create an empty header-only file.
+     */
+    private void prepareForDataCollection(String patientIdentifier, boolean enableChunkFile,
+                                          int timeInterval) {
 
         patientCode = patientIdentifier;
 
@@ -444,18 +501,6 @@ public class OximeterDataService extends Service {
         OximeterDataWriterFunctions.initialize(serviceContext);
 
         OximeterDataWriterFunctions.setSplitInterval(RecordingConstants.SPLIT_INTERVAL_HOURS);
-
-        if (!OximeterDataWriterFunctions.isRecordingActive()) {
-
-            OximeterDataWriterFunctions.startNewRecording(timestamp, patientIdentifier,
-
-                    enableChunkFile, timeInterval);
-
-        }
-
-        FileLogger.logEvent("SERVICE", "DATA_COLLECTION_STARTED",
-
-                "patient=" + patientIdentifier + " collectionStartMs=" + timestamp);
 
     }
 
@@ -493,7 +538,10 @@ public class OximeterDataService extends Service {
 
         if (!OximeterDataWriterFunctions.isRecordingActive()) {
 
-            OximeterDataWriterFunctions.startNewRecording(timestamp, patientIdentifier,
+            // Each CSV segment starts when its file is actually opened. Using the persisted
+            // session start here would label every restart's segment with the same time, which
+            // (a) collided into "_unknown (1)" files and (b) corrupted the split schedule.
+            OximeterDataWriterFunctions.startNewRecording(System.currentTimeMillis(), patientIdentifier,
 
                     enableChunkFile, timeInterval);
 
@@ -505,6 +553,10 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Đẩy một sample vào buffer khi service đang chạy; nếu không (chưa sẵn sàng) thì bỏ qua và log
+     * cảnh báo có throttle (tối đa 10s/lần) để tránh spam log.
+     */
     public void addDataPoint(double spo2Val, int spo2Status, long redAdc, double battery,
 
                              int hrVal, long irAdc, double perfusionIndex, int counter,
@@ -545,6 +597,32 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Flushes any buffered samples that have not yet reached a full 100-sample batch into the
+     * currently open CSV segment. Safe to call from any thread and when no buffer exists.
+     * Call this before closing/splitting a segment so the segment's tail is not lost.
+     */
+    public void flushBufferedData() {
+        flushBufferedDataQuietly();
+    }
+
+    private void flushBufferedDataQuietly() {
+        OximeterDataBuffer buffer = dataBuffer;
+        if (buffer == null) {
+            return;
+        }
+        try {
+            buffer.flushRemaining();
+        } catch (Exception e) {
+            Log.w(TAG, "flushBufferedData failed", e);
+            FileLogger.w(TAG, "flushBufferedData failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Kết thúc phiên ghi: flush batch còn dở (< 100 sample) để không mất đuôi dữ liệu, đóng file CSV,
+     * nhả wake lock và dọn buffer. Idempotent qua cờ {@code recordingFinalized}.
+     */
     public void stopDataCollection() {
 
         if (recordingFinalized) {
@@ -566,6 +644,10 @@ public class OximeterDataService extends Service {
                 "isRunning=" + isRunning + " hadBuffer=" + (dataBuffer != null));
 
 
+
+        // Persist the partial batch (< 100 samples) before closing, otherwise a short session
+        // ends up as a header-only CSV with no data rows.
+        flushBufferedDataQuietly();
 
         String filePath = OximeterDataWriterFunctions.endRecording();
 
@@ -599,6 +681,11 @@ public class OximeterDataService extends Service {
 
 
 
+    /**
+     * Tắt việc ghi không đồng bộ: chạy {@link #stopDataCollection()} trên IO thread (tránh block
+     * main/ANR), sau đó gỡ foreground và stopSelf trên main thread rồi gọi {@code onFinished}. Có
+     * guard chống gọi shutdown trùng lặp.
+     */
     public void shutdownRecordingAsync(Runnable onFinished) {
 
         if (!shutdownInProgress.compareAndSet(false, true)) {
@@ -695,6 +782,10 @@ public class OximeterDataService extends Service {
 
     @Override
 
+    /**
+     * Khi người dùng xoá app khỏi recent tasks: nếu còn phiên ghi active thì GIỮ service sống để BLE
+     * có thể reconnect; ngược lại mới tiến hành shutdown bình thường.
+     */
     public void onTaskRemoved(Intent rootIntent) {
 
         if (RecordingSessionPrefs.isActive(getApplicationContext())) {

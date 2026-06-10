@@ -46,6 +46,7 @@ public final class OximeterDataFileIndex {
     private OximeterDataFileIndex() {
     }
 
+    /** Một mục file trong index: URI, tên hiển thị, kích thước và thời điểm sửa đổi (đã gộp từ nhiều nguồn). */
     public static final class FileEntry {
         public final Uri uri;
         public final String displayName;
@@ -134,6 +135,11 @@ public final class OximeterDataFileIndex {
         refreshMediaStoreDeep(context);
     }
 
+    /**
+     * Quét sâu (deep scan) mọi file app dưới các thư mục OximeterData và yêu cầu MediaScanner
+     * lập chỉ mục lại, để các app khác / MediaStore thấy được file mới. Chỉ tối ưu hiển thị,
+     * không bắt buộc cho việc liệt kê.
+     */
     public static void refreshMediaStoreDeep(Context context) {
         if (context == null) {
             return;
@@ -250,6 +256,10 @@ public final class OximeterDataFileIndex {
         }
     }
 
+    /**
+     * Báo cho hệ thống biết một bản ghi vừa được lưu: notify thay đổi URI, đăng ký vào
+     * {@link AppRecordingRegistry} và làm mới MediaStore để File Manager hiển thị ngay.
+     */
     public static void notifyRecordingSaved(Context context, Uri recordingUri, String displayName) {
         notifyUriUpdated(context, recordingUri);
         if (!TextUtils.isEmpty(displayName)) {

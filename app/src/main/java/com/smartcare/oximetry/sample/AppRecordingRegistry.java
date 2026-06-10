@@ -27,6 +27,10 @@ public final class AppRecordingRegistry {
     private AppRecordingRegistry() {
     }
 
+    /**
+     * Ghi/cập nhật một bản ghi đã hoàn tất vào registry JSON, để File Manager liệt kê được file
+     * ngay cả khi MediaStore RELATIVE_PATH thiếu hoặc lập chỉ mục chậm. Cập nhật tại chỗ nếu URI đã có.
+     */
     public static void registerCompletedRecording(Context context, Uri uri, String displayName) {
         if (context == null || uri == null || TextUtils.isEmpty(displayName)) {
             return;
@@ -62,6 +66,7 @@ public final class AppRecordingRegistry {
         }
     }
 
+    /** Gỡ một URI khỏi registry sau khi đã upload, để nó không còn xuất hiện trong danh sách pending. */
     public static void markUploaded(Context context, String uriStr) {
         if (context == null || TextUtils.isEmpty(uriStr)) {
             return;
@@ -81,6 +86,10 @@ public final class AppRecordingRegistry {
         }
     }
 
+    /**
+     * Trả về các bản ghi pending từ registry: bỏ qua mục đã upload, tự gắn lại (re-bind) URI khi
+     * URI cũ đã hỏng nhưng file còn trên đĩa, và loại bỏ các entry mồ côi không còn tồn tại.
+     */
     public static List<OximeterDataFileIndex.FileEntry> queryRegistryPending(Context context) {
         List<OximeterDataFileIndex.FileEntry> results = new ArrayList<>();
         if (context == null) {

@@ -2,6 +2,7 @@ package com.smartcare.oximetry.sample;
 
 import android.app.Activity;
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
@@ -14,10 +15,14 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 
 import com.opencsv.CSVWriter;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.ref.WeakReference;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,6 +32,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 
+/**
+ * Quản lý phiên ghi CSV đang hoạt động: tạo file trong MediaStore Download/OximeterData,
+ * ghi header + các dòng dữ liệu, và xoay (rotate) segment theo thời gian / khi BLE tạm dừng /
+ * mốc cắt hằng ngày (daily cutoff). Đặt tên file tạm là {@code _unknown} khi đang ghi và đổi
+ * tên về thời điểm kết thúc thật khi đóng segment.
+ */
 public class OximeterDataWriterFunctions {
     private static final String FOLDER_NAME = "OximeterData";
     private static final String TAG = "OximeterDataWriter";
@@ -45,6 +56,9 @@ public class OximeterDataWriterFunctions {
     private static String patientCode;
     private static Context appContext;
 
+    /** Number of data rows (excluding header) written into the currently open segment. */
+    private static long currentSegmentDataRows;
+
     private static List<String[]> tempBuffer = new ArrayList<>();
     private static boolean enableChunkFile1 = false;
     private static int timeInterval1 = 1;
@@ -55,6 +69,7 @@ public class OximeterDataWriterFunctions {
 
     private static WeakReference<Activity> weakActivity;
 
+    /** Lưu application context (tránh leak Activity) để dùng cho ContentResolver/MediaStore. */
     public static void initialize(Context context) {
         appContext = context.getApplicationContext();
     }
@@ -67,6 +82,10 @@ public class OximeterDataWriterFunctions {
         }
     }
 
+    /**
+     * Đặt khoảng thời gian tự động xoay file (theo giờ) và cập nhật mốc split kế tiếp nếu phiên
+     * đang chạy. Cho phép cấu hình độ dài segment thay vì giá trị mặc định.
+     */
     public static void setSplitInterval(int hours) {
         splitInterval = hours * 60 * 60 * 1000L;
         if (startTimestamp > 0) {
@@ -74,10 +93,12 @@ public class OximeterDataWriterFunctions {
         }
     }
 
+    /** True nếu đang có một segment CSV mở (writer và URI đều hợp lệ). */
     public static boolean isRecordingActive() {
         return currentWriter != null && currentFileUri != null;
     }
 
+    /** URI (dạng String) của file segment đang mở, hoặc null nếu không có phiên nào đang ghi. */
     public static String getCurrentOpenFileUriString() {
         return currentFileUri != null ? currentFileUri.toString() : null;
     }
@@ -134,15 +155,39 @@ public class OximeterDataWriterFunctions {
         return uri;
     }
 
-    private static void renameMediaStoreEntry(Uri uri, String newFileName) {
+    /**
+     * Renames a MediaStore entry to its completed name. Returns {@code true} on success.
+     *
+     * <p>The target entry can disappear out from under us if the file was uploaded/moved/deleted
+     * (e.g. the user tapped upload on it in the file manager) while it was still the open segment.
+     * In that case {@link ContentResolver#update} throws {@code IllegalStateException}
+     * (wrapping {@code FileNotFoundException}). This must never crash the recording, so all
+     * failures are swallowed and reported via the return value instead.
+     */
+    private static boolean renameMediaStoreEntry(Uri uri, String newFileName) {
+        if (uri == null || appContext == null) {
+            return false;
+        }
         ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, newFileName);
         values.put(MediaStore.Downloads.RELATIVE_PATH,
                 Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER_NAME + "/");
-        int updated = appContext.getContentResolver().update(uri, values, null, null);
-        Log.i(TAG, "MediaStore rename to [" + newFileName + "] rows updated: " + updated);
-        OximeterDataFileIndex.notifyUriUpdated(appContext, uri);
-        AppRecordingRegistry.registerCompletedRecording(appContext, uri, newFileName);
+        try {
+            int updated = appContext.getContentResolver().update(uri, values, null, null);
+            if (updated <= 0) {
+                Log.w(TAG, "MediaStore rename to [" + newFileName + "] affected 0 rows; uri=" + uri);
+                FileLogger.w(TAG, "MediaStore rename affected 0 rows (entry missing?): " + newFileName);
+                return false;
+            }
+            Log.i(TAG, "MediaStore rename to [" + newFileName + "] rows updated: " + updated);
+            OximeterDataFileIndex.notifyUriUpdated(appContext, uri);
+            AppRecordingRegistry.registerCompletedRecording(appContext, uri, newFileName);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to rename MediaStore entry (entry gone?): " + uri, e);
+            FileLogger.e(TAG, "MediaStore rename failed for " + newFileName + " (entry gone?)", e);
+            return false;
+        }
     }
 
     public static String getFileNameFromUri(Uri uri) {
@@ -156,13 +201,27 @@ public class OximeterDataWriterFunctions {
         return null;
     }
 
+    /**
+     * Bắt đầu một phiên ghi mới: đóng/chốt segment còn mở (nếu có), dọn dẹp các file {@code _unknown}
+     * mồ côi do crash/mất điện trước đó, rồi mở file {@code _unknown} mới. Phải chạy đồng bộ để
+     * tên file mới không đụng với orphan đang tồn tại.
+     */
     public static void startNewRecording(long packageReceivedTimestamp, String patientIdentifier,
                                          boolean enableChunkFile, int timeInterval) {
         synchronized (SPLIT_LOCK) {
-            closeCurrentWriter();
+            // Finalize any segment still open in THIS process (rename if it holds data, delete if
+            // empty) instead of silently abandoning it as a leftover "_unknown" file.
+            finalizeCurrentSegmentLocked(System.currentTimeMillis());
+
+            patientCode = patientIdentifier;
+
+            // Recover "_unknown" files left on disk by a previous crash / power loss: rename the
+            // ones that already contain data to their real end time, delete empty placeholders.
+            // Must run before opening a new file so a regenerated name cannot collide with an
+            // existing orphan (the collision is what produced "_unknown (1).csv").
+            reconcileOrphanUnknownFilesLocked();
 
             startTimestamp = packageReceivedTimestamp;
-            patientCode = patientIdentifier;
             nextSplitTime = startTimestamp + splitInterval;
 
             enableChunkFile1 = enableChunkFile;
@@ -186,19 +245,249 @@ public class OximeterDataWriterFunctions {
             currentOutputStream = appContext.getContentResolver().openOutputStream(currentFileUri, "w");
             if (currentOutputStream == null) {
                 Log.e(TAG, "Failed to open output stream for new recording");
+                deleteMediaStoreEntryQuietly(currentFileUri, "openOutputStream returned null");
                 currentFileUri = null;
                 return;
             }
             currentWriter = new CSVWriter(new OutputStreamWriter(currentOutputStream));
             writeHeader(currentWriter);
+            // Flush the header immediately so the file is never a 0-byte placeholder, even if the
+            // process is killed before the first data sample arrives.
+            currentWriter.flush();
+            currentSegmentDataRows = 0;
             Log.i(TAG, "New recording started: " + currentFileUri);
         } catch (IOException e) {
             Log.e(TAG, "Error creating new CSV file", e);
+            closeCurrentWriter();
+            deleteMediaStoreEntryQuietly(currentFileUri, "writer/header initialization failed");
+            currentFileUri = null;
             currentWriter = null;
             currentOutputStream = null;
         }
     }
 
+    private static void deleteMediaStoreEntryQuietly(Uri uri, String reason) {
+        if (uri == null || appContext == null) {
+            return;
+        }
+        try {
+            int deleted = appContext.getContentResolver().delete(uri, null, null);
+            Log.w(TAG, "Deleted incomplete unknown file entry (" + reason + "), rows=" + deleted
+                    + ", uri=" + uri);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to delete incomplete unknown file entry: " + uri, e);
+        }
+    }
+
+    /**
+     * Closes the segment currently open in this process and either renames it to its real end
+     * time (when it holds data) or deletes it (when it is just an empty placeholder). This is the
+     * in-memory counterpart of {@link #reconcileOrphanUnknownFilesLocked()} and prevents leaving a
+     * dangling "_unknown" file behind when a new recording starts without a clean end/split.
+     */
+    private static void finalizeCurrentSegmentLocked(long endTs) {
+        if (currentFileUri == null) {
+            closeCurrentWriter();
+            return;
+        }
+
+        boolean hadData = currentSegmentDataRows > 0;
+        closeCurrentWriter();
+
+        Uri uri = currentFileUri;
+        currentFileUri = null;
+
+        if (!hadData) {
+            deleteMediaStoreEntryQuietly(uri, "finalizing empty open segment (no data rows)");
+            return;
+        }
+
+        String endPart = formatTimestamp(endTs);
+        if (formatTimestamp(startTimestamp).equals(endPart)) {
+            endPart = formatTimestamp(endTs + 1000L);
+        }
+        String completedName = generateFileName(startTimestamp, endPart);
+        if (renameMediaStoreEntry(uri, completedName)) {
+            OximeterDataFileIndex.notifyRecordingSaved(appContext, uri, completedName);
+            Log.i(TAG, "Finalized open segment on new recording: " + completedName);
+            FileLogger.i(TAG, "Finalized open segment: " + completedName);
+        } else {
+            Log.w(TAG, "Failed to finalize open segment (entry gone?): " + completedName);
+            FileLogger.w(TAG, "Failed to finalize open segment (entry gone?): " + completedName);
+        }
+    }
+
+    /**
+     * Scans the OximeterData folder for leftover "_unknown" files (created when the app was killed
+     * or the tablet lost power mid-recording) and resolves each one safely:
+     * <ul>
+     *   <li>0-byte / header-only files are deleted (failed placeholders, no data lost).</li>
+     *   <li>Files that already contain data are renamed to {@code _<lastSampleTime>.csv} using the
+     *       last timestamp found inside the file, so the data is preserved and a new segment can
+     *       start cleanly without an identical name colliding (which produced "_unknown (1)").</li>
+     * </ul>
+     * The currently open file (if any) is never touched.
+     */
+    private static void reconcileOrphanUnknownFilesLocked() {
+        if (appContext == null) {
+            return;
+        }
+        ContentResolver resolver = appContext.getContentResolver();
+        Uri collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+        String[] projection = {
+                MediaStore.Downloads._ID,
+                MediaStore.Downloads.DISPLAY_NAME,
+                MediaStore.Downloads.SIZE,
+                MediaStore.Downloads.DATE_MODIFIED
+        };
+        String selection = MediaStore.Downloads.RELATIVE_PATH + " LIKE ? AND "
+                + MediaStore.Downloads.DISPLAY_NAME + " LIKE ?";
+        String[] args = { "%" + FOLDER_NAME + "%", "%unknown%.csv" };
+
+        try (Cursor cursor = resolver.query(collection, projection, selection, args, null)) {
+            if (cursor == null) {
+                return;
+            }
+            int idIdx = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID);
+            int nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME);
+            int sizeIdx = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE);
+            int modIdx = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED);
+
+            while (cursor.moveToNext()) {
+                String name = cursor.getString(nameIdx);
+                if (name == null || !name.contains("_unknown")) {
+                    continue;
+                }
+                if (patientCode != null && !name.contains("_" + patientCode + "_")) {
+                    continue;
+                }
+                Uri uri = ContentUris.withAppendedId(collection, cursor.getLong(idIdx));
+                if (currentFileUri != null && uri.equals(currentFileUri)) {
+                    continue;
+                }
+                finalizeOneOrphanUnknownFile(uri, name, cursor.getLong(sizeIdx), cursor.getLong(modIdx));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "reconcileOrphanUnknownFiles failed", e);
+            FileLogger.w(TAG, "reconcileOrphanUnknownFiles failed: " + e.getMessage());
+        }
+    }
+
+    private static void finalizeOneOrphanUnknownFile(Uri uri, String name, long sizeBytes,
+                                                     long modSeconds) {
+        if (sizeBytes <= 0L) {
+            deleteMediaStoreEntryQuietly(uri, "orphan unknown file empty (0 bytes): " + name);
+            FileLogger.logEvent("FILES", "ORPHAN_UNKNOWN_DELETED", "empty | " + name);
+            return;
+        }
+
+        String lastTimestampField = null;
+        int dataRows = 0;
+        try (InputStream in = appContext.getContentResolver().openInputStream(uri);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
+            String line;
+            boolean headerSkipped = false;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+                if (!headerSkipped) {
+                    headerSkipped = true;
+                    continue;
+                }
+                dataRows++;
+                String field = firstCsvField(line);
+                if (field != null && !field.isEmpty()) {
+                    lastTimestampField = field;
+                }
+            }
+        } catch (Exception e) {
+            // Could not read the file: be conservative and keep it (it may contain real data).
+            Log.w(TAG, "Failed to read orphan unknown file: " + name, e);
+            FileLogger.w(TAG, "Failed to read orphan unknown file, kept as-is: " + name);
+            return;
+        }
+
+        if (dataRows == 0) {
+            deleteMediaStoreEntryQuietly(uri, "orphan unknown file header-only: " + name);
+            FileLogger.logEvent("FILES", "ORPHAN_UNKNOWN_DELETED", "header-only | " + name);
+            return;
+        }
+
+        String endStamp = isoToFileStamp(lastTimestampField);
+        if (endStamp == null && modSeconds > 0) {
+            endStamp = formatTimestamp(modSeconds * 1000L);
+        }
+        if (endStamp == null) {
+            endStamp = formatTimestamp(System.currentTimeMillis());
+        }
+
+        String completedName = completedNameFromUnknown(name, endStamp);
+        if (completedName == null) {
+            return;
+        }
+        if (renameMediaStoreEntry(uri, completedName)) {
+            OximeterDataFileIndex.notifyRecordingSaved(appContext, uri, completedName);
+            Log.i(TAG, "Finalized orphan unknown file -> " + completedName);
+            FileLogger.logEvent("FILES", "ORPHAN_UNKNOWN_FINALIZED",
+                    name + " -> " + completedName + " rows=" + dataRows);
+        } else {
+            Log.w(TAG, "Failed to rename orphan unknown file (entry gone?): " + name);
+            FileLogger.w(TAG, "Failed to rename orphan unknown file (entry gone?): " + name);
+        }
+    }
+
+    /** Extracts the first (timestamp) column from a CSVWriter-formatted line. */
+    private static String firstCsvField(String line) {
+        if (line == null) {
+            return null;
+        }
+        String s = line.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        if (s.charAt(0) == '"') {
+            int end = s.indexOf('"', 1);
+            return end > 1 ? s.substring(1, end) : null;
+        }
+        int comma = s.indexOf(',');
+        return comma >= 0 ? s.substring(0, comma) : s;
+    }
+
+    /**
+     * Converts a CSV ISO timestamp ("yyyy-MM-dd HH:mm:ss...") into the file-name stamp format
+     * ("dd.MM.yyyy.HH.mm.ss"). Returns null if the value cannot be parsed.
+     */
+    private static String isoToFileStamp(String iso) {
+        if (iso == null || iso.length() < 19) {
+            return null;
+        }
+        try {
+            SimpleDateFormat parser = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
+            parser.setTimeZone(TimeZone.getDefault());
+            Date parsed = parser.parse(iso.substring(0, 19));
+            return parsed != null ? formatTimestamp(parsed.getTime()) : null;
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+
+    /** Builds the completed name by replacing the trailing "_unknown[...]" part with the end time. */
+    private static String completedNameFromUnknown(String displayName, String endStamp) {
+        if (displayName == null) {
+            return null;
+        }
+        int idx = displayName.indexOf("_unknown");
+        if (idx < 0) {
+            return null;
+        }
+        return displayName.substring(0, idx) + "_" + endStamp + ".csv";
+    }
+
+    /**
+     * Ghi một dòng dữ liệu đã gom vào segment hiện tại; kiểm tra mốc split theo thời gian trước khi
+     * ghi để xoay file khi cần, và đệm thêm cho chunk file streaming nếu tính năng được bật.
+     */
     public static void writeProcessedDataPoint(OximeterDataBuffer.ProcessedData data) {
         synchronized (SPLIT_LOCK) {
             if (currentWriter == null) {
@@ -231,6 +520,7 @@ public class OximeterDataWriterFunctions {
 
                 currentWriter.writeNext(csvData);
                 currentWriter.flush();
+                currentSegmentDataRows++;
 
                 if (enableChunkFile1) {
                     tempBuffer.add(csvData);
@@ -264,6 +554,11 @@ public class OximeterDataWriterFunctions {
         }
     }
 
+    /**
+     * Logic cốt lõi của việc xoay segment (phải gọi khi đang giữ {@link #SPLIT_LOCK}): đóng writer
+     * hiện tại, đổi tên file về thời điểm kết thúc rồi mở segment {@code _unknown} mới. Luôn mở
+     * segment mới kể cả khi đổi tên thất bại để việc thu dữ liệu không bị gián đoạn.
+     */
     private static void splitFileLocked(long timestamp, boolean dailyCutoff) throws IOException {
         if (currentWriter == null || currentFileUri == null) {
             return;
@@ -289,11 +584,21 @@ public class OximeterDataWriterFunctions {
 
         String completedFileName = generateFileName(startTimestamp, endFormatted);
         Uri completedUri = currentFileUri;
-        renameMediaStoreEntry(currentFileUri, completedFileName);
-        OximeterDataFileIndex.notifyRecordingSaved(appContext, completedUri, completedFileName);
-        Log.i(TAG, "File split: " + completedFileName);
-        FileLogger.i(TAG, "File split: " + completedFileName);
+        boolean renamed = renameMediaStoreEntry(currentFileUri, completedFileName);
+        if (renamed) {
+            OximeterDataFileIndex.notifyRecordingSaved(appContext, completedUri, completedFileName);
+            Log.i(TAG, "File split: " + completedFileName);
+            FileLogger.i(TAG, "File split: " + completedFileName);
+        } else {
+            // The previous segment's entry is gone (uploaded/moved/deleted while open). Drop the
+            // stale reference and keep recording into a fresh segment instead of crashing.
+            Log.w(TAG, "File split rename failed; opening a new segment anyway: " + completedFileName);
+            FileLogger.w(TAG, "File split rename failed (entry gone); opened new segment: "
+                    + completedFileName);
+        }
 
+        // Always advance to a new segment so data collection continues regardless of rename result.
+        currentFileUri = null;
         startTimestamp = timestamp;
         nextSplitTime = timestamp + splitInterval;
         openNewUnknownFile();
@@ -330,6 +635,11 @@ public class OximeterDataWriterFunctions {
         }
     }
 
+    /**
+     * Kết thúc phiên ghi: đóng writer và đổi tên file {@code _unknown} về thời điểm kết thúc thật.
+     * Trả về URI (String) của file đã hoàn tất để uploader xử lý, hoặc null nếu entry đã biến mất
+     * (bị upload/di chuyển/xóa khi còn đang mở).
+     */
     public static String endRecording() {
         synchronized (SPLIT_LOCK) {
             long endTimestamp = System.currentTimeMillis();
@@ -346,13 +656,22 @@ public class OximeterDataWriterFunctions {
             }
             String newFileName = generateFileName(startTimestamp, endPart);
             Log.i(TAG, "Attempting to rename to: " + newFileName);
-            renameMediaStoreEntry(currentFileUri, newFileName);
+            boolean renamed = renameMediaStoreEntry(currentFileUri, newFileName);
 
-            Log.i(TAG, "Recording ended successfully: " + currentFileUri);
             String uriStr = currentFileUri.toString();
-            OximeterDataFileIndex.notifyRecordingSaved(appContext, Uri.parse(uriStr), newFileName);
             currentFileUri = null;
             startTimestamp = 0;
+
+            if (!renamed) {
+                // Entry vanished (uploaded/moved/deleted while open): nothing safe to hand back to
+                // the uploader. Avoid returning a URI that no longer resolves.
+                Log.w(TAG, "Recording end rename failed (entry gone?): " + uriStr);
+                FileLogger.w(TAG, "Recording end rename failed; entry may be gone: " + newFileName);
+                return null;
+            }
+
+            Log.i(TAG, "Recording ended successfully: " + uriStr);
+            OximeterDataFileIndex.notifyRecordingSaved(appContext, Uri.parse(uriStr), newFileName);
             return uriStr;
         }
     }
@@ -411,6 +730,7 @@ public class OximeterDataWriterFunctions {
                 patientIdentifier, startTime, endTimestampPart);
     }
 
+    /** Định dạng timestamp epoch-ms thành chuỗi dùng trong tên file ("dd.MM.yyyy.HH.mm.ss"). */
     public static String formatTimestamp(long timestamp) {
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US);
         dateFormat.setTimeZone(TimeZone.getDefault());

@@ -14,6 +14,10 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.TextView;
 
+/**
+ * Popup cấu hình chia nhỏ file ghi (chunking): bật/tắt và đặt khoảng thời gian (phút) để tách
+ * file CSV trong lúc recording. Lưu thiết lập vào SharedPreferences để RecordActivity đọc lại.
+ */
 public class ChunkFileConfigPopup {
     private static final String PREFS_NAME = "ChunkFileConfigPrefs";
     private static final String KEY_ENABLE_CHUNK_FILE = "enable_chunk_file";
@@ -31,6 +35,9 @@ public class ChunkFileConfigPopup {
         this.preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
+    /**
+     * Hiển thị popup cấu hình, neo vào {@code anchorView}, nạp giá trị đã lưu và làm mờ nền.
+     */
     public void show(View anchorView) {
         LayoutInflater inflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         View popupView = inflater.inflate(R.layout.chunk_file_config_popup, null);
@@ -96,11 +103,13 @@ public class ChunkFileConfigPopup {
     }
     // Methods to retrieve the state
     // default is true
+    /** Trả về true nếu tính năng tách file theo thời gian đang được bật. */
     public boolean isChunkFileEnabled() {
         return preferences.getBoolean(KEY_ENABLE_CHUNK_FILE, false);
     }
 
     // default time interval is 3 minutes
+    /** Khoảng thời gian (phút) giữa các lần tách file; mặc định 3 phút nếu chưa cấu hình. */
     public int getTimeInterval() {
         return preferences.getInt(KEY_TIME_INTERVAL, 3);
     }

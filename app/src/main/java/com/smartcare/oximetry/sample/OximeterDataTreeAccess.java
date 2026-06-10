@@ -16,6 +16,7 @@ public final class OximeterDataTreeAccess {
     private OximeterDataTreeAccess() {
     }
 
+    /** Trả về SAF tree URI người dùng đã cấp (đã lưu), hoặc null nếu chưa cấp. */
     public static Uri getPersistedTreeUri(Context context) {
         if (context == null) {
             return null;
@@ -26,6 +27,7 @@ public final class OximeterDataTreeAccess {
         return TextUtils.isEmpty(s) ? null : Uri.parse(s);
     }
 
+    /** Lưu SAF tree URI vừa được cấp để dùng lại cho các lần liệt kê file sau. */
     public static void persistTreeUri(Context context, Uri treeUri) {
         if (context == null || treeUri == null) {
             return;
@@ -37,6 +39,7 @@ public final class OximeterDataTreeAccess {
                 .apply();
     }
 
+    /** Xóa SAF tree URI đã lưu (ví dụ khi người dùng thu hồi quyền truy cập thư mục). */
     public static void clearPersistedTreeUri(Context context) {
         if (context == null) {
             return;
