@@ -12,6 +12,10 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.List;
 
+/**
+ * RecyclerView Adapter hiển thị danh sách research code đã dùng gần đây trong PatientInfoPopup,
+ * cho phép chọn lại nhanh (onCodeClick) hoặc xoá khỏi lịch sử (onCodeDelete).
+ */
 public class CodeHistoryAdapter extends RecyclerView.Adapter<CodeHistoryAdapter.CodeViewHolder> {
     
     private List<String> codeList;
@@ -64,11 +68,13 @@ public class CodeHistoryAdapter extends RecyclerView.Adapter<CodeHistoryAdapter.
         return codeList != null ? codeList.size() : 0;
     }
     
+    /** Thay toàn bộ danh sách code và refresh list (dùng khi history được nạp lại). */
     public void updateCodes(List<String> newCodes) {
         this.codeList = newCodes;
         notifyDataSetChanged();
     }
     
+    /** Xoá code tại {@code position} và animate xoá item để đồng bộ với lịch sử đã lưu. */
     public void removeCode(int position) {
         if (position >= 0 && position < codeList.size()) {
             codeList.remove(position);

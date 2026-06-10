@@ -24,6 +24,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Giao diện xem/sửa/xóa ghi chú (annotation) của bệnh nhân lưu cục bộ trong Annotations.json;
+ * KHÔNG thuộc luồng upload HTTP.
+ */
 public class AnnotationHistory {
     private static final String TAG = "AnnotationHistory";
     private static final Gson gson = new Gson();
@@ -34,6 +38,10 @@ public class AnnotationHistory {
     private static AlertDialog activeEditDialog;
     private static AlertDialog activeDeleteDialog;
 
+    /**
+     * Hiển thị dialog danh sách ghi chú của bệnh nhân (lọc theo patientCode, mới nhất trước),
+     * cho phép chọn để sửa/xóa.
+     */
     public static void showAnnotationHistory(Context context, String patientCode) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Annotation");

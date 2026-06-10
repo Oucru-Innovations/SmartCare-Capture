@@ -37,6 +37,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Quản lý ghi chú lâm sàng (annotation) trong lúc recording: hiển thị form nhập, lưu vào
+ * Annotations.json và xuất từng note ra file JSON theo định dạng server, đồng thời kích hoạt upload.
+ */
 public class ShowAnnotate {
     private static final String TAG = "ShowAnnotate";
     private Context context;
@@ -44,6 +48,10 @@ public class ShowAnnotate {
     private static final Gson gson = new Gson();
 
     // Annotation model class
+    /**
+     * Model một ghi chú: timestamp, mã bệnh nhân, nội dung, HR và SpO2; dùng để serialize/đọc
+     * lại từ Annotations.json qua Gson.
+     */
     public static class AnnotationEntry {
         String timestamp;
         String patientCode;
@@ -76,6 +84,10 @@ public class ShowAnnotate {
         this.patientCode = patientCode;
     }
 
+    /**
+     * Mở dialog nhập ghi chú: ngày ghi, tình trạng thu thập dữ liệu (đúng lịch hay không) và lý do.
+     * Validate định dạng ngày trước khi gọi {@link #handleAnnotation} để lưu.
+     */
     public void showAnnotateMenu(View anchorView) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Add Note");
@@ -203,6 +215,10 @@ public class ShowAnnotate {
     }
 
     // Handle the annotation logic
+    /**
+     * Tạo và lưu một annotation mới: thêm vào Annotations.json (giữ tối đa 5 note/bệnh nhân), đồng
+     * thời xuất một file JSON riêng theo định dạng server và upload ngay (giữ lại để retry nếu lỗi).
+     */
     private void handleAnnotation(String recordingTime, boolean isCollectedAsScheduled, String dataType, String reason) {
         try {
             // Load existing annotations
@@ -392,6 +408,7 @@ public class ShowAnnotate {
     }
 
     // Update an existing annotation
+    /** Cập nhật nội dung note tại {@code index} trong Annotations.json và lưu lại. */
     public void updateAnnotation(int index, String newContent) {
         try {
             List<AnnotationEntry> annotations = loadAnnotations();
@@ -435,6 +452,7 @@ public class ShowAnnotate {
     }
 
     // Delete an annotation
+    /** Xoá note tại vị trí {@code index} khỏi Annotations.json và lưu lại. */
     public void deleteAnnotation(int index) {
         try {
             List<AnnotationEntry> annotations = loadAnnotations();
@@ -450,6 +468,7 @@ public class ShowAnnotate {
         }
     }
 
+    /** Xoá note khớp với {@code entryToDelete} (theo tham chiếu hoặc theo timestamp + mã bệnh nhân). */
     public void deleteAnnotation(AnnotationEntry entryToDelete) {
         try {
             List<AnnotationEntry> annotations = loadAnnotations();
@@ -491,6 +510,7 @@ public class ShowAnnotate {
         // Nothing needed for JSON implementation
     }
 
+    /** Mở màn hình xem lại lịch sử ghi chú của bệnh nhân hiện tại (ủy quyền cho AnnotationHistory). */
     public void showAnnotationHistory(View view) {
         AnnotationHistory.showAnnotationHistory(context, patientCode);
     }

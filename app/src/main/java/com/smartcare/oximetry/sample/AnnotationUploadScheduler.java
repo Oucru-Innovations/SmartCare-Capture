@@ -10,9 +10,16 @@ import androidx.work.WorkManager;
 import java.util.Calendar;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Lên lịch tác vụ bảo trì/upload hàng ngày qua WorkManager cho UploadAnnotationWorker.
+ */
 public class AnnotationUploadScheduler {
     private static final String UNIQUE_DAILY_WORK = "smartcare_daily_17h_maintenance";
 
+    /**
+     * Tính delay đến mốc 17:00 giờ local kế tiếp và enqueue OneTimeWorkRequest tự lặp lại,
+     * yêu cầu NetworkType.CONNECTED.
+     */
     public static void scheduleDailyUpload(Context context) {
         Calendar current = Calendar.getInstance();
         Calendar target = Calendar.getInstance();

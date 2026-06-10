@@ -7,6 +7,10 @@ import androidx.annotation.NonNull;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
+/**
+ * WorkManager Worker chạy bảo trì hàng ngày lúc 17:00: tách (split) bản ghi đang chạy ở lần chạy đầu,
+ * upload toàn bộ file pending, rồi đặt lịch lại cho ngày hôm sau.
+ */
 public class UploadAnnotationWorker extends Worker {
     private static final String TAG = "UploadAnnotWorker";
 
@@ -14,6 +18,9 @@ public class UploadAnnotationWorker extends Worker {
         super(context, params);
     }
 
+    /**
+     * Tách bản ghi đang ghi (chỉ ở attempt đầu), upload tất cả file pending và lên lịch chạy lại ngày kế tiếp.
+     */
     @NonNull
     @Override
     public Result doWork() {
