@@ -3,6 +3,15 @@
 ## SMARTCARE CAPTURE
 This is an Android application for recording, displaying, and uploading physiological signals from SmartCare.
 
+## 📚 Documentation
+
+Tài liệu được tổ chức theo **4 tầng** (tổng quan → chi tiết). Điểm vào: **[docs/README.md](docs/README.md)**.
+
+- **Tầng 1 — [Project Overview](docs/1-overview/PROJECT-OVERVIEW.md)** — App dùng để làm gì; bài toán, glossary, tech stack, cài đặt & cấu hình. **Đọc trước tiên / Start here.**
+- **Tầng 2 — [Architecture Flow](docs/2-architecture/ARCHITECTURE-OVERVIEW.md)** — Hệ thống hoạt động thế nào: kiến trúc 5 tầng + 6 flow chi tiết (startup, BLE, recording, annotation, upload, file management).
+- **Tầng 3 — [Module / Class Reference](docs/3-modules/MODULES-INDEX.md)** — "Chức năng X nằm ở file/class nào?" — bản đồ 35 class theo 4 module.
+- **Tầng 4 — [Function Documentation](docs/4-functions/)** — Chi tiết từng hàm; mã nguồn `.java` cũng đã được bổ sung Javadoc.
+
 ## ⚠️ Important Notice
 
 There are **two types of SmartCare oximeters** to be aware of:
