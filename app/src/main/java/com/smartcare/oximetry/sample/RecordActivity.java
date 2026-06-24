@@ -155,6 +155,9 @@ public class RecordActivity extends Activity {
     private TextView mSpo2Label;
     private SimpleXYSeries mSeries;
     private SmartCareHandler mHandler;
+    // Counts packets received from the device, packets lost in transit (BLE gaps), and logs
+    // per-minute / total figures to FileLogger. Singleton so figures survive activity recreation.
+    final PacketStatsTracker packetStats = PacketStatsTracker.getInstance();
     //newcode
     public static String MacAddress;
     private static final String PREFS_NAME = "OximeterPrefs";
@@ -247,6 +250,11 @@ public class RecordActivity extends Activity {
         private final WeakReference<RecordActivity> mmTarget;
         private long lastUpdateTime = 0;
         private static final long UPDATE_INTERVAL = 500;
+        // Throttle plot rendering to ~30 fps. Every pleth sample is still appended to the series so
+        // no data is skipped; only the expensive redraw() is rate-limited, which keeps the main
+        // thread responsive on low-end devices (e.g. Galaxy Tab T295).
+        private long lastPlotRedrawTime = 0;
+        private static final long PLOT_REDRAW_INTERVAL_MS = 33;
         /**
          * Constructor for the ReceiveDataHandler.
          */
@@ -290,6 +298,11 @@ public class RecordActivity extends Activity {
                     // one in each packet received. This is useful for determining if packets have
                     // been dropped.
                     int latestCounterValue = data.getInt(ConnectionManager.KEY_DATA_COUNTER);
+                    // Count every packet the device actually delivered, and detect any gap in the
+                    // device's sequential counter (= packets lost in transit over BLE / dropped by
+                    // the SDK before reaching the app). Done here, at the reception point, so it is
+                    // independent of whether a recording session is active.
+                    final int missingPackets = target.packetStats.onPacketReceived(latestCounterValue);
                     // The KEY_DATA_SPO2STATUS data contains an integer indicating the status of
                     // the SpO2 measurement. A value of 0 means that the device is functioning well.
                     int latestSpO2Status = data.getInt(ConnectionManager.KEY_DATA_SPO2STATUS);
@@ -426,14 +439,29 @@ public class RecordActivity extends Activity {
                         latestPerfusionIndexValue = data.getDouble(ConnectionManager.KEY_DATA_PERFUSIONINDEX);
                     }
 
-                    boolean seriesIsFull = target.mSeries.size() > UI_BUFFER_SIZE_SAMPLES;
-                    if (seriesIsFull) {
-                        target.mSeries.removeFirst();
+                    // Insert one break per sample lost over BLE BEFORE plotting the new value, so the
+                    // received beats keep their correct real-time spacing instead of being squeezed
+                    // together across the gap (that compression was what made the trace look
+                    // distorted during packet loss). A null Y produces a break in the line, drawn as
+                    // an empty gap that honestly reflects the missing data.
+                    if (missingPackets > 0) {
+                        int gapPoints = Math.min(missingPackets, (int) UI_BUFFER_SIZE_SAMPLES);
+                        for (int i = 0; i < gapPoints; i++) {
+                            target.mSeries.addLast(null, null);
+                        }
                     }
                     target.mSeries.addLast(null, latestPlethValue);
-                    
+                    while (target.mSeries.size() > UI_BUFFER_SIZE_SAMPLES) {
+                        target.mSeries.removeFirst();
+                    }
+
+                    boolean seriesIsFull = target.mSeries.size() >= UI_BUFFER_SIZE_SAMPLES;
                     if (seriesIsFull) {
-                        target.mPlot.redraw();
+                        long nowRedraw = System.currentTimeMillis();
+                        if (nowRedraw - lastPlotRedrawTime >= PLOT_REDRAW_INTERVAL_MS) {
+                            lastPlotRedrawTime = nowRedraw;
+                            target.mPlot.redraw();
+                        }
                     }
 
                     //detrend data
@@ -454,22 +482,10 @@ public class RecordActivity extends Activity {
 
                     long currentTime = System.currentTimeMillis();
                     if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
-                        if (seriesIsFull) {
-                            // Throttled: Detrend mSeries and calculate the trend line
-                            double[] plethValues = new double[(int) UI_BUFFER_SIZE_SAMPLES];
-                            for (int i = 0; i < UI_BUFFER_SIZE_SAMPLES; i++) {
-                                plethValues[i] = target.mSeries.getY(i).doubleValue();
-                            }
-
-                            Detrend detrend = new Detrend(plethValues,"linear");
-                            double[] trendLine = detrend.getTrendLine();
-
-                            // Clear mTrendSeries and add the new trend line values
-                            target.mTrendSeries.setModel(new LinkedList<>(), SimpleXYSeries.ArrayFormat.Y_VALS_ONLY);
-                            for (double value : trendLine) {
-                                target.mTrendSeries.addLast(null, value);
-                            }
-                        }
+                        // (Removed the per-500ms linear Detrend over the whole plot buffer: its
+                        // result fed mTrendSeries which is not added to the plot, so it was pure
+                        // wasted main-thread work — harmful on the T295 — and it would also NPE now
+                        // that the pleth series can contain null gap points for lost samples.)
 
                         // Update UI with the latest values
                         target.runOnUiThread(() -> {
@@ -518,6 +534,7 @@ public class RecordActivity extends Activity {
                         target.splitCsvOnBlePause();
                         target.stopDisconnectExit(false);
                     }
+                    target.packetStats.onConnectionReset("CONNECTION_LOST");
                     target.isConnected = false;
                     break;
                 case ConnectionManager.MESSAGE_RECORDING_STARTED:
@@ -576,6 +593,7 @@ public class RecordActivity extends Activity {
 
                     FileLogger.i(TAG, "Disconnected from oximetry");
                     target.splitCsvOnBlePause();
+                    target.packetStats.onConnectionReset("RECORDING_ENDED");
                     target.isConnected = false; //new
                     target.isDisconnectFlowInProgress = false;
                     target.startBluetoothDiscoveryIfPermitted();
@@ -1174,6 +1192,8 @@ public class RecordActivity extends Activity {
 //        OximeterDataWriterFunctions.setActivity(this);
         OximeterDataWriterFunctions.initialize(getApplicationContext());
 
+        packetStats.start();
+
         initialisePlot();
         initialiseSeries();
         //show drop down annotate
@@ -1430,6 +1450,17 @@ public class RecordActivity extends Activity {
         scanRunnable = new Runnable() {
             @Override
             public void run() {
+                // Pause classic Bluetooth discovery while a device is connected (or connecting).
+                // startDiscovery() is a classic inquiry scan that monopolises the 2.4GHz radio and
+                // starves the active SmartCare data connection, causing the device/SDK buffers to
+                // overflow and drop packets (seen as gaps in the device's sequential counter and a
+                // distorted waveform). Only scan when we actually need to (re)connect.
+                if (isConnected || isConnecting) {
+                    cancelBluetoothDiscoveryIfPermitted();
+                    scanHandler.postDelayed(this, SCAN_INTERVAL);
+                    return;
+                }
+
                 // Check permissions based on Android version
                 boolean hasPermission;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -2249,6 +2280,12 @@ public class RecordActivity extends Activity {
 
         if (mHandler != null) {
             mHandler.removeCallbacksAndMessages(null);
+        }
+
+        // Stop per-minute packet logging only when truly leaving; keep it running across rotation
+        // and while a background recording session continues.
+        if (isFinishing()) {
+            packetStats.stop();
         }
 
         if (connectionManager != null && !isRecordingSessionActive) {

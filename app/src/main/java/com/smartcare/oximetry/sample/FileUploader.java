@@ -74,20 +74,31 @@ public class FileUploader {
      * Di chuyển file thường sang thư mục con Uploaded/ và cập nhật lại thời gian sửa đổi.
      */
     public static boolean moveFileToUploadedFolder(File file) {
-        // Create Uploaded directory if it doesn't exist
-        File uploadedDir = new File(file.getParentFile(), "Uploaded");
-        if (!uploadedDir.exists()) {
-            uploadedDir.mkdirs();
+        if (file == null || !file.isFile()) {
+            return false;
+        }
+        File uploadedDir = OximeterDataFileIndex.getUploadedDirectory();
+        if (!uploadedDir.exists() && !uploadedDir.mkdirs()) {
+            Log.e("FileUploader", "Could not create Uploaded directory: " + uploadedDir);
+            return false;
         }
 
-        // Move file to Uploaded directory
         File newFile = new File(uploadedDir, file.getName());
         boolean moveSuccess = file.renameTo(newFile);
+        if (!moveSuccess) {
+            try {
+                java.nio.file.Files.copy(
+                        file.toPath(), newFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                file.delete();
+                moveSuccess = true;
+            } catch (IOException e) {
+                Log.e("FileUploader", "Failed to move file to Uploaded: " + file, e);
+                return false;
+            }
+        }
 
-        // Update the file's modification time to current time
         if (moveSuccess) {
-            long currentTime = System.currentTimeMillis();
-            newFile.setLastModified(currentTime);
+            newFile.setLastModified(System.currentTimeMillis());
         }
 
         return moveSuccess;
@@ -123,7 +134,7 @@ public class FileUploader {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
             values.put(MediaStore.Downloads.MIME_TYPE, "text/csv");
-            values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/OximeterData/Uploaded");
+            values.put(MediaStore.Downloads.RELATIVE_PATH, OximeterDataFileIndex.uploadedRelativePath());
 
             // Insert the new file
             Uri destinationUri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);

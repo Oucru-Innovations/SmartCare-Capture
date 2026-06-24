@@ -3,9 +3,10 @@ package com.smartcare.oximetry.sample;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.os.Environment;
+import android.net.Uri;
 import android.text.InputFilter;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import java.util.Calendar;
 import java.util.Calendar;
@@ -21,9 +22,6 @@ import android.widget.Toast;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
@@ -254,17 +252,8 @@ public class ShowAnnotate {
             // Save to file
             saveAnnotations(annotations);
 
-            // Create single note JSON file for server
-            java.io.File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS);
-            java.io.File mainFolder = new java.io.File(downloadsDir, "OximeterData");
-            if (!mainFolder.exists()) {
-                mainFolder.mkdirs();
-            }
-
             String singleFileName = "Annotation_" + patientCode + "_" + timeStamp.replace(" ", ".")
                     .replace(":", ".").replace("-", ".") + "_.json";
-            File singleNoteFile = new File(mainFolder, singleFileName);
 
             // Create JSON with specific format for server
             Map<String, Object> serverNote = new HashMap<>();
@@ -314,25 +303,30 @@ public class ShowAnnotate {
                 serverNote.put("reason_invalid_data", "");
             }
 
-            try (FileWriter writer = new FileWriter(singleNoteFile)) {
-                gson.toJson(serverNote, writer);
-                OximeterDataFileIndex.refreshMediaStore(context);
-
-                // Upload the file to server
-                FileUploader.uploadFile(singleNoteFile.getAbsolutePath(), new FileUploader.UploadCallback() {
-                    @Override
-                    public void onUploadComplete(boolean success, String message) {
-                        if (success) {
-                            // Move to Uploaded folder on success
-                            FileUploader.moveFileToUploadedFolder(singleNoteFile);
-                            Log.i(TAG, "Note file uploaded successfully");
-                        } else {
-                            // File stays in main folder for retry later
-                            Log.e(TAG, "Failed to upload note file: " + message);
-                        }
-                    }
-                });
+            String exportJson = gson.toJson(serverNote);
+            Uri exportUri = AnnotationStorage.createEntry(
+                    context, singleFileName, AnnotationStorage.exportRelativePath(),
+                    AnnotationStorage.MIME_JSON);
+            if (exportUri == null) {
+                throw new IOException("Failed to create annotation export in Download/OximeterData");
             }
+            if (!AnnotationStorage.writeText(context, exportUri, exportJson)) {
+                throw new IOException("Failed to write annotation export");
+            }
+            OximeterDataFileIndex.notifyRecordingSaved(context, exportUri, singleFileName);
+
+            final String exportUriStr = exportUri.toString();
+            FileUploader.uploadFile(exportUriStr, new FileUploader.UploadCallback() {
+                @Override
+                public void onUploadComplete(boolean success, String message) {
+                    if (success) {
+                        FileUploader.moveFileToUploadedFolderFromUri(context, exportUriStr);
+                        Log.i(TAG, "Note file uploaded successfully");
+                    } else {
+                        Log.e(TAG, "Failed to upload note file: " + message);
+                    }
+                }
+            });
 
             Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
@@ -342,51 +336,28 @@ public class ShowAnnotate {
     }
     // Load annotations from JSON file
     private List<AnnotationEntry> loadAnnotations() throws IOException {
-        File jsonFile = getAnnotationFile();
-
-        if (!jsonFile.exists()) {
+        Uri master = AnnotationStorage.ensureMasterEntry(context);
+        if (master == null) {
             return new ArrayList<>();
         }
-
-        try (FileReader reader = new FileReader(jsonFile)) {
-            Type listType = new TypeToken<ArrayList<AnnotationEntry>>(){}.getType();
-            List<AnnotationEntry> annotations = gson.fromJson(reader, listType);
-            return annotations != null ? annotations : new ArrayList<>();
-        } catch (IOException e) {
-            Log.e(TAG, "Error reading annotations", e);
+        String text = AnnotationStorage.readText(context, master);
+        if (TextUtils.isEmpty(text)) {
             return new ArrayList<>();
         }
+        Type listType = new TypeToken<ArrayList<AnnotationEntry>>(){}.getType();
+        List<AnnotationEntry> annotations = gson.fromJson(text, listType);
+        return annotations != null ? annotations : new ArrayList<>();
     }
 
     // Save annotations to JSON file
     private void saveAnnotations(List<AnnotationEntry> annotations) throws IOException {
-        File jsonFile = getAnnotationFile();
-
-        // Create directory if it doesn't exist
-        if (!jsonFile.getParentFile().exists()) {
-            boolean created = jsonFile.getParentFile().mkdirs();
-            if (!created) {
-                throw new IOException("Failed to create annotation directory");
-            }
+        Uri master = AnnotationStorage.ensureMasterEntry(context);
+        if (master == null) {
+            throw new IOException("Failed to open Annotations.json in Download/OximeterData");
         }
-
-        try (FileWriter writer = new FileWriter(jsonFile)) {
-            gson.toJson(annotations, writer);
+        if (!AnnotationStorage.writeText(context, master, gson.toJson(annotations))) {
+            throw new IOException("Failed to write Annotations.json");
         }
-    }
-
-    // Get JSON file for annotations
-    private File getAnnotationFile() {
-        File directory = getAnnotationDirectory();
-        return new File(directory, "Annotations.json");
-    }
-
-    // Helper method to get annotation directory
-    private File getAnnotationDirectory() {
-        File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS);
-        File oximeterDataDir = new File(downloadsDir, "OximeterData");
-        return new File(oximeterDataDir, "Annotation");
     }
 
     // Enforce the 5-note limit for a specific patient

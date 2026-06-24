@@ -675,6 +675,16 @@ public class OximeterDataService extends Service {
 
         isRunning = false;
 
+        // Stop the background CSV consumer after the tail batch has been flushed and the file
+        // closed, otherwise the worker thread would leak when the buffer reference is dropped.
+        OximeterDataBuffer bufferToStop = dataBuffer;
+
+        if (bufferToStop != null) {
+
+            bufferToStop.stopConsumer();
+
+        }
+
         dataBuffer = null;
 
     }

@@ -171,7 +171,7 @@ public class OximeterDataWriterFunctions {
         ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, newFileName);
         values.put(MediaStore.Downloads.RELATIVE_PATH,
-                Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER_NAME + "/");
+                OximeterDataFileIndex.pendingRelativePath());
         try {
             int updated = appContext.getContentResolver().update(uri, values, null, null);
             if (updated <= 0) {
@@ -233,7 +233,7 @@ public class OximeterDataWriterFunctions {
 
     private static void openNewUnknownFile() {
         String tempFileName = generateFileName(startTimestamp, "unknown");
-        String relPath = Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER_NAME;
+        String relPath = OximeterDataFileIndex.pendingRelativePath();
         currentFileUri = createMediaStoreEntry(tempFileName, relPath);
 
         if (currentFileUri == null) {
@@ -614,7 +614,7 @@ public class OximeterDataWriterFunctions {
                     formatTimestamp(startTime),
                     formatTimestamp(currentTime));
 
-            String relPath = Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER_NAME + "/" + STREAM_MODEL_FOLDER;
+            String relPath = OximeterDataFileIndex.pendingRelativePath() + STREAM_MODEL_FOLDER + "/";
             Uri chunkUri = createMediaStoreEntry(chunkFileName, relPath);
 
             if (chunkUri != null) {

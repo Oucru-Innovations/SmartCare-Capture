@@ -695,6 +695,141 @@ public final class OximeterDataFileIndex {
         }
     }
 
+    /** {@code Download/OximeterData/} — canonical MediaStore relative path for pending exports. */
+    public static String pendingRelativePath() {
+        return Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER_NAME + "/";
+    }
+
+    /** {@code Download/OximeterData/Uploaded/} — canonical MediaStore relative path after upload. */
+    public static String uploadedRelativePath() {
+        return pendingRelativePath() + UPLOADED_SUBDIR + "/";
+    }
+
+    /**
+     * Old app versions wrote CSV/JSON under {@code Android/data/.../files/OximeterData}.
+     * Move any remaining app data files to {@code Download/OximeterData} on startup.
+     * {@link FileLogger} under {@code externalFilesDir/Logs} is intentionally not touched.
+     */
+    public static int migrateLegacyPrivateFiles(Context context) {
+        if (context == null) {
+            return 0;
+        }
+        File legacyRoot = getLegacyPrivateDirectory(context);
+        if (legacyRoot == null || !legacyRoot.exists()) {
+            return 0;
+        }
+        File pendingDir = getPendingDirectory();
+        File uploadedDir = getUploadedDirectory();
+        pendingDir.mkdirs();
+        uploadedDir.mkdirs();
+        int moved = migrateLegacyTree(legacyRoot, pendingDir, uploadedDir);
+        if (moved > 0) {
+            Log.i(TAG, "Migrated " + moved + " file(s) from legacy private OximeterData to Download");
+            FileLogger.logEvent("FILES", "LEGACY_MIGRATION",
+                    "moved=" + moved + " from=" + legacyRoot.getAbsolutePath()
+                            + " to=" + pendingDir.getAbsolutePath());
+            refreshMediaStoreDeep(context);
+        }
+        deleteEmptyLegacyTree(legacyRoot);
+        return moved;
+    }
+
+    /** App-private folder used by older builds: {@code externalFilesDir/OximeterData}. */
+    public static File getLegacyPrivateDirectory(Context context) {
+        if (context == null) {
+            return null;
+        }
+        File base = context.getApplicationContext().getExternalFilesDir(null);
+        return base != null ? new File(base, FOLDER_NAME) : null;
+    }
+
+    private static int migrateLegacyTree(File srcRoot, File pendingDir, File uploadedDir) {
+        return migrateLegacyTree(srcRoot, pendingDir, uploadedDir, false);
+    }
+
+    private static int migrateLegacyTree(File srcRoot, File pendingDir, File uploadedDir,
+                                         boolean inUploadedBranch) {
+        int moved = 0;
+        File[] children = srcRoot.listFiles();
+        if (children == null) {
+            return 0;
+        }
+        for (File child : children) {
+            if (child.isDirectory()) {
+                boolean nextUploaded = inUploadedBranch || UPLOADED_SUBDIR.equals(child.getName());
+                if (nextUploaded) {
+                    moved += migrateLegacyTree(child, pendingDir, uploadedDir, true);
+                } else {
+                    File destSubdir = new File(pendingDir, child.getName());
+                    destSubdir.mkdirs();
+                    moved += migrateLegacyTree(child, destSubdir, uploadedDir, false);
+                }
+                deleteEmptyLegacyTree(child);
+                continue;
+            }
+            if (!isAppDataFileName(child.getName())
+                    && !MASTER_ANNOTATIONS_FILE.equalsIgnoreCase(child.getName())) {
+                continue;
+            }
+            File destDir;
+            if (MASTER_ANNOTATIONS_FILE.equalsIgnoreCase(child.getName())) {
+                destDir = new File(pendingDir, "Annotation");
+            } else {
+                destDir = inUploadedBranch ? uploadedDir : pendingDir;
+            }
+            if (moveFileIntoDirectory(child, destDir)) {
+                moved++;
+            }
+        }
+        return moved;
+    }
+
+    private static boolean moveFileIntoDirectory(File src, File destDir) {
+        if (src == null || destDir == null || !src.isFile()) {
+            return false;
+        }
+        if (!destDir.exists() && !destDir.mkdirs()) {
+            return false;
+        }
+        File dest = new File(destDir, src.getName());
+        if (dest.exists() && dest.length() == src.length()) {
+            src.delete();
+            return true;
+        }
+        if (src.renameTo(dest)) {
+            return true;
+        }
+        try {
+            java.nio.file.Files.copy(
+                    src.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            src.delete();
+            return true;
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to migrate " + src + " -> " + dest, e);
+            return false;
+        }
+    }
+
+    private static void deleteEmptyLegacyTree(File dir) {
+        if (dir == null || !dir.isDirectory()) {
+            return;
+        }
+        File[] children = dir.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                if (child.isDirectory()) {
+                    deleteEmptyLegacyTree(child);
+                }
+            }
+        }
+        File[] remaining = dir.listFiles();
+        if (remaining != null && remaining.length == 0) {
+            if (!dir.delete()) {
+                Log.d(TAG, "Could not delete empty legacy dir: " + dir);
+            }
+        }
+    }
+
     public static File getPendingDirectory() {
         File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
         return new File(downloadsDir, FOLDER_NAME);

@@ -2,7 +2,9 @@ package com.smartcare.oximetry.sample;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.net.Uri;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -15,8 +17,6 @@ import android.widget.Toast;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -125,19 +125,18 @@ public class AnnotationHistory {
 
     private static List<ShowAnnotate.AnnotationEntry> loadAnnotations(Context context) {
         try {
-            File jsonFile = getAnnotationFile(context);
-
-            if (!jsonFile.exists()) {
+            Uri master = AnnotationStorage.ensureMasterEntry(context);
+            if (master == null) {
                 return new ArrayList<>();
             }
-
-            FileReader reader = new FileReader(jsonFile);
+            String text = AnnotationStorage.readText(context, master);
+            if (TextUtils.isEmpty(text)) {
+                return new ArrayList<>();
+            }
             Type listType = new TypeToken<ArrayList<ShowAnnotate.AnnotationEntry>>(){}.getType();
-            List<ShowAnnotate.AnnotationEntry> annotations = gson.fromJson(reader, listType);
-            reader.close();
-
+            List<ShowAnnotate.AnnotationEntry> annotations = gson.fromJson(text, listType);
             return annotations != null ? annotations : new ArrayList<>();
-        } catch (IOException e) {
+        } catch (Exception e) {
             Log.e(TAG, "Error reading annotations", e);
             return new ArrayList<>();
         }
@@ -239,13 +238,5 @@ public class AnnotationHistory {
             activeDeleteDialog.dismiss();
         }
         activeDeleteDialog = builder.show();
-    }
-
-    private static File getAnnotationFile(Context context) {
-        File downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS);
-        File oximeterDataDir = new File(downloadsDir, "OximeterData");
-        File annotationDir = new File(oximeterDataDir, "Annotation");
-        return new File(annotationDir, "Annotations.json");
     }
 }

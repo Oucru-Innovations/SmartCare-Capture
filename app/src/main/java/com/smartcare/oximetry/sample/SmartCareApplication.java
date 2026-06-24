@@ -23,6 +23,7 @@ public class SmartCareApplication extends Application {
         super.onCreate();
         FileLogger.getInstance(this);
         FileUploader.setAppContext(this);
+        OximeterDataFileIndex.migrateLegacyPrivateFiles(this);
         installCrashHandler();
         registerActivityLifecycleCallbacks(activityLifecycleCallbacks);
 
