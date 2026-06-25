@@ -114,32 +114,33 @@ public class OximeterDataWriterFunctions {
     }
 
     /**
-     * Close the current segment when BLE reports {@code MESSAGE_RECORDING_ENDED} (brief drop).
-     * Opens a new unknown file so the session can continue after reconnect without losing the night.
+     * Close the current segment when BLE drops ({@code MESSAGE_CONNECTION_LOST} /
+     * {@code MESSAGE_RECORDING_ENDED}) without the user pressing Stop. The segment is renamed to its
+     * real end time and <b>no new file is opened</b>: the next segment is created lazily when the
+     * first packet arrives after reconnect (see {@code ensureRecordingActive}), so the device being
+     * out of range no longer leaves an empty header-only file behind.
      *
-     * @return display name of the completed segment, or null if nothing was split
+     * <p>Segments shorter than {@link #MIN_AUTO_SPLIT_MS} are left untouched (kept open) so brief
+     * BLE blips do not produce a flurry of tiny files.
+     *
+     * @return display name of the completed segment, or null if nothing was closed
      */
     public static String splitFileOnBlePause() {
         synchronized (SPLIT_LOCK) {
             if (currentWriter == null || currentFileUri == null) {
                 return null;
             }
-            try {
-                long now = System.currentTimeMillis();
-                if ((now - startTimestamp) < MIN_AUTO_SPLIT_MS) {
-                    Log.d(TAG, "Skipping BLE pause split: segment too short");
-                    return null;
-                }
-                String completedName = generateFileName(startTimestamp, formatTimestamp(now));
-                splitFileLocked(now, false);
-                Log.i(TAG, "File split (BLE pause): " + completedName);
-                FileLogger.i(TAG, "File split (BLE pause): " + completedName);
-                return completedName;
-            } catch (IOException e) {
-                Log.e(TAG, "Error during BLE pause split", e);
-                FileLogger.e(TAG, "BLE pause split failed", e);
+            long now = System.currentTimeMillis();
+            if ((now - startTimestamp) < MIN_AUTO_SPLIT_MS) {
+                Log.d(TAG, "Skipping BLE pause close: segment too short");
                 return null;
             }
+            String completedName = generateFileName(startTimestamp, formatTimestamp(now));
+            finalizeCurrentSegmentLocked(now);
+            startTimestamp = 0;
+            Log.i(TAG, "Segment closed on BLE pause (no reopen): " + completedName);
+            FileLogger.i(TAG, "Segment closed on BLE pause (no reopen): " + completedName);
+            return completedName;
         }
     }
 
