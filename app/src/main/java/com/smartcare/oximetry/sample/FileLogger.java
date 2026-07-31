@@ -3,59 +3,84 @@ package com.smartcare.oximetry.sample;
 import android.content.Context;
 import android.os.Build;
 import android.util.Log;
+
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Bộ ghi log bền vững của app vào {externalFilesDir}/Logs, tự xoay vòng (rotation) khi file đạt 10MB.
+ * Ghi log bền vững vào {@code {externalFilesDir}/Logs}: một file (hoặc nhiều part) mỗi ngày theo
+ * lịch tablet, tối đa 30MB/part, giữ 15 ngày. File legacy không bị đổi tên hay xóa.
  */
 public class FileLogger {
     private static final String TAG = "FileLogger";
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
-    private static final long MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-    private static final String LOG_FILE_DATE_FORMAT = "yyyyMMdd";
-    private static final String CURRENT_LOG_FILENAME = "smartcare_app_log.txt";
-    private static final String ARCHIVED_LOG_PATTERN = "smartcare_app_log_%s.txt";
-    /** Mức độ log theo thứ tự tăng dần độ nghiêm trọng, dùng để lọc và quyết định flush. */
+    private static final SimpleDateFormat DATE_FORMAT =
+            new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+    private static final SimpleDateFormat LOG_FILE_DATE_FORMAT =
+            new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+    private static final long MAX_FILE_SIZE_BYTES = 30L * 1024 * 1024;
+    private static final int RETENTION_DAYS = 15;
+    private static final String LOG_FILE_PREFIX = "smartcare_app_log_";
+    private static final String LOG_FILE_SUFFIX = ".txt";
+    /**
+     * smartcare_app_log_25.06.2025.txt or smartcare_app_log_25.06.2025_2.txt
+     */
+    private static final Pattern DAILY_LOG_FILE_PATTERN = Pattern.compile(
+            "^smartcare_app_log_(\\d{2})\\.(\\d{2})\\.(\\d{4})(?:_(\\d+))?\\.txt$");
+
     public enum LogLevel {
         VERBOSE, DEBUG, INFO, WARN, ERROR
     }
 
+    /** Metadata cho màn hình chọn file log khi báo lỗi. */
+    public static final class LogFileInfo {
+        public final File file;
+        public final String displayName;
+        private final long sortKey;
+
+        LogFileInfo(File file, String displayName, long sortKey) {
+            this.file = file;
+            this.displayName = displayName;
+            this.sortKey = sortKey;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
+    }
+
     private static Context appContext;
     private static FileLogger instance;
+    private static String activeDateKey;
+    private static File activeLogFile;
 
     private FileLogger() {}
 
-    /**
-     * Trả về singleton FileLogger, khởi tạo context và dọn log cũ ở lần gọi đầu tiên.
-     */
     public static synchronized FileLogger getInstance(Context context) {
         if (instance == null) {
             instance = new FileLogger();
             appContext = context.getApplicationContext();
-            cleanOldLogs(); // cleanup old logs on initialization
+            purgeExpiredLogs();
         }
         return instance;
     }
 
-    // Main logging method with filtering
-    //
-    //
-    /**
-     * Ghi một dòng log có timestamp vào file; tự flush ngay với mức WARN trở lên. Bỏ qua nếu chưa init.
-     */
     public static void writeLog(LogLevel level, String tag, String message) {
         if (instance == null || appContext == null) {
             return;
@@ -63,17 +88,24 @@ public class FileLogger {
 
         try {
             File logFile = getLogFile();
-            String timestamp = DATE_FORMAT.format(new Date());
-            String logEntry = String.format("[%s] %s/%s: %s%n", timestamp, level.name(), tag, message);
-
-            appendToLogFile(logFile, logEntry, level.ordinal() >= LogLevel.WARN.ordinal());
-
+            appendToLogFile(logFile, formatLogEntry(level, tag, message),
+                    level.ordinal() >= LogLevel.WARN.ordinal());
         } catch (IOException e) {
             Log.e(TAG, "Error writing to log file", e);
         }
     }
 
-    private static void appendToLogFile(File logFile, String logEntry, boolean flushImmediately) throws IOException {
+    private static String formatLogEntry(LogLevel level, String tag, String message) {
+        String timestamp = DATE_FORMAT.format(new Date());
+        return String.format(Locale.US, "[%s] %s/%s: %s%n", timestamp, level.name(), tag, message);
+    }
+
+    private static void appendToLogFile(File logFile, String logEntry, boolean flushImmediately)
+            throws IOException {
+        File parent = logFile.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
         try (FileWriter writer = new FileWriter(logFile, true)) {
             writer.write(logEntry);
             if (flushImmediately) {
@@ -82,26 +114,29 @@ public class FileLogger {
         }
     }
 
-    /** Forces buffered log data to disk (call after crash / critical events). */
-    public static void flushToDisk() {
+    public static synchronized void flushToDisk() {
         if (instance == null || appContext == null) {
             return;
         }
-        try {
-            File logFile = getLogFile();
-            if (!logFile.exists()) {
-                return;
-            }
-            try (FileOutputStream fos = new FileOutputStream(logFile, true)) {
-                fos.flush();
-                fos.getFD().sync();
-            }
+        File logFile = activeLogFile;
+        if (logFile == null) {
+            logFile = getLogFile();
+        }
+        flushFile(logFile);
+    }
+
+    private static void flushFile(File logFile) {
+        if (logFile == null || !logFile.exists()) {
+            return;
+        }
+        try (FileOutputStream fos = new FileOutputStream(logFile, true)) {
+            fos.flush();
+            fos.getFD().sync();
         } catch (IOException e) {
             Log.e(TAG, "Error flushing log file", e);
         }
     }
 
-    // Convenience methods for different log levels
     public static void v(String tag, String message) {
         writeLog(LogLevel.VERBOSE, tag, message);
     }
@@ -129,13 +164,6 @@ public class FileLogger {
         writeLog(LogLevel.ERROR, tag, message);
     }
 
-    /**
-     * Structured shutdown / lifecycle event for diagnosing why recording or the app stopped.
-     *
-     * @param category e.g. USER, SYSTEM, CRASH, BLUETOOTH, SERVICE
-     * @param event    short event name
-     * @param detail   human-readable context
-     */
     public static void logEvent(String category, String event, String detail) {
         writeLog(LogLevel.INFO, "AppLifecycle",
                 "category=" + category + " event=" + event + " detail=" + detail);
@@ -149,9 +177,6 @@ public class FileLogger {
         logEvent(category, event, enriched);
     }
 
-    /**
-     * Ghi sự kiện lifecycle ở mức WARN dạng có cấu trúc (category/event/detail) để dễ chẩn đoán.
-     */
     public static void logWarningEvent(String category, String event, String detail) {
         writeLog(LogLevel.WARN, "AppLifecycle",
                 "category=" + category + " event=" + event + " detail=" + detail);
@@ -166,8 +191,26 @@ public class FileLogger {
     }
 
     /**
-     * Ghi block log sự cố (crash) kèm thông tin thread/thiết bị/bộ nhớ và stack trace, rồi flush xuống đĩa ngay.
+     * Ghi mô tả báo lỗi của user vào một file log cụ thể (trước khi upload file đó).
      */
+    public static synchronized void appendUserReportToFile(File logFile, String detail, Context context) {
+        if (logFile == null || detail == null) {
+            return;
+        }
+        String enriched = detail;
+        if (context != null) {
+            enriched = detail + " | " + MemoryDiagnostics.formatSnapshot(context);
+        }
+        try {
+            appendToLogFile(logFile,
+                    formatLogEntry(LogLevel.INFO, "AppLifecycle",
+                            "category=USER event=BUG_REPORT detail=" + enriched),
+                    true);
+        } catch (IOException e) {
+            Log.e(TAG, "Error appending user report to " + logFile.getName(), e);
+        }
+    }
+
     public static void logCrash(Thread thread, Throwable throwable) {
         String threadName = thread != null ? thread.getName() : "unknown";
         String memory = appContext != null
@@ -234,10 +277,6 @@ public class FileLogger {
         return instance != null && appContext != null;
     }
 
-    // Get logs filtered by level and time
-    /**
-     * Đọc file log hiện tại và trả về các dòng có mức log >= minLevel (dùng cho màn hình xem log).
-     */
     public static List<String> getFilteredLogs(LogLevel minLevel) {
         List<String> filteredLogs = new ArrayList<>();
         File logFile = getLogFile();
@@ -262,7 +301,6 @@ public class FileLogger {
 
     private static boolean shouldIncludeLine(String line, LogLevel minLevel) {
         try {
-            // Extract log level
             int levelStart = line.indexOf("] ") + 2;
             int levelEnd = line.indexOf("/", levelStart);
             if (levelStart < 2 || levelEnd == -1) {
@@ -274,77 +312,250 @@ public class FileLogger {
 
             return logLevel.ordinal() >= minLevel.ordinal();
         } catch (Exception e) {
-            return false; // Skip malformed lines
+            return false;
         }
     }
 
-    private static void cleanOldLogs() {
-        File logDir = new File(appContext.getExternalFilesDir(null), "Logs");
+    /** Danh sách file log theo format ngày mới, mới nhất trước. */
+    public static synchronized List<LogFileInfo> listAvailableLogFiles() {
+        List<LogFileInfo> result = new ArrayList<>();
+        File logDir = getLogDir();
         if (!logDir.exists()) {
-            return;
+            return result;
         }
 
-        // Find all archived log files
-        File[] archivedFiles = logDir.listFiles((dir, name) ->
-                name.startsWith("smartcare_app_log_") && name.endsWith(".txt") && !name.equals(CURRENT_LOG_FILENAME));
-
-        if (archivedFiles == null || archivedFiles.length <= 1) {
-            return; // No cleanup needed if we have 0 or 1 archive files
+        File[] files = logDir.listFiles();
+        if (files == null) {
+            return result;
         }
 
-        // Sort files by modification time (newest first)
-        Arrays.sort(archivedFiles, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        for (File file : files) {
+            LogFileInfo info = toLogFileInfo(file);
+            if (info != null) {
+                result.add(info);
+            }
+        }
 
-        // Keep the newest archive file, delete the rest
-        for (int i = 1; i < archivedFiles.length; i++) {
-            if (archivedFiles[i].delete()) {
-                Log.i(TAG, "Deleted old log file: " + archivedFiles[i].getName());
+        Collections.sort(result, (a, b) -> Long.compare(b.sortKey, a.sortKey));
+        return result;
+    }
+
+    public static String getLogFilePath() {
+        return getLogFile().getAbsolutePath();
+    }
+
+    public static void forceCleanup() {
+        purgeExpiredLogs();
+    }
+
+    private static synchronized File getLogFile() {
+        String todayKey = formatDateKey(new Date());
+        if (activeDateKey == null || !todayKey.equals(activeDateKey)) {
+            handleDayRollover(todayKey);
+        }
+
+        if (activeLogFile == null
+                || !activeLogFile.exists()
+                || activeLogFile.length() >= MAX_FILE_SIZE_BYTES) {
+            File previous = activeLogFile;
+            activeLogFile = resolveWritableFile(todayKey);
+            if (previous != null && !previous.equals(activeLogFile)) {
+                try {
+                    appendToLogFile(activeLogFile,
+                            formatLogEntry(LogLevel.INFO, "AppLifecycle",
+                                    "category=SYSTEM event=LOG_FILE_PART_ROTATION detail=previousFile="
+                                            + previous.getName() + " newFile=" + activeLogFile.getName()),
+                            true);
+                } catch (IOException e) {
+                    Log.e(TAG, "Error writing part rotation log", e);
+                }
+            }
+        }
+        return activeLogFile;
+    }
+
+    private static void handleDayRollover(String todayKey) {
+        if (activeLogFile != null) {
+            flushFile(activeLogFile);
+        }
+
+        String previousDateKey = activeDateKey;
+        activeDateKey = todayKey;
+        activeLogFile = resolveWritableFile(todayKey);
+        purgeExpiredLogs();
+
+        if (previousDateKey != null) {
+            try {
+                appendToLogFile(activeLogFile,
+                        formatLogEntry(LogLevel.INFO, "AppLifecycle",
+                                "category=SYSTEM event=LOG_DAY_ROLLOVER detail=previousDate="
+                                        + previousDateKey + " newDate=" + todayKey
+                                        + " file=" + activeLogFile.getName()),
+                        true);
+            } catch (IOException e) {
+                Log.e(TAG, "Error writing day rollover log", e);
             }
         }
     }
 
-    private static File getLogFile() {
+    private static File resolveWritableFile(String dateKey) {
+        File logDir = getLogDir();
+        int part = 1;
+        File candidate = buildLogFile(logDir, dateKey, part);
+        while (candidate.exists() && candidate.length() >= MAX_FILE_SIZE_BYTES) {
+            part++;
+            candidate = buildLogFile(logDir, dateKey, part);
+        }
+        return candidate;
+    }
+
+    private static File getLogDir() {
         File externalDir = appContext.getExternalFilesDir(null);
         File logDir = new File(externalDir, "Logs");
         if (!logDir.exists()) {
             logDir.mkdirs();
         }
+        return logDir;
+    }
 
-        // Get the current log file
-        File currentLogFile = new File(logDir, CURRENT_LOG_FILENAME);
+    private static String formatDateKey(Date date) {
+        return LOG_FILE_DATE_FORMAT.format(date);
+    }
 
-        // Check if current log file exceeds size limit
-        if (currentLogFile.exists() && currentLogFile.length() >= MAX_FILE_SIZE_BYTES) {
-            archiveCurrentLogFile(logDir, currentLogFile);
+    private static File buildLogFile(File logDir, String dateKey, int part) {
+        String filename;
+        if (part <= 1) {
+            filename = LOG_FILE_PREFIX + dateKey + LOG_FILE_SUFFIX;
+        } else {
+            filename = LOG_FILE_PREFIX + dateKey + "_" + part + LOG_FILE_SUFFIX;
+        }
+        return new File(logDir, filename);
+    }
+
+    private static LogFileInfo toLogFileInfo(File file) {
+        if (file == null || !file.isFile()) {
+            return null;
         }
 
-        return currentLogFile;
-    }
-    private static void archiveCurrentLogFile(File logDir, File currentLogFile) {
-        try {
-            // Create archive filename with timestamp
-            String timestamp = new SimpleDateFormat(LOG_FILE_DATE_FORMAT + "_HHmmss",
-                    Locale.getDefault()).format(new Date());
-            File archivedFile = new File(logDir, String.format(ARCHIVED_LOG_PATTERN, timestamp));
+        Matcher matcher = DAILY_LOG_FILE_PATTERN.matcher(file.getName());
+        if (!matcher.matches()) {
+            return null;
+        }
 
-            // Rename current file to archived name
-            if (currentLogFile.renameTo(archivedFile)) {
-                Log.i(TAG, "Log file archived: " + archivedFile.getName());
-                cleanOldLogs();
-            } else {
-                Log.e(TAG, "Failed to archive log file");
+        int day = Integer.parseInt(matcher.group(1));
+        int month = Integer.parseInt(matcher.group(2));
+        int year = Integer.parseInt(matcher.group(3));
+        int part = 1;
+        String partGroup = matcher.group(4);
+        if (partGroup != null && !partGroup.isEmpty()) {
+            part = Integer.parseInt(partGroup);
+        }
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.YEAR, year);
+        calendar.set(Calendar.MONTH, month - 1);
+        calendar.set(Calendar.DAY_OF_MONTH, day);
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+
+        long sortKey = calendar.getTimeInMillis() * 100L + part;
+        String displayName = file.getName();
+        if (isToday(dateKeyFromParts(day, month, year))) {
+            displayName = displayName + " (today)";
+        }
+        long sizeKb = Math.max(1, file.length() / 1024);
+        displayName = displayName + " — " + sizeKb + " KB";
+
+        return new LogFileInfo(file, displayName, sortKey);
+    }
+
+    private static String dateKeyFromParts(int day, int month, int year) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.YEAR, year);
+        calendar.set(Calendar.MONTH, month - 1);
+        calendar.set(Calendar.DAY_OF_MONTH, day);
+        return formatDateKey(calendar.getTime());
+    }
+
+    private static boolean isToday(String dateKey) {
+        return formatDateKey(new Date()).equals(dateKey);
+    }
+
+    private static void purgeExpiredLogs() {
+        if (appContext == null) {
+            return;
+        }
+
+        File logDir = getLogDir();
+        if (!logDir.exists()) {
+            return;
+        }
+
+        Calendar cutoff = Calendar.getInstance();
+        cutoff.add(Calendar.DAY_OF_YEAR, -RETENTION_DAYS);
+        cutoff.set(Calendar.HOUR_OF_DAY, 0);
+        cutoff.set(Calendar.MINUTE, 0);
+        cutoff.set(Calendar.SECOND, 0);
+        cutoff.set(Calendar.MILLISECOND, 0);
+        long cutoffMs = cutoff.getTimeInMillis();
+
+        File[] files = logDir.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            Date fileDate = parseDailyLogFileDate(file.getName());
+            if (fileDate == null) {
+                continue;
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Error archiving log file", e);
+            if (fileDate.getTime() < cutoffMs) {
+                if (file.delete()) {
+                    Log.i(TAG, "Deleted expired log file: " + file.getName());
+                }
+            }
         }
     }
-    // Get log file path for external access
-    public static String getLogFilePath() {
-        return getLogFile().getAbsolutePath();
+
+    private static Date parseDailyLogFileDate(String filename) {
+        Matcher matcher = DAILY_LOG_FILE_PATTERN.matcher(filename);
+        if (!matcher.matches()) {
+            return null;
+        }
+        try {
+            String dateKey = matcher.group(1) + "." + matcher.group(2) + "." + matcher.group(3);
+            return LOG_FILE_DATE_FORMAT.parse(dateKey);
+        } catch (ParseException e) {
+            return null;
+        }
     }
 
-    // Manual cleanup trigger
-    public static void forceCleanup() {
-        cleanOldLogs();
+    /**
+     * Timestamp for bug-report upload filename: {@code dd.MM.yyyy.HH.mm.ss}.
+     * Calendar date comes from the log filename; time-of-day is the upload moment.
+     */
+    public static String formatBugReportUploadTimestamp(File logFile) {
+        return formatBugReportUploadTimestamp(logFile, System.currentTimeMillis());
+    }
+
+    public static String formatBugReportUploadTimestamp(File logFile, long uploadTimeMs) {
+        SimpleDateFormat uploadFormat = new SimpleDateFormat("dd.MM.yyyy.HH.mm.ss", Locale.US);
+        if (logFile == null) {
+            return uploadFormat.format(new Date(uploadTimeMs));
+        }
+        Date logDay = parseDailyLogFileDate(logFile.getName());
+        if (logDay == null) {
+            return uploadFormat.format(new Date(uploadTimeMs));
+        }
+        Calendar result = Calendar.getInstance();
+        result.setTimeInMillis(uploadTimeMs);
+        Calendar day = Calendar.getInstance();
+        day.setTime(logDay);
+        result.set(Calendar.YEAR, day.get(Calendar.YEAR));
+        result.set(Calendar.MONTH, day.get(Calendar.MONTH));
+        result.set(Calendar.DAY_OF_MONTH, day.get(Calendar.DAY_OF_MONTH));
+        return uploadFormat.format(result.getTime());
     }
 }
