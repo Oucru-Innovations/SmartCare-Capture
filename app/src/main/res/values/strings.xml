@@ -47,6 +47,7 @@
     <string name="menu_manage_files">File Manager</string>
     <string name="menu_patient_info">Patient Info</string>
     <string name="menu_config_info">Configuration</string>
+    <string name="menu_app_version">version: %1$s</string>
     <string name="unknown_device">Oximeter</string>
     <string name="file_manager_grant_folder">Choose OximeterData folder…</string>
     <string name="file_manager_grant_folder_hint">If the list stays empty after allowing storage, the app will ask once to confirm the OximeterData folder with the system.</string>
@@ -60,4 +61,24 @@
     <string name="file_manager_manage_all_files_open_settings">Open settings</string>
     <string name="file_manager_manage_all_files_not_now">Not now</string>
     <string name="file_manager_manage_all_files_unavailable">Could not open storage settings. Use “Choose folder” if the list stays empty.</string>
+    <string name="bug_report_button">Report</string>
+    <string name="bug_report_title">Report an issue</string>
+    <string name="bug_report_hint_label">Describe the problem you encountered</string>
+    <string name="bug_report_log_files_label">Select log file(s) to send</string>
+    <string name="bug_report_no_logs">No daily log files found yet. Logs are created when the app runs.</string>
+    <string name="bug_report_no_file_selected">Please select at least one log file.</string>
+    <string name="bug_report_hint">What happened? When did it occur?</string>
+    <string name="bug_report_send">Send</string>
+    <string name="bug_report_cancel">Cancel</string>
+    <string name="bug_report_empty">Please enter a description before sending.</string>
+    <string name="bug_report_no_network">No network connection. Connect to the internet and try again.</string>
+    <string name="bug_report_log_missing">Log file not found. Please try again.</string>
+    <string name="bug_report_success">Report sent successfully. Thank you.</string>
+    <string name="bug_report_success_count">%1$d log file(s) sent successfully. Thank you.</string>
+    <string name="bug_report_partial_success">Sent %1$d of %2$d log file(s). Some uploads failed — try again.</string>
+    <string name="bug_report_all_failed">Failed to send log files. Check network and try again.</string>
+    <string name="bug_report_failed">Failed to send report: %1$s</string>
+    <string name="press_back_again_to_exit">Press Back again to exit the app</string>
+    <string name="file_manager_estimate">Estimate: %1$s (time)</string>
+    <string name="file_manager_loading">Loading files…</string>
 </resources>

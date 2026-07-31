@@ -235,6 +235,9 @@ public class RecordActivity extends Activity {
     private long lastReconnectAttempt = 0;
     private long lastConnectFailLogMs = 0;
     private static final long CONNECT_FAIL_LOG_INTERVAL_MS = 60_000L;
+    /** Window for the second Back press before exiting when idle (ms). */
+    private static final long BACK_PRESS_EXIT_INTERVAL_MS = 2000L;
+    private long lastBackPressForExitMs = 0L;
     private volatile boolean isDisconnectFlowInProgress = false;
     private volatile boolean isActivityDestroyed = false;
     // Save Logs to file
@@ -1206,7 +1209,6 @@ public class RecordActivity extends Activity {
             }
         });
 
-
         //patient
         initializePatientInfo();
 
@@ -1309,6 +1311,10 @@ public class RecordActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
+        MenuItem versionItem = menu.findItem(R.id.action_app_version);
+        if (versionItem != null) {
+            versionItem.setTitle(getString(R.string.menu_app_version, BuildConfig.VERSION_NAME));
+        }
         return true;
     }
 
@@ -1342,6 +1348,11 @@ public class RecordActivity extends Activity {
             case R.id.action_show_history:
                 ShowAnnotate showAnnotate = new ShowAnnotate(this, formattedCode);
                 showAnnotate.showAnnotationHistory(null);
+                return true;
+            case R.id.action_bug_report:
+                BugReportDialog.show(this, formattedCode);
+                return true;
+            case R.id.action_app_version:
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
@@ -2244,6 +2255,37 @@ public class RecordActivity extends Activity {
     };
 
     //end
+
+    /**
+     * When connected, connecting, or recording: Back moves the app to the background (same as Home).
+     * When idle: require two Back presses within {@link #BACK_PRESS_EXIT_INTERVAL_MS} to exit.
+     */
+    @Override
+    public void onBackPressed() {
+        if (shouldMoveToBackgroundOnBack()) {
+            FileLogger.logEvent("USER", "RECORD_BACK_TO_BACKGROUND",
+                    "moveTaskToBack; connected=" + isConnected
+                            + " connecting=" + isConnecting
+                            + " recordingSession=" + isRecordingSessionActive);
+            moveTaskToBack(true);
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now - lastBackPressForExitMs < BACK_PRESS_EXIT_INTERVAL_MS) {
+            FileLogger.logEvent("USER", "APP_EXIT_BACK_PRESS", "double back confirmed");
+            lastBackPressForExitMs = 0L;
+            super.onBackPressed();
+            return;
+        }
+
+        lastBackPressForExitMs = now;
+        Toast.makeText(this, R.string.press_back_again_to_exit, Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean shouldMoveToBackgroundOnBack() {
+        return isConnected || isConnecting || isRecordingSessionActive;
+    }
 
     @Override
     protected void onStop() {

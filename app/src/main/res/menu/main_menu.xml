@@ -29,4 +29,16 @@
         android:title="Annotation"
         android:orderInCategory="500"
         app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_bug_report"
+        android:title="@string/bug_report_button"
+        android:orderInCategory="550"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_app_version"
+        android:enabled="false"
+        android:orderInCategory="600"
+        app:showAsAction="never" />
 </menu>

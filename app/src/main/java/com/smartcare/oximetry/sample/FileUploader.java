@@ -9,6 +9,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
@@ -239,6 +240,14 @@ public class FileUploader {
  * chỉ coi là thành công khi server trả về đúng message xác nhận.
  */
 public static void uploadFile(Activity activity, String filePath, UploadCallback callback) {
+    uploadFile(activity, filePath, null, callback);
+}
+
+/**
+ * Upload file with an optional multipart filename (independent of the local file name on disk).
+ */
+public static void uploadFile(Activity activity, String filePath, String uploadFileName,
+                              UploadCallback callback) {
     if (activity != null) {
         setAppContext(activity.getApplicationContext());
     }
@@ -289,8 +298,9 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
             inputStream.close();
 
             // Continue with upload process
+            String multipartName = !TextUtils.isEmpty(uploadFileName) ? uploadFileName : fileName;
             RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), tempFile);
-            MultipartBody.Part body = MultipartBody.Part.createFormData("file", fileName, requestFile);
+            MultipartBody.Part body = MultipartBody.Part.createFormData("file", multipartName, requestFile);
             RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
 
             String checksum = calculateMD5(activity, filePath);
@@ -356,9 +366,10 @@ public static void uploadFile(Activity activity, String filePath, UploadCallback
     } else {
         // Original code for regular files
         File file = new File(filePath);
+        String multipartName = !TextUtils.isEmpty(uploadFileName) ? uploadFileName : file.getName();
         String ownerName = "Vyyy";
         RequestBody requestFile = RequestBody.create(MediaType.parse("multipart/form-data"), file);
-        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+        MultipartBody.Part body = MultipartBody.Part.createFormData("file", multipartName, requestFile);
         RequestBody owner = RequestBody.create(MediaType.parse("multipart/form-data"), ownerName);
 
         String checksum = calculateMD5(activity, filePath);
