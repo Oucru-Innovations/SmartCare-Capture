@@ -33,6 +33,9 @@ import java.util.Map;
  */
 public final class OximeterDataFileIndex {
     private static final String TAG = "OximeterDataFileIndex";
+    /** Reuse merged lists within this window to avoid duplicate heavy scans (e.g. onCreate + onResume). */
+    private static final long LIST_CACHE_TTL_MS = 4000L;
+
     public static final String FOLDER_NAME = "OximeterData";
     /** Common manual-folder typo next to {@link #FOLDER_NAME}; scanned for listing only. */
     private static final String FOLDER_NAME_TYPO = "OximetaData";
@@ -61,6 +64,34 @@ public final class OximeterDataFileIndex {
         }
     }
 
+    /** Pending + uploaded lists produced in one pass (shared SAF tree walk, optional cache). */
+    public static final class FileLists {
+        public final List<FileEntry> pending;
+        public final List<FileEntry> uploaded;
+
+        FileLists(List<FileEntry> pending, List<FileEntry> uploaded) {
+            this.pending = pending;
+            this.uploaded = uploaded;
+        }
+    }
+
+    private static final class CachedFileLists {
+        final FileLists lists;
+        final long cachedAtMs;
+
+        CachedFileLists(FileLists lists, long cachedAtMs) {
+            this.lists = lists;
+            this.cachedAtMs = cachedAtMs;
+        }
+    }
+
+    private static volatile CachedFileLists listCache;
+
+    /** Drop cached lists so the next query re-scans (e.g. after manual Refresh). */
+    public static void invalidateListCache() {
+        listCache = null;
+    }
+
     /**
      * App-generated exports: {@code SmartCareCsv*.csv} and {@code Annotation_*.json}.
      */
@@ -83,51 +114,78 @@ public final class OximeterDataFileIndex {
     }
 
     /**
-     * Pending: {@code Download/OximeterData} (not under {@code Uploaded}), via disk + MediaStore.
+     * Pending + uploaded in one pass: one SAF tree walk, shared within {@link #LIST_CACHE_TTL_MS}.
      */
+    public static FileLists queryAllFiles(Context context) {
+        return queryAllFiles(context, false);
+    }
+
+    public static FileLists queryAllFiles(Context context, boolean bypassCache) {
+        if (context == null) {
+            return new FileLists(new ArrayList<>(), new ArrayList<>());
+        }
+        long now = System.currentTimeMillis();
+        if (!bypassCache) {
+            CachedFileLists cached = listCache;
+            if (cached != null && now - cached.cachedAtMs < LIST_CACHE_TTL_MS) {
+                Log.d(TAG, "queryAllFiles: cache hit ageMs=" + (now - cached.cachedAtMs));
+                return cached.lists;
+            }
+        }
+        FileLists lists = buildAllFileLists(context);
+        listCache = new CachedFileLists(lists, now);
+        return lists;
+    }
+
+    /** Pending: {@code Download/OximeterData} (not under {@code Uploaded}), via disk + MediaStore. */
     public static List<FileEntry> queryPendingFiles(Context context) {
-        List<FileEntry> merged = new ArrayList<>();
-        List<FileEntry> disk = scanPendingDiskFiles(context);
-        List<FileEntry> mediaDl = queryMediaStoreDownloads(context, false);
-        List<FileEntry> mediaFiles = queryMediaStoreFilesVolume(context, false);
-        List<FileEntry> registry = AppRecordingRegistry.queryRegistryPending(context);
-        List<FileEntry> docPending = new ArrayList<>();
-        List<FileEntry> docUploaded = new ArrayList<>();
-        collectDocumentTreeSplit(context, docPending, docUploaded);
-        mergeByDisplayName(merged, disk);
-        mergeByDisplayName(merged, mediaDl);
-        mergeByDisplayName(merged, mediaFiles);
-        mergeByDisplayName(merged, registry);
-        mergeByDisplayName(merged, docPending);
-        sortByModifiedDesc(merged);
-        FileLogger.logEvent("FILES", "FILE_INDEX_SOURCE",
-                "pending diskCount=" + disk.size()
-                        + " mediaDownloadsCount=" + mediaDl.size()
-                        + " mediaFilesCount=" + mediaFiles.size()
-                        + " registryCount=" + registry.size()
-                        + " docTreePending=" + docPending.size()
-                        + " docTreeUploaded=" + docUploaded.size()
-                        + " path=" + getPendingDirectory().getAbsolutePath());
-        logEntryNames("pending", merged);
-        return merged;
+        return queryAllFiles(context).pending;
     }
 
     /** Uploaded tab: disk + MediaStore under {@code Uploaded}. */
     public static List<FileEntry> queryUploadedFiles(Context context) {
-        List<FileEntry> merged = new ArrayList<>();
-        List<FileEntry> disk = scanUploadedDiskFiles(context);
-        List<FileEntry> mediaDl = queryMediaStoreDownloads(context, true);
-        List<FileEntry> mediaFiles = queryMediaStoreFilesVolume(context, true);
+        return queryAllFiles(context).uploaded;
+    }
+
+    private static FileLists buildAllFileLists(Context context) {
+        List<FileEntry> diskPending = scanPendingDiskFiles(context);
+        List<FileEntry> diskUploaded = scanUploadedDiskFiles(context);
+        List<FileEntry> mediaDlPending = queryMediaStoreDownloads(context, false);
+        List<FileEntry> mediaDlUploaded = queryMediaStoreDownloads(context, true);
+        List<FileEntry> mediaFilesPending = queryMediaStoreFilesVolume(context, false);
+        List<FileEntry> mediaFilesUploaded = queryMediaStoreFilesVolume(context, true);
+        List<FileEntry> registry = AppRecordingRegistry.queryRegistryPending(context);
         List<FileEntry> docPending = new ArrayList<>();
         List<FileEntry> docUploaded = new ArrayList<>();
         collectDocumentTreeSplit(context, docPending, docUploaded);
-        mergeByDisplayName(merged, disk);
-        mergeByDisplayName(merged, mediaDl);
-        mergeByDisplayName(merged, mediaFiles);
-        mergeByDisplayName(merged, docUploaded);
-        sortByModifiedDesc(merged);
-        logEntryNames("uploaded", merged);
-        return merged;
+
+        List<FileEntry> pending = new ArrayList<>();
+        mergeByDisplayName(pending, diskPending);
+        mergeByDisplayName(pending, mediaDlPending);
+        mergeByDisplayName(pending, mediaFilesPending);
+        mergeByDisplayName(pending, registry);
+        mergeByDisplayName(pending, docPending);
+        sortByModifiedDesc(pending);
+
+        List<FileEntry> uploaded = new ArrayList<>();
+        mergeByDisplayName(uploaded, diskUploaded);
+        mergeByDisplayName(uploaded, mediaDlUploaded);
+        mergeByDisplayName(uploaded, mediaFilesUploaded);
+        mergeByDisplayName(uploaded, docUploaded);
+        sortByModifiedDesc(uploaded);
+
+        FileLogger.logEvent("FILES", "FILE_INDEX_SOURCE",
+                "pending diskCount=" + diskPending.size()
+                        + " mediaDownloadsPending=" + mediaDlPending.size()
+                        + " mediaFilesPending=" + mediaFilesPending.size()
+                        + " registryCount=" + registry.size()
+                        + " docTreePending=" + docPending.size()
+                        + " docTreeUploaded=" + docUploaded.size()
+                        + " uploadedDisk=" + diskUploaded.size()
+                        + " path=" + getPendingDirectory().getAbsolutePath());
+        logEntryNames("pending", pending);
+        logEntryNames("uploaded", uploaded);
+        return new FileLists(pending, uploaded);
     }
 
     /** One-time scan so other apps / MediaStore see new files (optional; not required for listing). */
@@ -261,6 +319,7 @@ public final class OximeterDataFileIndex {
      * {@link AppRecordingRegistry} và làm mới MediaStore để File Manager hiển thị ngay.
      */
     public static void notifyRecordingSaved(Context context, Uri recordingUri, String displayName) {
+        invalidateListCache();
         notifyUriUpdated(context, recordingUri);
         if (!TextUtils.isEmpty(displayName)) {
             AppRecordingRegistry.registerCompletedRecording(context, recordingUri, displayName);
@@ -456,21 +515,28 @@ public final class OximeterDataFileIndex {
         if (b == null) {
             return a;
         }
+        FileEntry chosen;
         boolean ac = "content".equals(a.uri.getScheme());
         boolean bc = "content".equals(b.uri.getScheme());
         if (bc && !ac) {
-            return b;
+            chosen = b;
+        } else if (ac && !bc) {
+            chosen = a;
+        } else if (b.lastModifiedMs > a.lastModifiedMs) {
+            chosen = b;
+        } else if (a.lastModifiedMs > b.lastModifiedMs) {
+            chosen = a;
+        } else if (b.sizeBytes > a.sizeBytes) {
+            chosen = b;
+        } else {
+            chosen = a;
         }
-        if (ac && !bc) {
-            return a;
+        long bestSize = Math.max(a.sizeBytes, b.sizeBytes);
+        long bestMod = Math.max(a.lastModifiedMs, b.lastModifiedMs);
+        if (bestSize == chosen.sizeBytes && bestMod == chosen.lastModifiedMs) {
+            return chosen;
         }
-        if (b.lastModifiedMs > a.lastModifiedMs) {
-            return b;
-        }
-        if (b.sizeBytes > a.sizeBytes) {
-            return b;
-        }
-        return a;
+        return new FileEntry(chosen.uri, chosen.displayName, bestSize, bestMod);
     }
 
     private static List<File> getAllOximeterDataRoots() {
@@ -580,8 +646,21 @@ public final class OximeterDataFileIndex {
     }
 
     private static long resolveAccurateSize(Context context, Uri uri, long mediaStoreSize) {
-        if (!"content".equals(uri.getScheme())) {
+        if (mediaStoreSize > 0) {
             return mediaStoreSize;
+        }
+        if ("file".equals(uri.getScheme())) {
+            String path = uri.getPath();
+            if (path != null) {
+                long diskSize = new File(path).length();
+                if (diskSize > 0) {
+                    return diskSize;
+                }
+            }
+            return 0;
+        }
+        if (!"content".equals(uri.getScheme())) {
+            return Math.max(mediaStoreSize, 0);
         }
         try (ParcelFileDescriptor pfd =
                      context.getContentResolver().openFileDescriptor(uri, "r")) {

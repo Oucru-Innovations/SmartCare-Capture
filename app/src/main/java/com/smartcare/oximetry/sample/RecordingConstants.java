@@ -12,6 +12,9 @@ public final class RecordingConstants {
     /** Minimum segment length before BLE-pause split or auto split. */
     public static final long MIN_SEGMENT_MS = 60_000L;
 
+    /** Approximate recording duration from CSV file size (10 MiB ≈ 1 hour). */
+    public static final long BYTES_PER_RECORDING_HOUR = 10L * 1024 * 1024;
+
     private RecordingConstants() {
     }
 }

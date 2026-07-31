@@ -24,6 +24,7 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TabHost;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -61,6 +62,8 @@ public class FileManagerActivity extends Activity {
     private Button refreshButton;
     private Button backButton;
     private Button folderAccessButton;
+    private View loadingOverlay;
+    private ProgressBar loadingProgressBar;
 
     /** Shown at most once per File Manager visit when list is empty (API 30+ all-files settings). */
     private boolean manageAllFilesAutoPromptShown;
@@ -85,7 +88,8 @@ public class FileManagerActivity extends Activity {
 
     /** Fires when the recording flow inserts/renames/deletes a MediaStore Downloads entry. */
     private ContentObserver downloadsObserver;
-    private final Runnable observerRefreshRunnable = this::refreshFileListsQuiet;
+    private final Runnable observerRefreshRunnable = () ->
+            refreshFileListsInternal(false, false, true);
 
     /**
      * Khởi tạo view, tab, adapter cho hai danh sách file và đảm bảo có quyền truy cập storage
@@ -189,6 +193,8 @@ public class FileManagerActivity extends Activity {
         refreshButton = findViewById(R.id.refreshButton);
         backButton = findViewById(R.id.backButton);
         folderAccessButton = findViewById(R.id.folderAccessButton);
+        loadingOverlay = findViewById(R.id.loadingOverlay);
+        loadingProgressBar = findViewById(R.id.loadingProgressBar);
 
         refreshButton.setOnClickListener(v -> refreshFileLists());
         backButton.setOnClickListener(v -> navigateToRecordActivity());
@@ -199,7 +205,7 @@ public class FileManagerActivity extends Activity {
             OximeterDataTreeAccess.clearPersistedTreeUri(this);
             autoSafDeclinedThisSession = false;
             Toast.makeText(this, "Saved folder access cleared", Toast.LENGTH_SHORT).show();
-            refreshFileListsQuiet();
+            refreshFileListsInternal(false, false, true);
             return true;
         });
     }
@@ -401,7 +407,7 @@ public class FileManagerActivity extends Activity {
                         "Storage not granted: listing uses MediaStore only; tap Refresh after granting in Settings.",
                         Toast.LENGTH_LONG).show();
             }
-            refreshFileListsQuiet();
+            refreshFileListsInternal(false, false, true);
         }
     }
 
@@ -422,15 +428,16 @@ public class FileManagerActivity extends Activity {
     }
 
     private void refreshFileListsQuiet() {
-        refreshFileListsInternal(false, false);
+        refreshFileListsInternal(false, false, false);
     }
 
     /** Làm mới hai danh sách file có hiển thị toast (kèm ép quét lại MediaStore); dùng khi user bấm Refresh. */
     private void refreshFileLists() {
-        refreshFileListsInternal(true, true);
+        refreshFileListsInternal(true, true, true);
     }
 
-    private void refreshFileListsInternal(boolean forceMediaRefresh, boolean showToast) {
+    private void refreshFileListsInternal(boolean forceMediaRefresh, boolean showToast,
+                                          boolean bypassCache) {
         if (showToast) {
             Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
         }
@@ -439,21 +446,27 @@ public class FileManagerActivity extends Activity {
             Log.d(TAG, "Refresh requested while in progress; scheduling latest generation=" + generation);
         }
         refreshInProgress = true;
+        // Mark refresh start so onResume() right after onCreate does not queue a duplicate scan.
+        lastRefreshAtMs = System.currentTimeMillis();
+        setLoadingVisible(true);
         fileQueryExecutor.execute(() -> {
             try {
                 if (forceMediaRefresh) {
+                    OximeterDataFileIndex.invalidateListCache();
                     OximeterDataFileIndex.refreshMediaStoreDeep(this);
+                } else if (bypassCache) {
+                    OximeterDataFileIndex.invalidateListCache();
                 }
-                List<OximeterDataFileIndex.FileEntry> pending =
-                        OximeterDataFileIndex.queryPendingFiles(this);
-                List<OximeterDataFileIndex.FileEntry> uploaded =
-                        OximeterDataFileIndex.queryUploadedFiles(this);
-                mainHandler.post(() -> applyLoadedEntries(generation, pending, uploaded, showToast));
+                OximeterDataFileIndex.FileLists lists =
+                        OximeterDataFileIndex.queryAllFiles(this, forceMediaRefresh || bypassCache);
+                mainHandler.post(() -> applyLoadedEntries(
+                        generation, lists.pending, lists.uploaded, showToast));
             } catch (Exception e) {
                 Log.e(TAG, "Failed to refresh file lists", e);
                 mainHandler.post(() -> {
                     if (generation == refreshGeneration) {
                         refreshInProgress = false;
+                        setLoadingVisible(false);
                     }
                     if (showToast) {
                         Toast.makeText(this, "Refresh failed", Toast.LENGTH_SHORT).show();
@@ -461,6 +474,19 @@ public class FileManagerActivity extends Activity {
                 });
             }
         });
+    }
+
+    private void setLoadingVisible(boolean visible) {
+        if (loadingOverlay == null) {
+            return;
+        }
+        loadingOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (loadingProgressBar != null) {
+            loadingProgressBar.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+        if (refreshButton != null) {
+            refreshButton.setEnabled(!visible);
+        }
     }
 
     private void applyLoadedEntries(int generation,
@@ -472,6 +498,7 @@ public class FileManagerActivity extends Activity {
         }
         refreshInProgress = false;
         lastRefreshAtMs = System.currentTimeMillis();
+        setLoadingVisible(false);
         csvFiles.clear();
         uploadedFiles.clear();
 
@@ -610,7 +637,8 @@ public class FileManagerActivity extends Activity {
             ImageButton uploadButton = convertView.findViewById(R.id.uploadButton);
 
             fileNameText.setText(csvFile.getName());
-            fileSizeText.setText(String.format("Size: %s", csvFile.getFormattedSize()));
+            // fileSizeText.setText(String.format("Size: %s", csvFile.getFormattedSize()));
+            bindFileEstimate(fileSizeText, csvFile);
             fileDateText.setText(String.format("Modified: %s", csvFile.getFormattedDate()));
 
             uploadButton.setOnClickListener(v -> {
@@ -659,10 +687,12 @@ public class FileManagerActivity extends Activity {
             CsvFile csvFile = getItem(position);
 
             TextView fileNameText = convertView.findViewById(R.id.uploadedFileNameText);
+            TextView fileEstimateText = convertView.findViewById(R.id.uploadedFileEstimateText);
             TextView fileDateText = convertView.findViewById(R.id.uploadedFileDateText);
             ImageButton deleteButton = convertView.findViewById(R.id.deleteButton);
 
             fileNameText.setText(csvFile.getName());
+            bindFileEstimate(fileEstimateText, csvFile);
             fileDateText.setText(String.format("Uploaded: %s", csvFile.getFormattedDate()));
 
             deleteButton.setOnClickListener(v -> {
@@ -676,6 +706,16 @@ public class FileManagerActivity extends Activity {
             });
 
             return convertView;
+        }
+    }
+
+    private void bindFileEstimate(TextView textView, CsvFile csvFile) {
+        if (csvFile.isCsvFile()) {
+            textView.setVisibility(View.VISIBLE);
+            textView.setText(getString(R.string.file_manager_estimate,
+                    csvFile.getFormattedDuration()));
+        } else {
+            textView.setVisibility(View.GONE);
         }
     }
 
@@ -716,6 +756,23 @@ public class FileManagerActivity extends Activity {
             }
             File file = new File(entry.uri.getPath());
             return file.delete();
+        }
+
+        boolean isCsvFile() {
+            String name = entry.displayName;
+            return name != null && name.toLowerCase(Locale.US).endsWith(".csv");
+        }
+
+        String getFormattedDuration() {
+            long sizeBytes = entry.sizeBytes;
+            if (sizeBytes <= 0) {
+                return "--:--:--";
+            }
+            long totalSeconds = sizeBytes * 3600L / RecordingConstants.BYTES_PER_RECORDING_HOUR;
+            long hours = totalSeconds / 3600;
+            long minutes = (totalSeconds % 3600) / 60;
+            long seconds = totalSeconds % 60;
+            return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
         }
 
         String getFormattedSize() {

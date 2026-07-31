@@ -150,6 +150,16 @@ public final class AppRecordingRegistry {
                     size = fromStore.sizeBytes;
                     uri = fromStore.uri;
                 }
+                if (size <= 0) {
+                    OximeterDataFileIndex.FileEntry disk =
+                            OximeterDataFileIndex.tryDiskEntryByDisplayName(context, resolvedName);
+                    if (disk != null && disk.sizeBytes > 0) {
+                        size = disk.sizeBytes;
+                        if (modified <= 0 && disk.lastModifiedMs > 0) {
+                            modified = disk.lastModifiedMs;
+                        }
+                    }
+                }
                 results.add(new OximeterDataFileIndex.FileEntry(uri, resolvedName, size, modified));
                 surviving.put(obj);
             }
