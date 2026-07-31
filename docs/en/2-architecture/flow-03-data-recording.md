@@ -56,7 +56,7 @@ The app **splits long sessions into multiple small CSV files** to limit the impa
 | Trigger | Method | Condition |
 |---|---|---|
 | Hour cycle limit | `writeProcessedDataPoint()` → `splitFileLocked()` | `now >= nextSplitTime` and segment duration ≥ `MIN_SEGMENT_MS` (60s). Default cycle is **6 hours** (`SPLIT_INTERVAL_HOURS`). |
-| BLE drop | `splitFileOnBlePause()` | Closes the current segment if duration ≥ 60s, opens a new `_unknown` segment. |
+| BLE drop | `splitFileOnBlePause()` | Closes/finalizes the current segment if duration ≥ `MIN_SEGMENT_MS` (60s); does **not** reopen. Next CSV opens lazily via `ensureRecordingActive` / `startDataCollection` on the first packet after reconnect. |
 | Daily 17:00 cutoff | `splitForDailyCutoff()` | Background scheduler broadcasts `ACTION_SPLIT_RECORDING`. |
 | Start new session | `startNewRecording()` | Closes the old segment, cleans up orphaned `_unknown` files. |
 | Stop | `endRecording()` | Closes the writer, renames the file with the actual end timestamp, returns the URI. |
@@ -79,7 +79,8 @@ stateDiagram-v2
 ```
 
 - **`OximeterDataService`** is a foreground service (type `CONNECTED_DEVICE` on API 29+) holding a **partial wake lock** (`"OximeterDataService::WakeLock"`) to keep the CPU awake when the screen is off.
-- **Lazy file creation:** the service **does not open the file** immediately when started. It only opens the file when the first sample arrives (`addDataPoint`/`ensureRecordingActive`) to avoid generating empty CSVs (header-only) if no device is connected.
+- **Lazy CSV open (emphasized):** the service **does not open a file** on service bind/arm. No CSV exists until the **first sample** arrives (`addDataPoint` → `ensureRecordingActive` / `startDataCollection`). This avoids empty header-only CSVs when no device is connected, and matches BLE-pause behavior (close-only, no empty reopen).
+- **Duration estimate (File Manager):** UI duration uses `size / BYTES_PER_RECORDING_HOUR` where `BYTES_PER_RECORDING_HOUR = 10 MiB` ≈ 1 hour of recording (see [flow-06](flow-06-file-management.md)).
 
 ---
 
@@ -105,7 +106,7 @@ stateDiagram-v2
 | Write CSV + split file | `OximeterDataWriterFunctions.writeProcessedDataPoint()`, `startNewRecording()`, `endRecording()`, `splitFileOnBlePause()` |
 | Background execution/wake lock | `OximeterDataService.onStartCommand()`, `acquireWakeLock()`, `onTaskRemoved()` |
 | Recover after process termination | `OximeterDataService.restoreSessionAfterProcessRestart()`, `RecordingSessionPrefs` |
-| Constants (split interval, min segment) | `RecordingConstants` |
+| Constants (split interval, min segment, bytes/hour) | `RecordingConstants` (`SPLIT_INTERVAL_HOURS`, `MIN_SEGMENT_MS`, `BYTES_PER_RECORDING_HOUR`) |
 
 ---
 

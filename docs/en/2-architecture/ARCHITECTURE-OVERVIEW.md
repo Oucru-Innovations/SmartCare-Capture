@@ -13,8 +13,9 @@ The app is divided into **5 layers**, with data flowing from device → UI/Servi
 flowchart TD
     subgraph DEV["Device Layer"]
         OX["SmartCare Oximeter<br/>(BLE hardware)"]
-        SCO["scolib-2.0.0.aar<br/>ConnectionManager (vendor SDK)"]
+        SCO["scolib-2.3.0.aar<br/>ConnectionManager (vendor SDK)"]
         ADP["OximeterSDKAdapter<br/>(implements IDeviceAdapter)"]
+        PST["PacketStatsTracker<br/>(device counter gaps)"]
         OX -->|BLE packets| SCO
         SCO -->|android.os.Message| ADP
     end
@@ -22,7 +23,7 @@ flowchart TD
     subgraph UI["UI Layer"]
         RA["RecordActivity<br/>(SmartCareHandler)"]
         FMA["FileManagerActivity"]
-        POP["Popups<br/>(PatientInfo, ChunkConfig, Annotate)"]
+        POP["Popups<br/>(PatientInfo, ChunkConfig, Annotate, BugReport)"]
     end
 
     subgraph SVC["Service Layer"]
@@ -44,6 +45,8 @@ flowchart TD
     end
 
     ADP -->|Message via Handler| RA
+    RA -->|onPacketReceived| PST
+    PST -->|minute summaries| LOG["FileLogger"]
     RA -->|addDataPoint| ODS
     ODS --> BUF
     BUF -->|ProcessedData every 100 samples| WRT
@@ -55,6 +58,7 @@ flowchart TD
     IDX --> COORD
     COORD --> UP --> RC -->|HTTPS multipart| SRV
     FMA --> COORD
+    POP -->|bug-report logs| UP
 ```
 
 ---
@@ -63,8 +67,8 @@ flowchart TD
 
 | Layer | Primary Files | Responsibility |
 |---|---|---|
-| **Device** | `device/OximeterSDKAdapter`, `device/IDeviceAdapter`, `device/OximeterDataPacket`, `device/OximeterDataListener` | Isolates the manufacturer's SDK (`scolib-2.0.0.aar`); translates SDK callbacks into standardized app data. |
-| **UI** | `RecordActivity`, `FileManagerActivity`, `PatientInfoPopup`, `ChunkFileConfigPopup`, `ShowAnnotate`, `AnnotationHistory` | Renders PPG/HR/SpO₂/battery waves; inputs patient codes; controls start/stop; manages & uploads files manually. |
+| **Device** | `device/OximeterSDKAdapter`, `device/IDeviceAdapter`, `device/OximeterDataPacket`, `device/OximeterDataListener`, `PacketStatsTracker` | Isolates the manufacturer's SDK (`scolib-2.3.0.aar`); translates SDK callbacks into standardized app data; tracks device packet-counter gaps for diagnostics. |
+| **UI** | `RecordActivity`, `FileManagerActivity`, `PatientInfoPopup`, `ChunkFileConfigPopup`, `ShowAnnotate`, `AnnotationHistory`, `BugReportDialog` | Renders PPG/HR/SpO₂/battery waves; inputs patient codes; controls start/stop; manages & uploads files manually; bug-report log upload. |
 | **Service** | `OximeterDataService`, `OximeterDataBuffer`, `RecordingSessionPrefs`, `RecordingConstants` | Runs continuously in the background (foreground service + wake lock); batches data; survives process termination. |
 | **Data** | `OximeterDataWriterFunctions`, `OximeterDataFileIndex`, `AppRecordingRegistry`, `OximeterDataTreeAccess` | Writes CSV via MediaStore; splits files periodically; tracks file state (pending/uploaded). |
 | **Network** | `PendingFileUploadCoordinator`, `FileUploader`, `network/RetrofitClient`, `network/ApiService`, `config/ApiConfig`, `config/NetworkConfig` | Uploads CSV (multipart) with retries; moves uploaded files to `Uploaded/`; configures URL/token/timeout. |
@@ -83,7 +87,7 @@ Thanks to this decoupling, the app **continues to record even when the UI is hid
 
 ### 3.2. Isolating the manufacturer's SDK behind an Adapter
 
-The manufacturer's SDK (`ConnectionManager` in `scolib-2.0.0.aar`) is accessed only through `OximeterSDKAdapter` (which implements `IDeviceAdapter`).
+The manufacturer's SDK (`ConnectionManager` in `scolib-2.3.0.aar`) is accessed only through `OximeterSDKAdapter` (which implements `IDeviceAdapter`).
 When changing hardware or SDKs, **only the adapter file needs to be modified**, leaving `RecordActivity` untouched.
 See the 3-step guide in [flow-02-bluetooth-connection.md](flow-02-bluetooth-connection.md#5-swapping-the-device-sdk).
 
@@ -99,7 +103,7 @@ Each flow is described in its own file, complete with sequence/state diagrams an
 | 2 | **Bluetooth connection** | [flow-02-bluetooth-connection.md](flow-02-bluetooth-connection.md) | Scan, connect, auto-reconnect, filter unexpected BLE events, swap hardware SDKs. |
 | 3 | **Data recording** | [flow-03-data-recording.md](flow-03-data-recording.md) | A single sample flows from device → buffer (batches 100) → CSV; file splitting; background execution. |
 | 4 | **Annotation** | [flow-04-annotation.md](flow-04-annotation.md) | Create/edit/delete notes, save JSON, upload. |
-| 5 | **File upload** | [flow-05-file-upload.md](flow-05-file-upload.md) | Upload queue, 3-try retry mechanism, moving to `Uploaded/`, 17:00 daily scheduler. |
+| 5 | **File upload** | [flow-05-file-upload.md](flow-05-file-upload.md) | Upload queue, 3-try retry, move to `Uploaded/`, 17:00 daily scheduler, bug-report log upload path. |
 | 6 | **File management** | [flow-06-file-management.md](flow-06-file-management.md) | Browse pending/uploaded files, manual upload, open/delete files, SAF fallback. |
 
 ---
@@ -111,9 +115,10 @@ This is why the architecture may seem complex. The main mechanisms (detailed in 
 - **Foreground service + wake lock** → continue recording when the screen is off.
 - **`START_STICKY` + `RecordingSessionPrefs`** → if the system kills the process, the service automatically restarts and **continues** the previous session.
 - **Time-based CSV splitting** → a crash or error only corrupts a small segment, not the entire session.
+- **BLE pause closes CSV without empty reopen** → `splitFileOnBlePause()` finalizes the current segment (≥ 60s) and does **not** reopen; the next CSV opens lazily on the first packet after reconnect.
 - **`onTaskRemoved` keeps the service alive** when the user swipes the app out of Recents (allowing BLE to reconnect).
 - **Crash handler** writes crash logs to a file before the app terminates.
-- **Upload never touches the currently active file** → avoiding writer corruption.
+- **Upload skips the currently open writer URI** → never touches the active recording file, avoiding writer corruption.
 
 ---
 

@@ -4,15 +4,22 @@
 
 ---
 
-## 1. Ba con đường upload / Three upload paths
+## 1. Bốn con đường upload / Four upload paths
 
-Cả ba đều đi qua **`PendingFileUploadCoordinator`** (retry tối đa **3 lần**, kiểm tra mạng):
+Ba đường CSV/annotation đi qua **`PendingFileUploadCoordinator`** (retry tối đa **3 lần**, kiểm tra mạng):
 
 1. **Tự động sau khi đóng file** — khi split hoặc dừng phiên, file vừa đóng được đẩy vào hàng đợi
    (`RecordActivity` gọi `uploadSessionFile`).
 2. **Thủ công** — từ `FileManagerActivity`, user chọn file để upload lại.
 3. **Hằng ngày 17:00** — `AnnotationUploadScheduler` lên lịch `UploadAnnotationWorker` (WorkManager) chạy lúc **17:00**
    để upload nốt phần còn tồn (`uploadAllPending`).
+
+Đường thứ tư **bỏ qua** coordinator (không chuyển log sang `Uploaded/`):
+
+4. **Báo lỗi (bug report)** — `BugReportDialog` ghi thêm mục `USER` / `BUG_REPORT` vào các file log ngày đã chọn,
+   rồi gọi `FileUploader.uploadFile` **tuần tự** với tên server tùy chỉnh
+   `SmartCareLog_{patient}_{dd.MM.yyyy.HH.mm.ss}_.txt` (ngày lấy từ ngày của file log, giờ = lúc upload;
+   thêm `_1` / `_2` khi trùng tên). Log vẫn nằm trong `{externalFilesDir}/Logs/`.
 
 ---
 
@@ -97,6 +104,8 @@ flowchart TD
 - `RetrofitClient` dùng `ApiConfig.BASE_URL` + timeout từ `NetworkConfig` (connect 15s, read/write 20s).
 - Thành công khi `message` ∈ `{"File uploaded successfully!", "File uploaded successfully"}`.
 - `BASE_URL`/`API_TOKEN` nạp từ `local.properties` → `BuildConfig` → `ApiConfig` (xem [Tầng 1 mục 8](../1-overview/PROJECT-OVERVIEW.md#8-cấu-hình--server--configuration)).
+- **`API_TOKEN` có trong `BuildConfig` / `ApiConfig` nhưng hiện không được gắn vào multipart upload**
+  (tham số token của biến thể endpoint cũ đang bị comment trong `FileUploader`).
 
 ---
 
@@ -106,6 +115,7 @@ flowchart TD
 |---|---|
 | Điều phối upload + retry | `PendingFileUploadCoordinator.uploadSessionFile()`, `uploadAllPending()` |
 | Upload HTTP thực tế | `FileUploader.uploadFile()`, `moveFileToUploadedFolderFromUri()` |
+| Upload log báo lỗi | `BugReportDialog.show()` → `FileLogger.appendUserReportToFile()` → `FileUploader.uploadFile(...)` tuần tự |
 | Định nghĩa endpoint | `network/ApiService`, `network/RetrofitClient`, `network/UploadResponse` |
 | Kiểm tra mạng | `NetworkHelper.isNetworkAvailable()` |
 | Lịch 17:00 | `AnnotationUploadScheduler.scheduleDailyUpload()`, `UploadAnnotationWorker.doWork()` |

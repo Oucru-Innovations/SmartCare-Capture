@@ -64,7 +64,8 @@
 | `setAppContext(Context)` (static) | Saves app context for background uploads/content-URIs. |
 | `moveFileToUploadedFolder(File)` (static) | Renames file into the `Uploaded/` subdirectory and updates its mtime. |
 | `moveFileToUploadedFolderFromUri(Context, String uriPath)` (static) | Copies MediaStore URI → `Download/OximeterData/Uploaded`, deletes the source, and invokes `AppRecordingRegistry.markUploaded()`. |
-| `uploadFile(Activity, String, UploadCallback)` (static) | Uploads with a Toast notification; handles `content://` URIs using a temporary cache. |
+| `uploadFile(Activity, String, UploadCallback)` (static) | Uploads with a Toast notification; handles `content://` URIs using a temporary cache. Delegates to the overload with `uploadFileName=null` (uses local/display name). |
+| `uploadFile(Activity, String filePath, String uploadFileName, UploadCallback)` (static) | Same as above, but multipart form filename can differ from the on-disk name (used by bug-report uploads). Empty/`null` `uploadFileName` falls back to local/display name. |
 | `uploadFile(String, UploadCallback)` (static) | Background upload (no Toast); requires `setAppContext()` to be called first. |
 | `calculateMD5(Context, String)` (static) | MD5 hex hash for content URI/path (calculated but not sent in current active API calls). |
 | `getBaseUrl()` (static) | Returns `ApiConfig.BASE_URL`. |
@@ -121,22 +122,29 @@
 ## FileLogger
 `app/src/main/java/com/smartcare/oximetry/sample/FileLogger.java`
 
+Persistent logs under `{externalFilesDir}/Logs`: one daily file (or multiple parts) per tablet calendar day.
+
 | Method (static) | Description |
 |---|---|
-| `getInstance(Context)` | Initializes singleton; triggers cleanup of old log files. |
+| `getInstance(Context)` | Initializes singleton; runs retention purge of expired daily logs. |
 | `writeLog(LogLevel, tag, message)` | Core append-to-file logic with timestamps. |
 | `v/d/i/w(String tag, String message)` | Logs message at corresponding level. |
 | `e(tag, message)` / `e(tag, message, Throwable)` | ERROR level log (includes stack trace). |
 | `logEvent(category, event, detail)` / `(... , Context)` | Structured INFO event (context version includes RAM snapshot). |
 | `logWarningEvent(...)` | Structured WARN event. |
+| `appendUserReportToFile(File logFile, String detail, Context)` | Appends a `USER`/`BUG_REPORT` line into a specific log file (before upload). |
 | `logCrash(Thread, Throwable)` | Multi-line crash block + `flushToDisk()`. |
-| `flushToDisk()` | Forces file sync to disk (for crash/critical logs). |
+| `flushToDisk()` | Forces file sync to disk (for crash/critical/bug-report logs). |
 | `isInitialized()` | Checks if singleton/context is ready. |
 | `getFilteredLogs(LogLevel min)` | Reads current log file filtered by minimum LogLevel. |
+| `listAvailableLogFiles()` | Lists daily-format log files as `LogFileInfo` (newest first); display names may include `(today)` and size in KB. |
 | `getLogFilePath()` | Returns path of active log file. |
-| `forceCleanup()` | Manually deletes old logs (keeps most recent archives). |
+| `formatBugReportUploadTimestamp(File)` / `(File, long uploadTimeMs)` | Builds `dd.MM.yyyy.HH.mm.ss` from log-file calendar date + upload time-of-day. |
+| `forceCleanup()` | Runs retention purge (`purgeExpiredLogs`) — deletes daily logs older than `RETENTION_DAYS`. |
 
-**Enum:** `LogLevel { VERBOSE, DEBUG, INFO, WARN, ERROR }`. **Configurations:** `MAX_FILE_SIZE_BYTES=10MB`; rolls over to archive files matching `smartcare_app_log_{yyyyMMdd_HHmmss}.txt`.
+**Enum:** `LogLevel { VERBOSE, DEBUG, INFO, WARN, ERROR }`.
+**Inner class:** `LogFileInfo` (`file`, `displayName`, `toString()` → displayName) — for bug-report file picker.
+**Configuration:** `MAX_FILE_SIZE_BYTES=30MB` per part; `RETENTION_DAYS=15`; daily naming `smartcare_app_log_dd.MM.yyyy.txt`, with `_N` parts when a day exceeds 30MB (e.g. `smartcare_app_log_25.06.2025_2.txt`). Legacy non-matching filenames are neither renamed nor deleted. Day rollover and part rotation are logged as `LOG_DAY_ROLLOVER` / `LOG_FILE_PART_ROTATION`.
 
 ---
 

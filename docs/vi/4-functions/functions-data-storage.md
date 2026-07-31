@@ -44,7 +44,7 @@
 | `isRecordingActive()` | Có writer + URI mở không. |
 | `getCurrentOpenFileUriString()` | URI segment đang mở, hoặc null. |
 | `getRecordingSegmentDurationMs()` | Ms đã trôi từ `startTimestamp`. |
-| `splitFileOnBlePause()` | Cắt khi BLE pause; trả tên hiển thị hoàn tất hoặc null. |
+| `splitFileOnBlePause()` | Khi BLE pause: đóng/finalize segment hiện tại **không mở lại** file mới (segment kế mở lười khi có packet sau reconnect). Bỏ qua nếu thời lượng segment &lt; `MIN_AUTO_SPLIT_MS` / `MIN_SEGMENT_MS`. Trả tên hiển thị hoàn tất hoặc null. |
 | `getFileNameFromUri(Uri)` | Tên hiển thị MediaStore cho URI. |
 | `startNewRecording(long pkgTs, String patient, boolean chunk, int interval)` | Bắt đầu phiên: đóng segment trước, dọn orphan `_unknown`, mở CSV `_unknown` + flush header ngay. |
 | `writeProcessedDataPoint(OximeterDataBuffer.ProcessedData)` | Ghi 1 dòng; có thể trigger cắt theo thời gian; tùy chọn buffer chunk. |
@@ -113,9 +113,30 @@
 |---|---|---|
 | `SPLIT_INTERVAL_HOURS` | 6 | Giờ giữa các lần cắt CSV tự động |
 | `SPLIT_INTERVAL_MS` | 21.600.000 | Như trên (ms) — dùng bởi writer |
-| `MIN_SEGMENT_MS` | 60.000 | Segment tối thiểu trước khi cắt |
+| `MIN_SEGMENT_MS` | 60.000 | Segment tối thiểu trước khi đóng BLE-pause hoặc cắt tự động |
+| `BYTES_PER_RECORDING_HOUR` | 10.485.760 (10 MiB) | Ước lượng dung lượng CSV / giờ ghi — dùng ước lượng thời lượng FileManager |
 
 Class chỉ chứa hằng số (constructor private, không method).
+
+---
+
+## AnnotationStorage
+`app/src/main/java/com/smartcare/oximetry/sample/AnnotationStorage.java`
+
+Helper MediaStore (package-private) cho file JSON master annotation và file export dưới Downloads.
+
+**Hằng:** `FOLDER_NAME="OximeterData"`, `ANNOTATION_SUBDIR="Annotation"`, `MASTER_FILE_NAME="Annotations.json"`,
+`MIME_JSON="application/json"`, `MASTER_PATH_MARKER="OximeterData/Annotation"`.
+
+| Method (đều static, package-private) | Mô tả |
+|---|---|
+| `masterRelativePath()` | `Download/OximeterData/Annotation/` — nơi đặt master `Annotations.json`. |
+| `exportRelativePath()` | `Download/OximeterData/` — nơi đặt export `Annotation_*.json`. |
+| `findEntry(Context, String displayName, String pathContains)` | Tìm entry Downloads theo tên hiển thị; lọc tùy chọn `pathContains` trên `RELATIVE_PATH`; trả content URI hoặc null. |
+| `createEntry(Context, String displayName, String relativePath, String mime)` | Tạo entry Downloads mới; trả content URI hoặc null. |
+| `ensureMasterEntry(Context)` | Trả URI master `Annotations.json`, tạo mới dưới `masterRelativePath()` nếu chưa có. |
+| `readText(Context, Uri)` | Đọc toàn bộ text UTF-8 của entry; null nếu thiếu/không đọc được. |
+| `writeText(Context, Uri, String content)` | Ghi đè (truncate) text UTF-8 vào entry; true nếu thành công. |
 
 ---
 

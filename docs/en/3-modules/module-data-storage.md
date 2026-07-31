@@ -3,9 +3,9 @@
 > **Tier 3.** Data & storage module: sample batching, CSV writing, file indexing, session recovery, and RAM diagnostics.
 > For details on each function, see [Tier 4 — functions-data-storage.md](../4-functions/functions-data-storage.md).
 
-**8 classes:** `OximeterDataBuffer`, `OximeterDataWriterFunctions`, `OximeterDataFileIndex`, `OximeterDataTreeAccess`, `RecordingSessionPrefs`, `RecordingConstants`, `AppRecordingRegistry`, `MemoryDiagnostics`.
+**9 classes:** `OximeterDataBuffer`, `OximeterDataWriterFunctions`, `OximeterDataFileIndex`, `OximeterDataTreeAccess`, `RecordingSessionPrefs`, `RecordingConstants`, `AppRecordingRegistry`, `AnnotationStorage`, `MemoryDiagnostics`.
 
-**Data Flow:** BLE samples → `OximeterDataBuffer` (batches 100) → `OximeterDataWriterFunctions` (CSV via MediaStore) → `OximeterDataFileIndex`/`AppRecordingRegistry`/`OximeterDataTreeAccess` (file listing); session state is persisted via `RecordingSessionPrefs`.
+**Data Flow:** BLE samples → `OximeterDataBuffer` (batches 100) → `OximeterDataWriterFunctions` (CSV via MediaStore) → `OximeterDataFileIndex`/`AppRecordingRegistry`/`OximeterDataTreeAccess` (file listing); session state is persisted via `RecordingSessionPrefs`; annotation JSON I/O goes through `AnnotationStorage`.
 
 ---
 
@@ -26,6 +26,7 @@
 - **CSV Columns:** `timestamp, device_id, battery, hr, o2, spo2_status, pleth, red, ir, perfusion`.
 - **File Name:** `SmartCareCsv_{patientCode}_{startStamp}_{endStamp}.csv` (timestamp format: `dd.MM.yyyy.HH.mm.ss`; currently active segment uses `unknown` as end stamp).
 - **Primary Methods:** `initialize`, `setSplitInterval`, `isRecordingActive`, `getCurrentOpenFileUriString`, `startNewRecording`, `writeProcessedDataPoint`, `splitFileOnBlePause`, `splitForDailyCutoff`, `endRecording`, `getOximeterDataPath`, `formatTimestamp`.
+- **`splitFileOnBlePause`:** finalizes the current segment **without reopening** a new file (empty header-only files are avoided; next segment opens on first packet after reconnect via `ensureRecordingActive`). Segments shorter than `MIN_SEGMENT_MS` are left open.
 - All writer state is synchronized via `SPLIT_LOCK`. Details on splitting: [flow-03 section 3](../2-architecture/flow-03-data-recording.md#3-file-splitting).
 
 ---
@@ -59,6 +60,7 @@
 | `SPLIT_INTERVAL_HOURS` | 6 | Interval (in hours) between automatic CSV splits |
 | `SPLIT_INTERVAL_MS` | 21,600,000 | Same as above, in milliseconds |
 | `MIN_SEGMENT_MS` | 60,000 (60s) | Minimum duration of a segment before it can be split |
+| `BYTES_PER_RECORDING_HOUR` | 10 MiB (`10L * 1024 * 1024`) | Approximate size→duration estimate (e.g. File Manager) |
 > Note: `BUFFER_SIZE` (100) is defined in `OximeterDataBuffer`, not here.
 
 ---
@@ -69,7 +71,14 @@
 
 ---
 
-## 8. `MemoryDiagnostics`
+## 8. `AnnotationStorage`
+`app/.../AnnotationStorage.java` — **Package-private** MediaStore helper for annotation persistence: master `Annotations.json` under `Download/OximeterData/Annotation/` and exported `Annotation_*.json` under `Download/OximeterData/`. Used by `ShowAnnotate` / `AnnotationHistory` (find/create/read/write via Downloads volume).
+- **Constants:** `FOLDER_NAME`, `ANNOTATION_SUBDIR`, `MASTER_FILE_NAME`, `MASTER_PATH_MARKER`.
+- **Primary Methods:** `masterRelativePath`, `exportRelativePath`, `findEntry`, plus create/read/write helpers for master and export files.
+
+---
+
+## 9. `MemoryDiagnostics`
 `app/.../MemoryDiagnostics.java` — Generates hardware RAM and JVM heap snapshots for `FileLogger` and lifecycle logging.
 - **Methods:** `formatDeviceSummary`, `formatSnapshot`, `trimLevelName`.
 
@@ -85,6 +94,8 @@ flowchart LR
   Writer --> Registry[AppRecordingRegistry]
   Writer --> Index[OximeterDataFileIndex]
   Index --> Tree[OximeterDataTreeAccess SAF]
+  AnnotUI[ShowAnnotate / AnnotationHistory] --> AnnStore[AnnotationStorage]
+  AnnStore -->|JSON MediaStore| MS
   Activity[RecordActivity] --> Prefs[RecordingSessionPrefs]
   Prefs --> Service[OximeterDataService restore]
   Constants[RecordingConstants] --> Writer

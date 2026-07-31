@@ -3,8 +3,8 @@
 > **Tầng 3.** Module thiết bị & kết nối: bọc SDK của hãng, service nền ghi dữ liệu, chặn sự kiện BLE lạ.
 > Chi tiết từng hàm xem [Tầng 4 — functions-device-bluetooth.md](../4-functions/functions-device-bluetooth.md).
 
-**7 class:** `IDeviceAdapter`, `OximeterSDKAdapter`, `OximeterDataPacket`*, `OximeterDataListener`*,
-`OximeterDataService`, `BluetoothEventInterceptor`, `BluetoothAutoConnector`*.
+**8 class:** `IDeviceAdapter`, `OximeterSDKAdapter`, `OximeterDataPacket`*, `OximeterDataListener`*,
+`OximeterDataService`, `BluetoothEventInterceptor`, `PacketStatsTracker`, `BluetoothAutoConnector`*.
 
 > *`OximeterDataPacket`, `OximeterDataListener`, `BluetoothAutoConnector` là **legacy — không được dùng** trong luồng
 > hiện tại (giữ lại tham khảo).
@@ -24,7 +24,7 @@
 
 ## 2. `OximeterSDKAdapter` (implements IDeviceAdapter)
 `app/.../device/OximeterSDKAdapter.java` — **File duy nhất cần sửa khi đổi phần cứng.** Bọc mỏng
-`com.smartcare.oximetry.library.ConnectionManager`, ủy quyền connect/disconnect/recording và truyền một `Handler`
+`com.smartcare.oximetry.library.ConnectionManager` từ **`scolib-2.3.0`**, ủy quyền connect/disconnect/recording và truyền một `Handler`
 (thường là `RecordActivity.SmartCareHandler`) để SDK gửi message.
 
 **Đặc điểm/workaround:**
@@ -71,7 +71,19 @@ và `abortBroadcast()` cho thiết bị không phải máy của ta → tránh d
 
 ---
 
-## 7. `BluetoothAutoConnector` (legacy, không dùng)
+## 7. `PacketStatsTracker`
+`app/.../PacketStatsTracker.java` — **Singleton** theo dõi nhận/mất packet BLE để chẩn đoán qua `FileLogger`. Tách biệt với
+mất mẫu do hàng đợi `OximeterDataBuffer` đầy (packet đã nhận nhưng không ghi CSV).
+- **Vòng đời:** `getInstance()`, `start()` / `stop()` (ticker tổng hợp mỗi phút trên main Looper).
+- **Mỗi packet:** `onPacketReceived(deviceCounter)` — phát hiện gap qua `KEY_DATA_COUNTER` của thiết bị; trả số packet
+  thiếu để vẽ khoảng trống sóng.
+- **Reconnect:** `onConnectionReset(reason)` xóa mốc counter để packet sau khi nối lại không bị tính thành gap khổng lồ.
+- **Hằng số:** `MAX_PLAUSIBLE_GAP=1000` (gap lớn hơn → log resync, không tính mất); `GAP_LOG_THROTTLE_MS=2s`
+  (giới hạn tần suất cảnh báo gap chi tiết).
+
+---
+
+## 8. `BluetoothAutoConnector` (legacy, không dùng)
 `app/.../BluetoothAutoConnector.java` — Tiện ích auto-connect/reconnect dựa trên LE scan với hàng đợi MAC, lưu MAC bị chặn,
 retry. **Không được wire vào `RecordActivity`** (Activity tự cài logic quét/reconnect riêng). Giữ lại tham khảo.
 **Đáng chú ý:** dùng reflection cho `setHighPriorityConnection`, cố ý **không** mở socket SPP song song (vì `ConnectionManager`
@@ -87,6 +99,7 @@ flowchart LR
     OSA --> CM[ConnectionManager SDK]
     CM -->|Handler messages| SCH[SmartCareHandler]
     SCH -->|addDataPoint| ODS[OximeterDataService]
+    SCH -->|onPacketReceived| PST[PacketStatsTracker]
     RA --> BEI[BluetoothEventInterceptor]
     RA <-->|LocalBinder| ODS
     RA --> RSP[RecordingSessionPrefs]
@@ -97,8 +110,9 @@ flowchart LR
 
 | Class | Có được dùng? |
 |---|---|
-| `OximeterSDKAdapter` | Có — `RecordActivity.onCreate()` |
+| `OximeterSDKAdapter` | Có — `RecordActivity.onCreate()` (`scolib-2.3.0`) |
 | `BluetoothEventInterceptor` | Có — tạo/cleanup trong `RecordActivity` |
 | `OximeterDataService` | Có — bind từ `RecordActivity` |
+| `PacketStatsTracker` | Có — singleton từ `SmartCareHandler` / reconnect |
 | `BluetoothAutoConnector` | **Không** |
 | `OximeterDataListener` / `OximeterDataPacket` | **Không** (legacy) |

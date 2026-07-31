@@ -27,7 +27,7 @@ sequenceDiagram
     participant PREFS as RecordingSessionPrefs
 
     OS->>APP: onCreate()
-    APP->>LOG: getInstance(context) (init log file)
+    APP->>LOG: getInstance(context) (thư mục log theo ngày, purge 15 ngày)
     APP->>APP: installCrashHandler()
     APP->>APP: registerActivityLifecycleCallbacks()
     APP->>SCH: scheduleDailyUpload() (17:00)
@@ -52,7 +52,10 @@ sequenceDiagram
 ## 3. Các bước chi tiết / Step by step
 
 ### Bước 1 — `SmartCareApplication.onCreate()`
-- Khởi tạo **`FileLogger`** (ghi log ra `{externalFilesDir}/Logs/smartcare_app_log.txt`).
+- Khởi tạo **`FileLogger`**:
+  - Thư mục log: `{externalFilesDir}/Logs/`
+  - File theo ngày: `smartcare_app_log_dd.MM.yyyy.txt` (thêm `_2`, `_3`… khi một part đạt **≥ 30 MB**)
+  - Giữ lại: **15 ngày** — purge khi init (chỉ file daily khớp pattern; file legacy một file đơn không đụng)
 - Gọi **`FileUploader.setAppContext()`** để upload nền hoạt động được.
 - **`installCrashHandler()`** — bọc default uncaught-exception handler để **flush log crash ra file** trước khi app chết.
 - Đăng ký **`ActivityLifecycleCallbacks`** để: áp inset thanh hệ thống (`SystemBarInsetsHelper`), log foreground/background,

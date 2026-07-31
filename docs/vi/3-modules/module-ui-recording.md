@@ -3,16 +3,17 @@
 > **Tầng 3.** Module giao diện: màn hình ghi, quản lý file, các popup, ghi chú, adapter và khởi tạo app.
 > Chi tiết từng hàm xem [Tầng 4 — functions-ui-recording.md](../4-functions/functions-ui-recording.md).
 
-**8 class:** `RecordActivity`, `FileManagerActivity`, `ShowAnnotate`, `AnnotationHistory`*, `PatientInfoPopup`,
-`ChunkFileConfigPopup`, `CodeHistoryAdapter`, `SystemBarInsetsHelper`, `SmartCareApplication`.
+**9 class:** `RecordActivity`, `FileManagerActivity`, `ShowAnnotate`, `AnnotationHistory`*, `BugReportDialog`,
+`PatientInfoPopup`, `ChunkFileConfigPopup`, `CodeHistoryAdapter`, `SystemBarInsetsHelper`, `SmartCareApplication`.
 
 > *`AnnotationHistory` được liệt kê chi tiết ở [module Network/Upload](module-network-upload.md) theo kết quả khảo sát,
-> nhưng về bản chất nó thuộc UI. Ở đây ta coi nó là UI; nó chỉ thao tác JSON cục bộ.
+> nhưng về bản chất nó thuộc UI. Ở đây ta coi nó là UI; nó chỉ thao tác JSON cục bộ. Đếm vào Network (12); UI = 9
+> (không đếm trùng).
 
 ---
 
 ## 1. `RecordActivity`
-`app/.../RecordActivity.java` — **Màn hình chính** (~1900 dòng). Kết nối oximeter BLE, hiển thị pleth/HR/SpO₂/pin
+`app/.../RecordActivity.java` — **Màn hình chính** (~2600 dòng). Kết nối oximeter BLE, hiển thị pleth/HR/SpO₂/pin
 thời gian thực, đẩy mẫu sang `OximeterDataService` để ghi CSV, quản lý quét/reconnect BLE, gating mã bệnh nhân, và
 vòng đời phiên (cắt CSV khi BLE rớt vs dừng hẳn phiên).
 
@@ -20,7 +21,8 @@ vòng đời phiên (cắt CSV khi BLE rớt vs dừng hẳn phiên).
 `annotationHeartRate`/`annotationSpO2` (vitals mới nhất cho ghi chú).
 
 **Nhóm chức năng:**
-- **Vòng đời:** `onCreate`, `onStop`, `onDestroy`, menu (`onCreateOptionsMenu`, `onOptionsItemSelected`).
+- **Vòng đời:** `onCreate`, `onStop`, `onDestroy`, menu (`onCreateOptionsMenu`, `onOptionsItemSelected` —
+  gồm `action_bug_report` → `BugReportDialog`).
 - **Quyền:** `checkAppPermissions`, `onRequestPermissionsResult`, `requestBluetoothPermissions`.
 - **Kết nối/phiên:** `connectToPulseOximeter`, `ensureServiceAndConnect`, `stopDisconnectExit`,
   `persistRecordingSessionState`, `splitCsvOnBlePause`, `restoreRecordingSessionFromPrefsIfNeeded`, `reconnectToService`.
@@ -52,7 +54,18 @@ xuất JSON từng note để upload, đính kèm HR/SpO₂.
 
 ---
 
-## 4. `PatientInfoPopup`
+## 4. `BugReportDialog`
+`app/.../BugReportDialog.java` — Dialog menu **Báo lỗi / Report**: chọn nhiều file log theo ngày
+(`FileLogger.listAvailableLogFiles()`; **hôm nay** được chọn sẵn), bắt buộc mô tả + có mạng, ghi báo cáo người dùng
+vào từng log chọn qua `FileLogger.appendUserReportToFile`, rồi upload tuần tự qua `FileUploader` với tên
+`SmartCareLog_{patient}_{timestamp}_.txt` (timestamp từ `FileLogger.formatBugReportUploadTimestamp`).
+**Method chính:** `show`, `sendReport`, `resolveBugReportUploadNames`, `uploadFilesSequentially`.
+**Điểm vào:** `RecordActivity.onOptionsItemSelected` → `R.id.action_bug_report`.
+Dùng helper Network: xem [module-network-upload.md](module-network-upload.md) (`FileLogger`, `FileUploader`, `NetworkHelper`).
+
+---
+
+## 5. `PatientInfoPopup`
 `app/.../PatientInfoPopup.java` — Popup nhập/chọn **mã nghiên cứu** (kèm location/serial). Lưu vào `PatientInfoPrefs`,
 giữ tối đa 5 mã gần đây, **khóa app** cho tới khi nhập mã lúc khởi động.
 **Method chính:** `show`, `setCancelable`, `setOnPatientInfoSavedListener`, `isCodeSaved`, `clearSavedCode`, `getSavedPatientInfo`.
@@ -60,14 +73,14 @@ giữ tối đa 5 mã gần đây, **khóa app** cho tới khi nhập mã lúc k
 
 ---
 
-## 5. `ChunkFileConfigPopup`
+## 6. `ChunkFileConfigPopup`
 `app/.../ChunkFileConfigPopup.java` — Popup bật/tắt và đặt chu kỳ cắt file (StreamModel chunk). Lưu `ChunkFileConfigPrefs`,
 giá trị được chuyển vào `OximeterDataService` khi connect.
 **Method chính:** `show`, `isChunkFileEnabled` (mặc định false), `getTimeInterval` (mặc định 3 phút).
 
 ---
 
-## 6. `CodeHistoryAdapter`
+## 7. `CodeHistoryAdapter`
 `app/.../CodeHistoryAdapter.java` — RecyclerView adapter cho danh sách mã bệnh nhân gần đây trong `PatientInfoPopup`.
 Hỗ trợ chạm-để-điền và xóa từng dòng.
 **Method chính:** `onCreateViewHolder`, `onBindViewHolder`, `updateCodes`, `removeCode`.
@@ -75,13 +88,13 @@ Hỗ trợ chạm-để-điền và xóa từng dòng.
 
 ---
 
-## 7. `SystemBarInsetsHelper`
+## 8. `SystemBarInsetsHelper`
 `app/.../SystemBarInsetsHelper.java` — Tiện ích đệm layout gốc theo status bar / navigation bar / cutout để nội dung
 không bị che. **Method:** `static apply(Activity)`. Được gọi từ `SmartCareApplication.onActivityPostCreated`.
 
 ---
 
-## 8. `SmartCareApplication`
+## 9. `SmartCareApplication`
 `app/.../SmartCareApplication.java` — Singleton ứng dụng. Khởi tạo `FileLogger`, `FileUploader`, crash handler toàn cục,
 log vòng đời activity, theo dõi foreground/background, áp inset, lịch upload 17:00, chẩn đoán low-memory.
 **Method chính:** `onCreate`, `onTrimMemory`, `onLowMemory`, `installCrashHandler` (private).
@@ -99,6 +112,8 @@ flowchart TB
     RA -->|ghi chú| SA[ShowAnnotate]
     RA -->|cấu hình chunk| CFC[ChunkFileConfigPopup]
     RA -->|menu| FMA[FileManagerActivity]
+    RA -->|action_bug_report| BRD[BugReportDialog]
+    BRD -->|list/append/upload| FL[FileLogger / FileUploader]
     RA -->|BLE packets| H[SmartCareHandler]
     H -->|ghi CSV| Svc[OximeterDataService]
     RA -->|connect/disconnect| Conn[Connector / Disconnector]

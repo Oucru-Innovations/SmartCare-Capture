@@ -26,7 +26,7 @@ sequenceDiagram
     participant PREFS as RecordingSessionPrefs
 
     OS->>APP: onCreate()
-    APP->>LOG: getInstance(context) (init log file)
+    APP->>LOG: getInstance(context) (daily logs dir, 15-day purge)
     APP->>APP: installCrashHandler()
     APP->>APP: registerActivityLifecycleCallbacks()
     APP->>SCH: scheduleDailyUpload() (17:00)
@@ -51,7 +51,10 @@ sequenceDiagram
 ## 3. Step by step
 
 ### Step 1 — `SmartCareApplication.onCreate()`
-- Initializes **`FileLogger`** (writes logs to `{externalFilesDir}/Logs/smartcare_app_log.txt`).
+- Initializes **`FileLogger`**:
+  - Logs directory: `{externalFilesDir}/Logs/`
+  - Daily files: `smartcare_app_log_dd.MM.yyyy.txt` (plus `_2`, `_3`… when a part reaches **≥ 30 MB**)
+  - Retention: **15 days** purge on init (only pattern-matched daily files; legacy single-file logs are left alone)
 - Calls **`FileUploader.setAppContext()`** to enable background uploading.
 - **`installCrashHandler()`** — wraps the default uncaught-exception handler to **flush crash logs to the file** before the app terminates.
 - Registers **`ActivityLifecycleCallbacks`** to: apply system bar insets (`SystemBarInsetsHelper`), log foreground/background transitions, and log lifecycles of each activity.

@@ -6,9 +6,10 @@
 
 ## 1. Summary
 
-- The app connects via the **manufacturer's SDK** (`ConnectionManager` in `scolib-2.0.0.aar`), wrapped by **`OximeterSDKAdapter`**.
+- The app connects via the **manufacturer's SDK** (`ConnectionManager` in `scolib-2.3.0.aar`), wrapped by **`OximeterSDKAdapter`**.
 - The SDK reports events/data back to the app in the form of an **`android.os.Message`** sent via a **`Handler`** (`RecordActivity.SmartCareHandler`) — it **does not** use the `OximeterDataListener` interface (that class is still in the repo but has been deprecated/replaced).
 - The app implements **background scanning** and **auto-reconnection**, while **filtering BLE events from unexpected devices** using `BluetoothEventInterceptor`.
+- **`PacketStatsTracker`** (on `MESSAGE_PACKET`) tracks device `KEY_DATA_COUNTER` gaps, writes minute summaries to `FileLogger`, and ignores implausible gaps above `MAX_PLAUSIBLE_GAP = 1000`.
 
 ---
 
@@ -32,12 +33,14 @@ sequenceDiagram
     SDK-->>H: MESSAGE_RECORDING_STARTED
     CN->>ADP: startRecording()
     loop Every data packet
-        SDK-->>H: MESSAGE_PACKET (Bundle: pleth, HR, SpO₂, pin, ADC, PI)
+        SDK-->>H: MESSAGE_PACKET (Bundle: pleth, HR, SpO₂, pin, ADC, PI, counter)
         H->>RA: Update graphs + labels (throttled to 500ms)
+        H->>RA: PacketStatsTracker.onPacketReceived(counter)
         H->>RA: addDataPoint(...) → OximeterDataService
     end
     SDK-->>H: MESSAGE_CONNECTION_LOST (on drop)
     H->>RA: splitCsvOnBlePause() + scheduleAutoReconnect()
+    Note over RA: splitFileOnBlePause closes segment if ≥ 60s;<br/>does NOT reopen — next CSV opens lazily on first packet
 ```
 
 ![Bluetooth Connection Flow Diagram](../../vi/2-architecture/flow02-bluetooth-connection.png)
@@ -50,7 +53,7 @@ sequenceDiagram
 
 | Message | Action taken by app |
 |---|---|
-| `MESSAGE_PACKET` | Extracts pleth/HR/SpO₂/battery/ADC/PI; plots graphs (500-sample buffer); updates labels (500ms throttle); records via service. |
+| `MESSAGE_PACKET` | Extracts pleth/HR/SpO₂/battery/ADC/PI; plots graphs (500-sample buffer); updates labels (500ms throttle); records via service; feeds `PacketStatsTracker` with `KEY_DATA_COUNTER`. |
 | `MESSAGE_RECORDING_STARTED` | Toasts device model/time/sample rate; enables Stop button; stops scanning. |
 | `MESSAGE_RECORDING_ENDED` | Toasts; splits CSV; resets button to Start; restarts scanning. |
 | `MESSAGE_CONNECTION_LOST` | Toasts; splits CSV; if session is active → `stopDisconnectExit(false)` (only disconnect BLE); marks as disconnected. |
@@ -66,7 +69,12 @@ sequenceDiagram
 ### Auto-reconnect
 - `scheduleAutoReconnect(mac, delayMs)` — retry loop: **first retry after 30s**, then **every 3 minutes**.
 - `startBluetoothBackgroundScan()` — background scanning **every 5s** (enabled only after patient code is entered).
-- When BLE drops mid-session: `splitCsvOnBlePause()` closes the current CSV segment, then reconnects; the 24h session **continues**.
+- When BLE drops mid-session: `splitCsvOnBlePause()` → `splitFileOnBlePause()` **closes/finalizes** the current CSV segment if duration ≥ `MIN_SEGMENT_MS` (60s); it does **not** reopen a new file. The next CSV opens **lazily** via `ensureRecordingActive` / `startDataCollection` on the first packet after reconnect. The 24h session **continues**.
+
+### PacketStatsTracker (device/UI diagnostics)
+- On each `MESSAGE_PACKET`, `PacketStatsTracker.onPacketReceived(deviceCounter)` inspects gaps in the device `KEY_DATA_COUNTER`.
+- Plausible gaps (≤ `MAX_PLAUSIBLE_GAP = 1000`) count as lost packets; larger gaps are treated as counter reset/wrap (logged as resync, not loss).
+- Emits **minute summaries** to `FileLogger` while tracking is running.
 
 ### Filtering BLE events from unexpected devices
 - `BluetoothEventInterceptor` is a high-priority `BroadcastReceiver` (`SYSTEM_HIGH_PRIORITY`) that intercepts `ACTION_ACL_CONNECTED/DISCONNECTED` **before** the SDK receives it, and calls `abortBroadcast()` if the device is **not** our oximeter.
@@ -100,7 +108,7 @@ handler.sendMessage(msg); // dispatches to RecordActivity exactly as before
 ```
 
 ### Notable Workaround: Reflection to bypass device name filtering
-In `OximeterSDKAdapter`'s constructor, the app uses **reflection** to override the hardcoded device name list in the SDK (obfuscated class `com.smartcare.oximetry.library.a`, field `d` of type `String[]`), setting `names[0] = ""` to **match all devices** (to support newer models like FC0392). This is a *workaround dependent on SDK internals* — **must verify when upgrading `.aar`**.
+In `OximeterSDKAdapter`'s constructor, the app uses **reflection** to override the hardcoded device name list in the SDK (obfuscated class `com.smartcare.oximetry.library.a`, field `d` of type `String[]`), setting `names[0] = ""` to **match all devices** (to support newer models like FC0392). This is a *workaround dependent on SDK internals* — **must re-verify after any `.aar` upgrade**.
 
 ---
 
@@ -111,6 +119,7 @@ In `OximeterSDKAdapter`'s constructor, the app uses **reflection** to override t
 | Start connection | `RecordActivity.connectToPulseOximeter()` → `ensureServiceAndConnect()` → inner `Connector` |
 | Disconnect / Stop | inner `Disconnector`, `RecordActivity.stopDisconnectExit(boolean)` |
 | Receive data/events from SDK | `RecordActivity.SmartCareHandler.handleMessage()` |
+| Packet counter gap diagnostics | `PacketStatsTracker.onPacketReceived()`, minute summaries → `FileLogger` |
 | Wrap vendor SDK | `device/OximeterSDKAdapter` (`connect`, `disconnect`, `startRecording`) |
 | Adapter contract | `device/IDeviceAdapter` |
 | Filter unexpected BLE events | `BluetoothEventInterceptor` |

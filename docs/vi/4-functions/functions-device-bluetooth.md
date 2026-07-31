@@ -105,6 +105,26 @@ cho qua (log "allowing").
 
 ---
 
+## PacketStatsTracker
+`app/src/main/java/com/smartcare/oximetry/sample/PacketStatsTracker.java`
+
+Singleton theo dõi packet nhận từ thiết bị và ghi gap BLE qua `KEY_DATA_COUNTER`. Dùng bởi `RecordActivity.packetStats`. Chỉ gọi trên main thread (không cần đồng bộ thêm).
+
+**Hằng (private):** `MINUTE_MS = 60_000`, `MAX_PLAUSIBLE_GAP = 1000` (gap lớn hơn coi là reset/wrap bộ đếm, không tính mất), `GAP_LOG_THROTTLE_MS = 2_000` (giới hạn spam log gap chi tiết).
+
+| Method | Mô tả |
+|---|---|
+| `getInstance()` (static synchronized) | Trả/tạo singleton (sống sót qua recreate activity). |
+| `start()` | Bắt đầu ticker tổng hợp mỗi phút (idempotent); log `TRACKER_STARTED`. |
+| `stop()` | Dừng ticker và log tổng (`TRACKER_STOPPED`). |
+| `onPacketReceived(int deviceCounter)` | Tăng bộ đếm nhận; nếu counter nhảy 1…`MAX_PLAUSIBLE_GAP` thì tính mất BLE và có thể log `BLE_PACKET_GAP` (throttle); counter lệch bất thường/ngược → `COUNTER_RESYNC` (không tính mất). Trả số packet vừa mất (cho khoảng trống waveform). |
+| `onConnectionReset(String reason)` | Xóa mốc bộ đếm thiết bị để packet đầu sau reconnect không bị tính gap khổng lồ; log `COUNTER_RESYNC_ON_RECONNECT`. |
+| `getTotalReceived()` / `getTotalLostBle()` | Tổng lifetime kể từ khi singleton tồn tại. |
+
+**Sự kiện log:** `MINUTE_SUMMARY` (received/lostBle/lossPct mỗi phút + totals; im lặng khi cửa sổ không có lưu lượng), `BLE_PACKET_GAP`, `COUNTER_RESYNC`, `COUNTER_RESYNC_ON_RECONNECT`. Tách biệt với drop hàng đợi CSV (`OximeterDataBuffer`).
+
+---
+
 ## BluetoothAutoConnector (legacy/không dùng)
 `app/src/main/java/com/smartcare/oximetry/sample/BluetoothAutoConnector.java`
 

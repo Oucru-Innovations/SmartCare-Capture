@@ -13,8 +13,9 @@ App được chia thành **5 tầng**, dòng dữ liệu đi từ thiết bị �
 flowchart TD
     subgraph DEV["Device Layer / Tầng thiết bị"]
         OX["SmartCare Oximeter<br/>(BLE hardware)"]
-        SCO["scolib-2.0.0.aar<br/>ConnectionManager (vendor SDK)"]
+        SCO["scolib-2.3.0.aar<br/>ConnectionManager (vendor SDK)"]
         ADP["OximeterSDKAdapter<br/>(implements IDeviceAdapter)"]
+        PST["PacketStatsTracker<br/>(device counter gaps)"]
         OX -->|BLE packets| SCO
         SCO -->|android.os.Message| ADP
     end
@@ -22,7 +23,7 @@ flowchart TD
     subgraph UI["UI Layer / Tầng giao diện"]
         RA["RecordActivity<br/>(SmartCareHandler)"]
         FMA["FileManagerActivity"]
-        POP["Popups<br/>(PatientInfo, ChunkConfig, Annotate)"]
+        POP["Popups<br/>(PatientInfo, ChunkConfig, Annotate, BugReport)"]
     end
 
     subgraph SVC["Service Layer / Tầng dịch vụ nền"]
@@ -44,6 +45,8 @@ flowchart TD
     end
 
     ADP -->|Message via Handler| RA
+    RA -->|onPacketReceived| PST
+    PST -->|minute summaries| LOG["FileLogger"]
     RA -->|addDataPoint| ODS
     ODS --> BUF
     BUF -->|ProcessedData mỗi 100 mẫu| WRT
@@ -55,6 +58,7 @@ flowchart TD
     IDX --> COORD
     COORD --> UP --> RC -->|HTTPS multipart| SRV
     FMA --> COORD
+    POP -->|bug-report logs| UP
 ```
 
 ---
@@ -63,8 +67,8 @@ flowchart TD
 
 | Tầng | File chính | Trách nhiệm |
 |---|---|---|
-| **Device / Thiết bị** | `device/OximeterSDKAdapter`, `device/IDeviceAdapter`, `device/OximeterDataPacket`, `device/OximeterDataListener` | Cô lập SDK của hãng (`scolib-2.0.0.aar`); dịch callback SDK thành dữ liệu chuẩn của app. |
-| **UI / Giao diện** | `RecordActivity`, `FileManagerActivity`, `PatientInfoPopup`, `ChunkFileConfigPopup`, `ShowAnnotate`, `AnnotationHistory` | Vẽ sóng PPG/HR/SpO₂/pin; nhập mã bệnh nhân; điều khiển start/stop; quản lý & upload file thủ công. |
+| **Device / Thiết bị** | `device/OximeterSDKAdapter`, `device/IDeviceAdapter`, `device/OximeterDataPacket`, `device/OximeterDataListener`, `PacketStatsTracker` | Cô lập SDK của hãng (`scolib-2.3.0.aar`); dịch callback SDK thành dữ liệu chuẩn của app; theo dõi gap bộ đếm packet thiết bị (chẩn đoán). |
+| **UI / Giao diện** | `RecordActivity`, `FileManagerActivity`, `PatientInfoPopup`, `ChunkFileConfigPopup`, `ShowAnnotate`, `AnnotationHistory`, `BugReportDialog` | Vẽ sóng PPG/HR/SpO₂/pin; nhập mã bệnh nhân; điều khiển start/stop; quản lý & upload file thủ công; upload log báo lỗi. |
 | **Service / Dịch vụ nền** | `OximeterDataService`, `OximeterDataBuffer`, `RecordingSessionPrefs`, `RecordingConstants` | Chạy nền liên tục (foreground + wake lock); gom dữ liệu theo lô; sống sót khi bị kill. |
 | **Data / Dữ liệu** | `OximeterDataWriterFunctions`, `OximeterDataFileIndex`, `AppRecordingRegistry`, `OximeterDataTreeAccess` | Ghi CSV qua MediaStore; cắt file theo thời gian; theo dõi trạng thái file (pending/uploaded). |
 | **Network / Mạng** | `PendingFileUploadCoordinator`, `FileUploader`, `network/RetrofitClient`, `network/ApiService`, `config/ApiConfig`, `config/NetworkConfig` | Upload CSV (multipart) có retry; chuyển file đã upload sang `Uploaded/`; cấu hình URL/token/timeout. |
@@ -83,7 +87,7 @@ Nhờ tách rời, app **vẫn ghi được khi UI bị ẩn** (màn hình tắt
 
 ### 3.2. Cô lập SDK của hãng sau một Adapter
 
-SDK của hãng (`ConnectionManager` trong `scolib-2.0.0.aar`) chỉ được chạm tới qua `OximeterSDKAdapter`
+SDK của hãng (`ConnectionManager` trong `scolib-2.3.0.aar`) chỉ được chạm tới qua `OximeterSDKAdapter`
 (implements `IDeviceAdapter`). Khi đổi phần cứng/SDK, **chỉ sửa một file adapter**, không đụng `RecordActivity`.
 Xem hướng dẫn 3 bước trong [flow-02-bluetooth-connection.md](flow-02-bluetooth-connection.md#5-thay-sdk-phần-cứng-mới--swapping-the-device-sdk).
 
@@ -99,7 +103,7 @@ Mỗi flow được mô tả trong một file riêng, kèm sequence/state diagra
 | 2 | **Bluetooth connection** | [flow-02-bluetooth-connection.md](flow-02-bluetooth-connection.md) | Quét, kết nối, tự reconnect, chặn sự kiện BLE lạ, đổi SDK phần cứng. |
 | 3 | **Data recording** | [flow-03-data-recording.md](flow-03-data-recording.md) | Một mẫu đi từ thiết bị → buffer (gom 100) → CSV; cắt file; chạy nền. |
 | 4 | **Annotation** | [flow-04-annotation.md](flow-04-annotation.md) | Tạo/sửa/xóa ghi chú, lưu JSON, upload. |
-| 5 | **File upload** | [flow-05-file-upload.md](flow-05-file-upload.md) | Hàng đợi upload, retry 3 lần, chuyển sang `Uploaded/`, lịch 17:00. |
+| 5 | **File upload** | [flow-05-file-upload.md](flow-05-file-upload.md) | Hàng đợi upload, retry 3 lần, chuyển sang `Uploaded/`, lịch 17:00, đường upload log báo lỗi. |
 | 6 | **File management** | [flow-06-file-management.md](flow-06-file-management.md) | Duyệt file pending/uploaded, upload thủ công, mở/xóa file, SAF fallback. |
 
 ---
@@ -111,9 +115,10 @@ Mỗi flow được mô tả trong một file riêng, kèm sequence/state diagra
 - **Foreground service + wake lock** → ghi tiếp khi màn hình tắt.
 - **`START_STICKY` + `RecordingSessionPrefs`** → hệ thống kill process thì service tự khởi động lại và **ghi tiếp** phiên cũ.
 - **Cắt CSV theo thời gian** → một sự cố chỉ hỏng một đoạn nhỏ, không hỏng toàn bộ phiên.
+- **BLE pause đóng CSV, không mở lại file rỗng** → `splitFileOnBlePause()` chốt đoạn hiện tại (≥ 60s) và **không** mở lại; CSV tiếp theo chỉ mở lười khi có packet đầu sau reconnect.
 - **`onTaskRemoved` giữ service sống** khi user vuốt app khỏi Recents (để BLE còn cơ hội reconnect).
 - **Crash handler** ghi log crash ra file trước khi app chết.
-- **Upload không bao giờ đụng file đang ghi** → tránh hỏng writer.
+- **Upload bỏ qua URI writer đang mở** → không đụng file đang ghi, tránh hỏng writer.
 
 ---
 

@@ -8,13 +8,14 @@
 
 ## 1. What is this app?
 
-**SmartCare Capture** is an **Android application** used in **clinical research** with the following tasks:
+**SmartCare Capture** is an **Android application** (**version 1.0.10**, versionCode **19**) used in **clinical research** with the following tasks:
 
 1. **Connect** to the **SmartCare finger pulse oximeter** via **Bluetooth (BLE)**.
 2. **Continuously collect** physiological signals: **SpO₂** (oxygen saturation), **heart rate (HR)**, **PPG waveform** (pleth), **perfusion index (PI)**, and the device's **battery level**.
 3. **Write** data to a **CSV file** on the device's local storage (via MediaStore, inside the `Download/OximeterData` directory).
 4. **Upload** CSV files to the research **server** (OUCRU or Nepal depending on the study).
 5. Allow staff to add **annotations** for events during measurement (e.g., coughing, movement, clinical notes).
+6. Allow staff to send a **bug report** — describe an issue and upload selected daily log files to the server.
 
 In short: **the app turns a Bluetooth oximeter into a long-term data collection device, preventing data loss, and automatically uploading data to the server.**
 
@@ -46,14 +47,15 @@ The entire architecture (which looks more complex than a typical app) exists to 
 ## 4. A typical session
 
 ```
-1. Open app  ──►  Mandatorily enter Patient/Research code
-2. Press Start  ──►  App scans & connects to the oximeter via BLE
+1. Open app  ->  Mandatorily enter Patient/Research code
+2. Press Start  ->  App scans & connects to the oximeter via BLE
 3. App displays real-time PPG wave + HR + SpO₂ + battery level
 4. Data is recorded in the background to a CSV file (even when the screen is off)
 5. (Optional) Add annotations when events occur
-6. When finished: press Stop  ──►  File is closed and pushed into the upload queue
-7. App automatically uploads to the server (with retries). Uploaded files are moved to the Uploaded/ folder
-8. Daily at 17:00: a background task automatically cleans up and uploads remaining files
+6. (Optional) Report a bug from the menu — select daily log file(s) and upload to the server
+7. When finished: press Stop  ->  File is closed and pushed into the upload queue
+8. App automatically uploads to the server (with retries). Uploaded files are moved to the Uploaded/ folder
+9. Daily at 17:00: a background task automatically cleans up and uploads remaining files
 ```
 
 ---
@@ -69,7 +71,8 @@ The entire architecture (which looks more complex than a typical app) exists to 
 | **Perfusion index (PI)** | Perfusion index, reflecting the strength of the pulse signal. |
 | **Research code / Patient code** | Identifier for the patient/recording session. **Mandatory** before starting a record. |
 | **Session** | A single continuous data collection run. Can last several hours and is **split** into multiple CSV files. |
-| **Segment / split** | A child CSV file. The app automatically **splits files** periodically (default is 6 hours) or at 17:00 to limit damage in case of errors. |
+| **Segment / split** | A child CSV file. The app automatically **splits files** periodically (default is 6 hours) or at 17:00 to limit damage in case of errors. On **BLE disconnect**, if the current segment is ≥60s the app **closes it without reopening**; a new file opens only on the **first sample after reconnect** (lazy open). Brief disconnects under 60s leave the segment open. |
+| **Bug report** | Staff feature (menu → Report): describe an issue, pick one or more **daily log files**, and upload them to the server for diagnostics. |
 | **Annotation** | Clinical event notes recorded during measurement, saved as JSON. |
 | **Foreground service** | An Android background service with a persistent notification to ensure recording is not interrupted. |
 | **Wake lock** | A mechanism keeping the CPU awake when the screen is off to maintain recording. |
@@ -83,8 +86,9 @@ The entire architecture (which looks more complex than a typical app) exists to 
 | Category | Selection |
 |---|---|
 | Platform | Android — **minSdk 29 (Android 10)**, **targetSdk 35 (Android 14)** |
+| App version | **1.0.10** (versionCode **19**) |
 | Language | Java |
-| Device SDK | `scolib-2.0.0.aar` (manufacturer's library, located at `app/libs/`) |
+| Device SDK | `scolib-2.3.0.aar` (manufacturer's library, located at `app/libs/`) |
 | Graphing | AndroidPlot `androidplot-core:0.6.1` |
 | Signal Processing | jDSP `0.2.0` (detrending) |
 | Network / upload | Retrofit `2.9.0` + OkHttp `4.9.0` |
@@ -163,6 +167,7 @@ Before using, check the Android version of the phone and grant sufficient permis
 - **Bluetooth** (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` on API 31+; legacy Bluetooth permissions on lower versions)
 - **Location** (mandatory for BLE scanning)
 - **Storage** (read files for manual upload on API 29–32)
+- **MANAGE_EXTERNAL_STORAGE** (All files access) — preferred on API 30+ for reliable access to `Download/OximeterData`; SAF folder picker is the fallback if not granted
 - **Notifications** (`POST_NOTIFICATIONS` on API 33+ — for the foreground service)
 - **Battery optimization exemption** (request to exclude from battery optimization for long-term background execution)
 

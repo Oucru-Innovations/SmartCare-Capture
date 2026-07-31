@@ -62,7 +62,7 @@
 
 Points to note during maintenance (consolidated from old TODOs):
 
-- **Large `RecordActivity` (~1900 lines)** — carries many responsibilities (BLE, UI, permissions, data). The SDK part has been separated into `OximeterSDKAdapter`; could be further refactored into a manager/controller.
+- **Large `RecordActivity` (~2600 lines)** — carries many responsibilities (BLE, UI, permissions, data). The SDK part has been separated into `OximeterSDKAdapter`; could be further refactored into a manager/controller. Related helpers now include `BugReportDialog` (bug-report UI + log upload) and `PacketStatsTracker` (packet-rate diagnostics).
 - **Static variables for vitals annotation** (`annotationHeartRate`, `annotationSpO2`) — easily cause stale values between sessions; should use state with lifecycles (ViewModel/SavedState).
 - **Scattered permissions** in `RecordActivity` — should be consolidated in one place based on API levels.
 - **UI updates on every data packet** — throttled to 500ms; consider batching more.

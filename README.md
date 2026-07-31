@@ -9,7 +9,7 @@ Tài liệu được tổ chức theo **4 tầng** (tổng quan → chi tiết).
 
 - **Tầng 1 — [Project Overview](docs/1-overview/PROJECT-OVERVIEW.md)** — App dùng để làm gì; bài toán, glossary, tech stack, cài đặt & cấu hình. **Đọc trước tiên / Start here.**
 - **Tầng 2 — [Architecture Flow](docs/2-architecture/ARCHITECTURE-OVERVIEW.md)** — Hệ thống hoạt động thế nào: kiến trúc 5 tầng + 6 flow chi tiết (startup, BLE, recording, annotation, upload, file management).
-- **Tầng 3 — [Module / Class Reference](docs/3-modules/MODULES-INDEX.md)** — "Chức năng X nằm ở file/class nào?" — bản đồ 35 class theo 4 module.
+- **Tầng 3 — [Module / Class Reference](docs/3-modules/MODULES-INDEX.md)** — "Chức năng X nằm ở file/class nào?" — bản đồ 38 class theo 4 module.
 - **Tầng 4 — [Function Documentation](docs/4-functions/)** — Chi tiết từng hàm; mã nguồn `.java` cũng đã được bổ sung Javadoc.
 
 ## ⚠️ Important Notice
@@ -26,7 +26,7 @@ Before using the application, please **check your device’s Android version** a
 ### Main Package: `com.smartcare.oximetry.sample`
 
 #### Core Activities
-- **`RecordActivity.java`** - Main activity for recording and displaying oximeter data
+- **`RecordActivity.java`** - Main activity for recording and displaying oximeter data (~2600 lines)
   - Manages Bluetooth connection to pulse oximeters
   - Displays real-time PPG waveforms using AndroidPlot
   - Shows heart rate, SpO₂, and battery status
@@ -57,9 +57,10 @@ Before using the application, please **check your device’s Android version** a
   - Uploads CSV files and annotation data
   - Manages upload progress and callbacks
 
-- **`FileLogger.java`** - Application logging system
-  - Logs app events to file for debugging
+- **`FileLogger.java`** - Application logging system with **daily file rotation**
+  - Writes one log file (or multiple parts) per calendar day under `{externalFilesDir}/Logs`
   - Provides different log levels (INFO, WARNING, ERROR)
+  - Supports bug-report selection/upload of daily log files
 
 #### UI Components
 - **`PatientInfoPopup.java`** - Patient information entry dialog
@@ -74,6 +75,9 @@ Before using the application, please **check your device’s Android version** a
   - Allows marking events during recording
   - Manages annotation history
 
+- **`BugReportDialog.java`** - Bug report dialog
+  - Lets staff describe an issue and upload selected daily log files to the server
+
 #### Annotations
 - **`AnnotationHistory.java`** - Displays annotation history
 - **`CodeHistoryAdapter.java`** - Adapter for annotation history list
@@ -81,7 +85,7 @@ Before using the application, please **check your device’s Android version** a
 - **`UploadAnnotationWorker.java`** - Background worker for uploading annotations
 
 #### Bluetooth
-- **`BluetoothAutoConnector.java`** - Automatic Bluetooth device discovery and connection
+- **`BluetoothAutoConnector.java`** - Legacy / unused; automatic Bluetooth discovery helper kept for reference (connection/reconnect logic lives in `RecordActivity`)
 
 ## Key Functionalities
 
@@ -116,6 +120,9 @@ Before using the application, please **check your device’s Android version** a
 - Battery optimization exemption requested
 - Handles service disconnection recovery
 
+### 7. Bug Report
+- Staff can report issues from the menu and upload selected daily log files
+
 ## Resource Files
 
 ### Layouts (`res/layout/`)
@@ -137,13 +144,14 @@ Before using the application, please **check your device’s Android version** a
 - Bluetooth (SCAN, CONNECT)
 - Location (for Bluetooth scanning)
 - Storage (for file operations)
+- MANAGE_EXTERNAL_STORAGE (All files access; preferred on API 30+)
 - Notifications (foreground service)
 - Battery optimization exemption
 
 ## Dependencies
 - AndroidPlot - Chart/graph library for waveform display
 - jDSP - Signal processing (detrending)
-- SmartCare Oximetry Library (`scolib-2.0.0.aar`) - Oximeter connection management
+- SmartCare Oximetry Library (`scolib-2.3.0.aar`) - Oximeter connection management
 
 ## Building the Project
 
@@ -151,5 +159,4 @@ Before using the application, please **check your device’s Android version** a
 2. Sync Gradle dependencies
 3. Connect an Android device or start an emulator
 4. Run the application
-
 

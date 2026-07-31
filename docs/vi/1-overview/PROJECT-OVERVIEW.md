@@ -9,7 +9,7 @@
 
 ## 1. App này là gì? / What is it?
 
-**SmartCare Capture** là một **ứng dụng Android** dùng trong **nghiên cứu lâm sàng**, có nhiệm vụ:
+**SmartCare Capture** là một **ứng dụng Android** (**phiên bản 1.0.10**, versionCode **19**) dùng trong **nghiên cứu lâm sàng**, có nhiệm vụ:
 
 1. **Kết nối** với máy đo oxy đầu ngón tay (**pulse oximeter**) **SmartCare** qua **Bluetooth (BLE)**.
 2. **Thu** liên tục các tín hiệu sinh lý: **SpO₂** (độ bão hòa oxy), **nhịp tim (HR)**, **dạng sóng PPG** (pleth),
@@ -17,6 +17,7 @@
 3. **Ghi** dữ liệu ra **file CSV** trên bộ nhớ máy (qua MediaStore, thư mục `Download/OximeterData`).
 4. **Upload** file CSV lên **server** nghiên cứu (OUCRU hoặc Nepal tùy study).
 5. Cho phép nhân viên **ghi chú (annotation)** các sự kiện trong lúc đo (vd: ho, cử động, ghi chú lâm sàng).
+6. Cho phép nhân viên **báo lỗi (bug report)** — mô tả sự cố và upload các file log theo ngày đã chọn lên server.
 
 Nói ngắn gọn: **app biến một chiếc oximeter Bluetooth thành một thiết bị thu dữ liệu lâu dài, chống mất dữ liệu, tự upload lên server.**
 
@@ -55,9 +56,10 @@ khi đọc các tầng sau: **"phức tạp ở đây là có chủ đích, đ�
 3. App hiển thị sóng PPG + HR + SpO₂ + pin theo thời gian thực
 4. Dữ liệu được ghi nền ra file CSV (kể cả khi tắt màn hình)
 5. (Tùy chọn) Thêm annotation khi có sự kiện
-6. Khi đủ thời gian: bấm Stop  ──►  file đóng lại và được đẩy vào hàng đợi upload
-7. App tự upload lên server (có retry). File đã upload chuyển sang thư mục Uploaded/
-8. Mỗi ngày 17:00: một tác vụ nền tự dọn & upload nốt phần còn tồn
+6. (Tùy chọn) Báo lỗi từ menu — chọn file log theo ngày và upload lên server
+7. Khi đủ thời gian: bấm Stop  ──►  file đóng lại và được đẩy vào hàng đợi upload
+8. App tự upload lên server (có retry). File đã upload chuyển sang thư mục Uploaded/
+9. Mỗi ngày 17:00: một tác vụ nền tự dọn & upload nốt phần còn tồn
 ```
 
 ---
@@ -73,7 +75,8 @@ khi đọc các tầng sau: **"phức tạp ở đây là có chủ đích, đ�
 | **Perfusion index (PI)** | Chỉ số tưới máu, phản ánh độ mạnh của tín hiệu mạch. |
 | **Research code / Patient code** | Mã định danh bệnh nhân/phiên đo. **Bắt buộc** nhập trước khi ghi. |
 | **Session (phiên ghi)** | Một lần thu dữ liệu liên tục. Có thể kéo dài nhiều giờ và được **cắt** thành nhiều file CSV. |
-| **Segment / split** | Một file CSV con. App tự **cắt file** theo chu kỳ (mặc định 6 giờ) hoặc lúc 17:00 để giới hạn thiệt hại nếu lỗi. |
+| **Segment / split** | Một file CSV con. App tự **cắt file** theo chu kỳ (mặc định 6 giờ) hoặc lúc 17:00 để giới hạn thiệt hại nếu lỗi. Khi **BLE ngắt**, nếu segment hiện tại ≥60 giây app **đóng segment mà không mở lại**; file mới chỉ mở khi có **mẫu dữ liệu đầu tiên sau khi kết nối lại** (lazy open). Ngắt ngắn dưới 60 giây giữ nguyên segment đang mở. |
+| **Bug report / Báo lỗi** | Tính năng cho nhân viên (menu → Report): mô tả sự cố, chọn một hoặc nhiều **file log theo ngày**, rồi upload lên server để chẩn đoán. |
 | **Annotation** | Ghi chú sự kiện lâm sàng trong lúc đo, lưu dạng JSON. |
 | **Foreground service** | Dịch vụ Android chạy nền có thông báo, để ghi không bị gián đoạn. |
 | **Wake lock** | Cơ chế giữ CPU thức khi màn hình tắt, để vẫn ghi được. |
@@ -87,8 +90,9 @@ khi đọc các tầng sau: **"phức tạp ở đây là có chủ đích, đ�
 | Hạng mục | Lựa chọn |
 |---|---|
 | Nền tảng | Android — **minSdk 29 (Android 10)**, **targetSdk 35 (Android 14)** |
+| Phiên bản app | **1.0.10** (versionCode **19**) |
 | Ngôn ngữ | Java |
-| SDK thiết bị | `scolib-2.0.0.aar` (thư viện của hãng, đặt ở `app/libs/`) |
+| SDK thiết bị | `scolib-2.3.0.aar` (thư viện của hãng, đặt ở `app/libs/`) |
 | Vẽ đồ thị | AndroidPlot `androidplot-core:0.6.1` |
 | Xử lý tín hiệu | jDSP `0.2.0` (detrending) |
 | Mạng / upload | Retrofit `2.9.0` + OkHttp `4.9.0` |
@@ -168,6 +172,7 @@ Trước khi dùng, hãy kiểm tra phiên bản Android của máy và cấp đ
 - **Bluetooth** (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` trên API 31+; quyền Bluetooth cũ trên bản thấp hơn)
 - **Location** (bắt buộc để quét BLE)
 - **Storage** (đọc file để upload thủ công trên API 29–32)
+- **MANAGE_EXTERNAL_STORAGE** (All files access) — ưu tiên trên API 30+ để truy cập ổn định `Download/OximeterData`; SAF folder picker là phương án dự phòng nếu chưa được cấp
 - **Notifications** (`POST_NOTIFICATIONS` trên API 33+ — cho foreground service)
 - **Battery optimization exemption** (xin miễn tối ưu pin để chạy nền lâu dài)
 

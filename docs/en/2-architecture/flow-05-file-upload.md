@@ -4,13 +4,17 @@
 
 ---
 
-## 1. Three upload paths
+## 1. Four upload paths
 
-All three paths route through **`PendingFileUploadCoordinator`** (up to **3 retries**, checks network state):
+Three CSV/annotation paths route through **`PendingFileUploadCoordinator`** (up to **3 retries**, checks network state):
 
 1. **Automatic post-close** — when a file is closed due to a split or session stop, the closed file is pushed to the queue (`RecordActivity` calls `uploadSessionFile`).
 2. **Manual** — from `FileManagerActivity`, the user selects files to manually re-upload.
 3. **Daily at 17:00** — `AnnotationUploadScheduler` schedules the WorkManager task `UploadAnnotationWorker` to run at **17:00** local time to upload remaining pending files (`uploadAllPending`).
+
+A fourth path **bypasses** the coordinator (no move-to-`Uploaded/` for logs):
+
+4. **Bug report** — `BugReportDialog` appends a `USER` / `BUG_REPORT` entry to selected daily log files, then calls `FileUploader.uploadFile` **sequentially** with a custom server name `SmartCareLog_{patient}_{dd.MM.yyyy.HH.mm.ss}_.txt` (date from the log day, time = upload moment; `_1` / `_2` on name collision). Logs stay in `{externalFilesDir}/Logs/`.
 
 ---
 
@@ -92,6 +96,7 @@ flowchart TD
 - `RetrofitClient` uses `ApiConfig.BASE_URL` + timeouts from `NetworkConfig` (connect 15s, read/write 20s).
 - Success is determined if `message` ∈ `{"File uploaded successfully!", "File uploaded successfully"}`.
 - `BASE_URL`/`API_TOKEN` are loaded from `local.properties` → `BuildConfig` → `ApiConfig` (see [Tier 1 Section 8](../1-overview/PROJECT-OVERVIEW.md#8-configuration--server)).
+- **`API_TOKEN` is in `BuildConfig` / `ApiConfig` but is not currently attached to the multipart upload** (token parameter on older endpoint variants is commented out in `FileUploader`).
 
 ---
 
@@ -101,6 +106,7 @@ flowchart TD
 |---|---|
 | Coordinate uploads + retries | `PendingFileUploadCoordinator.uploadSessionFile()`, `uploadAllPending()` |
 | Perform actual HTTP upload | `FileUploader.uploadFile()`, `moveFileToUploadedFolderFromUri()` |
+| Bug-report log upload | `BugReportDialog.show()` → `FileLogger.appendUserReportToFile()` → sequential `FileUploader.uploadFile(...)` |
 | Endpoint definition | `network/ApiService`, `network/RetrofitClient`, `network/UploadResponse` |
 | Check network state | `NetworkHelper.isNetworkAvailable()` |
 | Daily 17:00 schedule | `AnnotationUploadScheduler.scheduleDailyUpload()`, `UploadAnnotationWorker.doWork()` |

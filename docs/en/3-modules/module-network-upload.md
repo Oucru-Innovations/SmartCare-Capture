@@ -13,7 +13,7 @@
 | Retry/Batch/Safety | `PendingFileUploadCoordinator` | Manages 3-attempt limit, 10s delay, prevents uploading active files |
 | 17:00 Schedule | `AnnotationUploadScheduler` → `UploadAnnotationWorker` | Manages 17:00 maintenance task via WorkManager |
 | Network Gate | `NetworkHelper` | Checks network availability |
-| Log | `FileLogger` | Generates file logs for diagnostics |
+| Log | `FileLogger` | Daily `smartcare_app_log_dd.MM.yyyy.txt` parts (30MB, 15-day retention) |
 | Annotation UI (Local JSON) | `AnnotationHistory` | Local JSON annotations viewer |
 
 ---
@@ -37,7 +37,8 @@
 
 ## 6. `FileUploader`
 `app/.../FileUploader.java` — Performs multipart upload (from content-URI or filepath), validates the response message, calculates MD5 hashes, and moves successfully uploaded files to the `Uploaded/` folder. **Does not retry internally** (the caller is responsible for retries).
-- **Methods:** `setAppContext`, `uploadFile(activity, path, cb)` / `uploadFile(path, cb)`, `moveFileToUploadedFolder(FromUri)`, `calculateMD5`, `getBaseUrl`.
+- **Methods:** `setAppContext`, `uploadFile(activity, path, cb)` / `uploadFile(activity, path, uploadFileName, cb)` / `uploadFile(path, cb)`, `moveFileToUploadedFolder(FromUri)`, `calculateMD5`, `getBaseUrl`.
+- **Custom upload name:** overload `uploadFile(..., String uploadFileName, ...)` lets callers (notably [`BugReportDialog`](module-ui-recording.md#4-bugreportdialog)) send a different multipart filename (e.g. `SmartCareLog_{patient}_{timestamp}_.txt`) while reading the local path unchanged.
 - **Inner Interface:** `UploadCallback`. The owner parameter is hardcoded to `"Vyyy"`; success is determined when the server message is ∈ `{"File uploaded successfully!", "File uploaded successfully"}`.
 
 ## 7. `NetworkHelper`
@@ -55,8 +56,9 @@
 `app/.../AnnotationUploadScheduler.java` — `static scheduleDailyUpload(context)` schedules a self-chaining `OneTimeWorkRequest` named `smartcare_daily_17h_maintenance`, with a `NetworkType.CONNECTED` constraint, calculating the delay until the next **17:00** local time.
 
 ## 11. `FileLogger`
-`app/.../FileLogger.java` — Logs text events to `{externalFilesDir}/Logs/smartcare_app_log.txt` (rolling files at 10MB). Used extensively by the upload coordinator for structured event logs.
-- **Methods:** `getInstance`, `v/d/i/w/e`, `logEvent`, `logWarningEvent`, `logCrash`, `flushToDisk`, `getFilteredLogs`, `getLogFilePath`. **Enum:** `LogLevel`.
+`app/.../FileLogger.java` — Writes diagnostic text logs under `{externalFilesDir}/Logs/` as **daily** files `smartcare_app_log_dd.MM.yyyy.txt` (not a single `smartcare_app_log.txt`). When a day file exceeds **30MB**, additional parts `…_2.txt`, `…_3.txt`, … are created. Older files beyond **15-day** retention are pruned; legacy single-file names are left alone.
+- **Bug-report helpers** (consumed by [`BugReportDialog`](module-ui-recording.md#4-bugreportdialog)): `listAvailableLogFiles()`, `appendUserReportToFile(file, detail, context)`, `formatBugReportUploadTimestamp(file[, uploadTimeMs])`.
+- **Methods:** `getInstance`, `v/d/i/w/e`, `logEvent`, `logWarningEvent`, `logCrash`, `flushToDisk`, `getFilteredLogs`, `getLogFilePath`, plus the helpers above. **Enum:** `LogLevel`. **Inner:** `LogFileInfo`.
 
 ## 12. `AnnotationHistory`
 `app/.../AnnotationHistory.java` — UI class for viewing/editing/deleting annotations saved locally in `Download/OximeterData/Annotation/Annotations.json`.

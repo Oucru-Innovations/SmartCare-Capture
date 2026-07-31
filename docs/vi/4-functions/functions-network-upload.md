@@ -65,7 +65,8 @@
 | `setAppContext(Context)` (static) | Lưu app context cho upload nền/content-URI. |
 | `moveFileToUploadedFolder(File)` (static) | Đổi tên file vào `Uploaded/` cùng cấp + cập nhật mtime. |
 | `moveFileToUploadedFolderFromUri(Context, String uriPath)` (static) | Copy URI MediaStore → `Download/OximeterData/Uploaded`, xóa nguồn, gọi `AppRecordingRegistry.markUploaded()`. |
-| `uploadFile(Activity, String, UploadCallback)` (static) | Upload có Toast; xử lý `content://` qua temp cache. |
+| `uploadFile(Activity, String, UploadCallback)` (static) | Upload có Toast; xử lý `content://` qua temp cache. Ủy quyền overload với `uploadFileName=null` (dùng tên local/display). |
+| `uploadFile(Activity, String filePath, String uploadFileName, UploadCallback)` (static) | Như trên, nhưng tên multipart có thể khác tên trên đĩa (dùng cho upload báo lỗi). `uploadFileName` rỗng/`null` → fallback tên local/display. |
 | `uploadFile(String, UploadCallback)` (static) | Upload nền (không Toast); cần `setAppContext()` trước. |
 | `calculateMD5(Context, String)` (static) | MD5 hex cho content URI/path (tính nhưng không gửi trên API active). |
 | `getBaseUrl()` (static) | Trả `ApiConfig.BASE_URL`. |
@@ -125,23 +126,32 @@ thành công → `FileUploader.moveFileToUploadedFolderFromUri()`. Sự kiện l
 ## FileLogger
 `app/src/main/java/com/smartcare/oximetry/sample/FileLogger.java`
 
+Log bền vững dưới `{externalFilesDir}/Logs`: một file (hoặc nhiều part) mỗi ngày theo lịch tablet.
+
 | Method (static) | Mô tả |
 |---|---|
-| `getInstance(Context)` | Init singleton; trigger dọn log cũ. |
+| `getInstance(Context)` | Init singleton; chạy purge log ngày hết hạn. |
 | `writeLog(LogLevel, tag, message)` | Lõi append-to-file kèm timestamp. |
 | `v/d/i/w(String tag, String message)` | Ghi theo mức. |
 | `e(tag, message)` / `e(tag, message, Throwable)` | ERROR (kèm stack trace). |
 | `logEvent(category, event, detail)` / `(... , Context)` | Dòng INFO có cấu trúc (bản context kèm snapshot RAM). |
 | `logWarningEvent(...)` | Dòng WARN có cấu trúc. |
+| `appendUserReportToFile(File logFile, String detail, Context)` | Append dòng `USER`/`BUG_REPORT` vào một file log cụ thể (trước khi upload). |
 | `logCrash(Thread, Throwable)` | Khối crash nhiều dòng + `flushToDisk()`. |
-| `flushToDisk()` | Ép sync file (crash/critical). |
+| `flushToDisk()` | Ép sync file (crash/critical/bug-report). |
 | `isInitialized()` | Singleton/context sẵn sàng chưa. |
 | `getFilteredLogs(LogLevel min)` | Đọc log hiện tại lọc theo mức tối thiểu. |
+| `listAvailableLogFiles()` | Liệt kê file log theo format ngày dạng `LogFileInfo` (mới nhất trước); `displayName` có thể kèm `(today)` và kích thước KB. |
 | `getLogFilePath()` | Path file log đang dùng. |
-| `forceCleanup()` | Xóa log cũ thủ công (giữ archive mới nhất). |
+| `formatBugReportUploadTimestamp(File)` / `(File, long uploadTimeMs)` | Tạo `dd.MM.yyyy.HH.mm.ss` từ ngày trong tên file log + giờ phút giây lúc upload. |
+| `forceCleanup()` | Chạy purge retention (`purgeExpiredLogs`) — xóa log ngày cũ hơn `RETENTION_DAYS`. |
 
-**Enum:** `LogLevel { VERBOSE, DEBUG, INFO, WARN, ERROR }`. **Config:** `MAX_FILE_SIZE_BYTES=10MB`; archive
-`smartcare_app_log_{yyyyMMdd_HHmmss}.txt`.
+**Enum:** `LogLevel { VERBOSE, DEBUG, INFO, WARN, ERROR }`.
+**Inner:** `LogFileInfo` (`file`, `displayName`, `toString()` → displayName) — cho picker báo lỗi.
+**Config:** `MAX_FILE_SIZE_BYTES=30MB` mỗi part; `RETENTION_DAYS=15`; đặt tên theo ngày
+`smartcare_app_log_dd.MM.yyyy.txt`, thêm `_N` khi một ngày vượt 30MB (vd
+`smartcare_app_log_25.06.2025_2.txt`). File legacy không khớp pattern không bị đổi tên hay xóa. Day rollover / part
+rotation log `LOG_DAY_ROLLOVER` / `LOG_FILE_PART_ROTATION`.
 
 ---
 

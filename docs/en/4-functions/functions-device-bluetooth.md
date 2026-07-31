@@ -97,6 +97,26 @@
 
 ---
 
+## PacketStatsTracker
+`app/src/main/java/com/smartcare/oximetry/sample/PacketStatsTracker.java`
+
+Singleton that tracks packets received from the device and logs BLE gaps via `KEY_DATA_COUNTER`. Used by `RecordActivity.packetStats`. Main-thread only (no extra synchronization).
+
+**Constants (private):** `MINUTE_MS = 60_000`, `MAX_PLAUSIBLE_GAP = 1000` (larger gaps treated as counter reset/wrap, not loss), `GAP_LOG_THROTTLE_MS = 2_000` (limits detailed gap log spam).
+
+| Method | Description |
+|---|---|
+| `getInstance()` (static synchronized) | Returns/creates the singleton (survives activity recreation). |
+| `start()` | Starts per-minute summary ticker (idempotent); logs `TRACKER_STARTED`. |
+| `stop()` | Stops ticker and logs totals (`TRACKER_STOPPED`). |
+| `onPacketReceived(int deviceCounter)` | Increments receive counters; if counter jumps by 1…`MAX_PLAUSIBLE_GAP`, counts BLE loss and may log `BLE_PACKET_GAP` (throttled); implausible/backwards counter → `COUNTER_RESYNC` (not counted as loss). Returns counted missing packets (for waveform gaps). |
+| `onConnectionReset(String reason)` | Clears device-counter baseline so the first packet after reconnect is not treated as a huge gap; logs `COUNTER_RESYNC_ON_RECONNECT`. |
+| `getTotalReceived()` / `getTotalLostBle()` | Lifetime totals since process start of the singleton. |
+
+**Events logged:** `MINUTE_SUMMARY` (per-minute received/lostBle/lossPct + totals; silent when window has no traffic), `BLE_PACKET_GAP`, `COUNTER_RESYNC`, `COUNTER_RESYNC_ON_RECONNECT`. Distinct from CSV queue drops (`OximeterDataBuffer`).
+
+---
+
 ## BluetoothAutoConnector (legacy/unused)
 `app/src/main/java/com/smartcare/oximetry/sample/BluetoothAutoConnector.java`
 

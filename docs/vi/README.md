@@ -63,8 +63,9 @@
 
 Một số điểm cần lưu ý khi bảo trì (gộp từ TODO cũ):
 
-- **`RecordActivity` lớn (~1900 dòng)** — gánh nhiều trách nhiệm (BLE, UI, quyền, dữ liệu). Đã tách phần SDK ra
-  `OximeterSDKAdapter`; có thể tách tiếp thành manager/controller.
+- **`RecordActivity` lớn (~2600 dòng)** — gánh nhiều trách nhiệm (BLE, UI, quyền, dữ liệu). Đã tách phần SDK ra
+  `OximeterSDKAdapter`; có thể tách tiếp thành manager/controller. Các helper liên quan hiện có thêm
+  `BugReportDialog` (UI báo lỗi + upload log) và `PacketStatsTracker` (chẩn đoán tốc độ gói tin).
 - **Biến static cho annotation vitals** (`annotationHeartRate`, `annotationSpO2`) — dễ gây giá trị cũ giữa các phiên;
   nên dùng state có vòng đời (ViewModel/SavedState).
 - **Quyền rải rác** trong `RecordActivity` — nên gom về một chỗ theo từng mức API.

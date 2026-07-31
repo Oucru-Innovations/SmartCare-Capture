@@ -56,7 +56,7 @@ App **cắt phiên dài thành nhiều file CSV nhỏ** để giới hạn thi�
 | Lý do cắt | Method | Điều kiện |
 |---|---|---|
 | Đủ chu kỳ giờ | `writeProcessedDataPoint()` → `splitFileLocked()` | `now >= nextSplitTime` và đoạn ≥ `MIN_SEGMENT_MS` (60s). Chu kỳ mặc định **6 giờ** (`SPLIT_INTERVAL_HOURS`). |
-| BLE rớt | `splitFileOnBlePause()` | Đóng đoạn nếu ≥ 60s, mở đoạn `_unknown` mới. |
+| BLE rớt | `splitFileOnBlePause()` | Đóng/chốt đoạn hiện tại nếu thời lượng ≥ `MIN_SEGMENT_MS` (60s); **không** mở lại. CSV tiếp theo mở lười qua `ensureRecordingActive` / `startDataCollection` khi có packet đầu sau reconnect. |
 | Mốc 17:00 hằng ngày | `splitForDailyCutoff()` | Tác vụ nền phát broadcast `ACTION_SPLIT_RECORDING`. |
 | Bắt đầu phiên mới | `startNewRecording()` | Đóng đoạn cũ, dọn file `_unknown` mồ côi. |
 | Dừng | `endRecording()` | Đóng writer, đổi tên sang giờ end thật, trả về URI. |
@@ -80,8 +80,11 @@ stateDiagram-v2
 
 - **`OximeterDataService`** là foreground service (type `CONNECTED_DEVICE` trên API 29+) giữ **partial wake lock**
   (`"OximeterDataService::WakeLock"`) để CPU thức khi màn hình tắt.
-- **Tạo file lười (lazy):** service khi start **chưa mở file** — chỉ mở khi có mẫu đầu tiên (`addDataPoint`/`ensureRecordingActive`),
-  tránh sinh CSV rỗng chỉ có header khi chưa có thiết bị.
+- **Mở CSV lười (nhấn mạnh):** service khi bind/arm **chưa mở file**. Không có CSV cho tới khi **mẫu đầu tiên** tới
+  (`addDataPoint` → `ensureRecordingActive` / `startDataCollection`). Tránh CSV rỗng chỉ có header khi chưa có thiết bị,
+  và khớp hành vi BLE pause (chỉ đóng, không mở lại file rỗng).
+- **Ước lượng thời lượng (File Manager):** UI dùng `size / BYTES_PER_RECORDING_HOUR` với
+  `BYTES_PER_RECORDING_HOUR = 10 MiB` ≈ 1 giờ ghi (xem [flow-06](flow-06-file-management.md)).
 
 ---
 
@@ -107,7 +110,7 @@ stateDiagram-v2
 | Ghi CSV + cắt file | `OximeterDataWriterFunctions.writeProcessedDataPoint()`, `startNewRecording()`, `endRecording()`, `splitFileOnBlePause()` |
 | Chạy nền/wake lock | `OximeterDataService.onStartCommand()`, `acquireWakeLock()`, `onTaskRemoved()` |
 | Khôi phục sau kill | `OximeterDataService.restoreSessionAfterProcessRestart()`, `RecordingSessionPrefs` |
-| Hằng số (chu kỳ cắt, segment tối thiểu) | `RecordingConstants` |
+| Hằng số (chu kỳ cắt, segment tối thiểu, bytes/giờ) | `RecordingConstants` (`SPLIT_INTERVAL_HOURS`, `MIN_SEGMENT_MS`, `BYTES_PER_RECORDING_HOUR`) |
 
 ---
 

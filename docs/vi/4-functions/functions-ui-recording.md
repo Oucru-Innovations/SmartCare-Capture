@@ -16,8 +16,8 @@
 | `onResume()` | Resume chuẩn (hiện không có logic thêm). |
 | `onStop()` | Log dừng màn hình (khi không phải config change). |
 | `onDestroy()` | Dọn handler, BLE receiver, auto-reconnect, interceptor; unbind hoặc giữ service tùy `isRecordingSessionActive`. |
-| `onCreateOptionsMenu(Menu)` | Inflate `R.menu.main_menu`. |
-| `onOptionsItemSelected(MenuItem)` | Định tuyến tới popup thiết bị, FileManager, cấu hình chunk, lịch sử ghi chú. |
+| `onCreateOptionsMenu(Menu)` | Inflate `R.menu.main_menu` (gồm `action_bug_report`). |
+| `onOptionsItemSelected(MenuItem)` | Định tuyến tới popup thiết bị, FileManager, cấu hình chunk, lịch sử ghi chú, hoặc `BugReportDialog.show(this, formattedCode)` cho `action_bug_report`. |
 
 ### Quyền
 | Method | Mô tả |
@@ -59,6 +59,8 @@
 | `stopAutoReconnect()` (private) | Hủy runnable reconnect. |
 | `showConnectedDevicesPopup()` (private) | Dialog xem/đổi tên/xóa thiết bị đã lưu & quét/nối mới. |
 
+**Field:** `final PacketStatsTracker packetStats = PacketStatsTracker.getInstance()` — singleton theo dõi nhận/mất packet BLE; start khi ghi, cập nhật từ `MESSAGE_PACKET` qua `onPacketReceived`, reset khi mất kết nối / hết ghi, stop khi kết thúc phiên. Xem [functions-device-bluetooth.md](functions-device-bluetooth.md#packetstatstracker).
+
 ### Inner: `SmartCareHandler extends Handler`
 Weak-ref handler nhận message từ `ConnectionManager`/`OximeterSDKAdapter`.
 - `handleMessage(Message)` — phân nhánh theo `msg.what`. Danh sách message: xem
@@ -99,10 +101,29 @@ Weak-ref handler nhận message từ `ConnectionManager`/`OximeterSDKAdapter`.
 | `getOximeterDataPath()` | Trả path thư mục pending. |
 | `ensureStorageAccessThenLoad()` (private) | Load file + xin quyền đọc trên API 29–32. |
 | `openOximeterDataFolderPicker()` (private) | Fallback SAF `ACTION_OPEN_DOCUMENT_TREE`. |
+| `showManageAllFilesAccessRationaleDialog()` (private) | API 30+: giải thích quyền All-files access, rồi mở Settings hoặc từ chối → fallback SAF. |
+| `openManageAllFilesAccessSettings()` (private) | Mở `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` (fallback app details). |
 
 **Inner:** `CsvFileAdapter` (pending, nút upload → `PendingFileUploadCoordinator.uploadSessionFile`),
 `UploadedFileAdapter` (uploaded, nút xóa), `CsvFile` (`getName`, `getUploadPath`, `getContentUri`, `delete`,
-`getFormattedSize/Date`).
+`getFormattedSize/Date`, `getFormattedDuration` — ước lượng `HH:MM:SS` theo dung lượng qua
+`RecordingConstants.BYTES_PER_RECORDING_HOUR`, ~10 MiB ≈ 1 giờ).
+
+---
+
+## BugReportDialog
+`app/src/main/java/com/smartcare/oximetry/sample/BugReportDialog.java`
+
+Dialog chọn một hoặc nhiều file log theo ngày, ghi mô tả user, rồi upload tuần tự.
+
+| Method | Mô tả |
+|---|---|
+| `show(Activity, String patientCode)` (static) | Inflate `dialog_bug_report`, liệt kê `FileLogger.listAvailableLogFiles()`, pre-check mục có `"(today)"` trong `displayName` (không có thì mục đầu), validate mô tả/chọn/mạng, rồi gọi `sendReport`. |
+| `getSelectedLogFiles(ListView, List<LogFileInfo>)` (private) | Thu các hàng multi-choice đã tick. |
+| `sendReport(Activity, patientCode, description, selectedFiles, dialog)` (private) | Ghép chuỗi detail (patient, app version, server, số file, user report); `appendUserReportToFile` từng file; `flushToDisk`; resolve tên upload; bắt đầu upload tuần tự. |
+| `resolveBugReportUploadNames(patientCode, selectedFiles)` (private) | Tên server `SmartCareLog_{patient}_{dd.MM.yyyy.HH.mm.ss}_.txt` qua `FileLogger.formatBugReportUploadTimestamp`; thêm `_1`, `_2`, … chỉ khi trùng tên gốc. |
+| `uploadFilesSequentially(...)` (private) | Upload lần lượt qua `FileUploader.uploadFile(Activity, path, uploadFileName, callback)`; toast all-ok / partial / all-failed; bật lại dialog khi lỗi. |
+| `setDialogEnabled(AlertDialog, boolean)` (private) | Bật/tắt Send, ô mô tả và list log trong lúc upload. |
 
 ---
 

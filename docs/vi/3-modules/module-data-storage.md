@@ -3,11 +3,12 @@
 > **Tầng 3.** Module dữ liệu & lưu trữ: gom mẫu, ghi CSV, index file, khôi phục phiên, chẩn đoán RAM.
 > Chi tiết từng hàm xem [Tầng 4 — functions-data-storage.md](../4-functions/functions-data-storage.md).
 
-**8 class:** `OximeterDataBuffer`, `OximeterDataWriterFunctions`, `OximeterDataFileIndex`, `OximeterDataTreeAccess`,
-`RecordingSessionPrefs`, `RecordingConstants`, `AppRecordingRegistry`, `MemoryDiagnostics`.
+**9 class:** `OximeterDataBuffer`, `OximeterDataWriterFunctions`, `OximeterDataFileIndex`, `OximeterDataTreeAccess`,
+`RecordingSessionPrefs`, `RecordingConstants`, `AppRecordingRegistry`, `AnnotationStorage`, `MemoryDiagnostics`.
 
 **Luồng:** mẫu BLE → `OximeterDataBuffer` (gom 100) → `OximeterDataWriterFunctions` (CSV qua MediaStore) →
-`OximeterDataFileIndex`/`AppRecordingRegistry`/`OximeterDataTreeAccess` (liệt kê file); phiên được giữ qua `RecordingSessionPrefs`.
+`OximeterDataFileIndex`/`AppRecordingRegistry`/`OximeterDataTreeAccess` (liệt kê file); phiên được giữ qua `RecordingSessionPrefs`;
+I/O JSON ghi chú qua `AnnotationStorage`.
 
 ---
 
@@ -33,6 +34,8 @@ tùy chọn ghi file chunk StreamModel.
 - **Method chính:** `initialize`, `setSplitInterval`, `isRecordingActive`, `getCurrentOpenFileUriString`,
   `startNewRecording`, `writeProcessedDataPoint`, `splitFileOnBlePause`, `splitForDailyCutoff`, `endRecording`,
   `getOximeterDataPath`, `formatTimestamp`.
+- **`splitFileOnBlePause`:** đóng/finalize segment hiện tại **không mở lại** file mới (tránh file chỉ còn header;
+  segment kế mở khi packet đầu sau reconnect qua `ensureRecordingActive`). Segment ngắn hơn `MIN_SEGMENT_MS` giữ mở.
 - Mọi state writer được đồng bộ qua `SPLIT_LOCK`. Chi tiết split: [flow-03 mục 3](../2-architecture/flow-03-data-recording.md#3-cắt-file-split--file-splitting).
 
 ---
@@ -70,6 +73,7 @@ khôi phục sau khi bị kill hoặc service restart (`START_STICKY`) mà khôn
 | `SPLIT_INTERVAL_HOURS` | 6 | Số giờ giữa các lần cắt CSV tự động |
 | `SPLIT_INTERVAL_MS` | 21.600.000 | Như trên, đơn vị ms |
 | `MIN_SEGMENT_MS` | 60.000 (60s) | Độ dài tối thiểu một segment trước khi được cắt |
+| `BYTES_PER_RECORDING_HOUR` | 10 MiB (`10L * 1024 * 1024`) | Ước lượng kích thước→thời lượng (vd. File Manager) |
 > `BUFFER_SIZE` (100) nằm ở `OximeterDataBuffer`, không ở đây.
 
 ---
@@ -81,7 +85,16 @@ khôi phục sau khi bị kill hoặc service restart (`START_STICKY`) mà khôn
 
 ---
 
-## 8. `MemoryDiagnostics`
+## 8. `AnnotationStorage`
+`app/.../AnnotationStorage.java` — Helper MediaStore **package-private** cho ghi chú: master `Annotations.json` trong
+`Download/OximeterData/Annotation/` và export `Annotation_*.json` trong `Download/OximeterData/`. Dùng bởi
+`ShowAnnotate` / `AnnotationHistory` (tìm/tạo/đọc/ghi qua volume Downloads).
+**Hằng số:** `FOLDER_NAME`, `ANNOTATION_SUBDIR`, `MASTER_FILE_NAME`, `MASTER_PATH_MARKER`.
+**Method chính:** `masterRelativePath`, `exportRelativePath`, `findEntry`, cùng helper tạo/đọc/ghi master và export.
+
+---
+
+## 9. `MemoryDiagnostics`
 `app/.../MemoryDiagnostics.java` — Tạo snapshot RAM thiết bị + heap JVM cho `FileLogger`/log lifecycle.
 **Method:** `formatDeviceSummary`, `formatSnapshot`, `trimLevelName`.
 
@@ -97,6 +110,8 @@ flowchart LR
   Writer --> Registry[AppRecordingRegistry]
   Writer --> Index[OximeterDataFileIndex]
   Index --> Tree[OximeterDataTreeAccess SAF]
+  AnnotUI[ShowAnnotate / AnnotationHistory] --> AnnStore[AnnotationStorage]
+  AnnStore -->|JSON MediaStore| MS
   Activity[RecordActivity] --> Prefs[RecordingSessionPrefs]
   Prefs --> Service[OximeterDataService restore]
   Constants[RecordingConstants] --> Writer

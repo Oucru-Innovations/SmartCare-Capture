@@ -15,7 +15,7 @@
 | Retry/batch/an toàn | `PendingFileUploadCoordinator` (3 lần, 10s, bỏ file đang ghi) |
 | Lịch 17:00 | `AnnotationUploadScheduler` → `UploadAnnotationWorker` |
 | Cổng mạng | `NetworkHelper` |
-| Log | `FileLogger` |
+| Log | `FileLogger` | Log theo ngày `smartcare_app_log_dd.MM.yyyy.txt` (part 30MB, giữ 15 ngày) |
 | UI ghi chú (JSON cục bộ) | `AnnotationHistory` |
 
 ---
@@ -44,8 +44,12 @@ và `API_TOKEN` (từ `local.properties`, mặc định `YOUR_TOKEN_HERE`). Toke
 ## 6. `FileUploader`
 `app/.../FileUploader.java` — Thực hiện upload multipart (content-URI hoặc path), validate message, tính MD5, move file
 thành công sang `Uploaded/`. **Không tự retry** (caller lo retry).
-**Method:** `setAppContext`, `uploadFile(activity, path, cb)` / `uploadFile(path, cb)`, `moveFileToUploadedFolder(FromUri)`,
-`calculateMD5`, `getBaseUrl`. **Inner:** `UploadCallback`. Owner hardcode `"Vyyy"`; success khi message ∈
+**Method:** `setAppContext`, `uploadFile(activity, path, cb)` / `uploadFile(activity, path, uploadFileName, cb)` /
+`uploadFile(path, cb)`, `moveFileToUploadedFolder(FromUri)`, `calculateMD5`, `getBaseUrl`.
+**Tên upload tùy chỉnh:** overload `uploadFile(..., String uploadFileName, ...)` cho phép caller (đặc biệt
+[`BugReportDialog`](module-ui-recording.md#4-bugreportdialog)) gửi tên multipart khác (vd. `SmartCareLog_{patient}_{timestamp}_.txt`)
+trong khi vẫn đọc path cục bộ.
+**Inner:** `UploadCallback`. Owner hardcode `"Vyyy"`; success khi message ∈
 `{"File uploaded successfully!", "File uploaded successfully"}`.
 
 ## 7. `NetworkHelper`
@@ -68,10 +72,13 @@ rồi `uploadAllPending()`, rồi `scheduleDailyUpload()` cho ngày mai. `doWork
 tên `smartcare_daily_17h_maintenance`, ràng buộc `NetworkType.CONNECTED`, tính delay tới **17:00** local kế tiếp.
 
 ## 11. `FileLogger`
-`app/.../FileLogger.java` — Ghi log ra `{externalFilesDir}/Logs/smartcare_app_log.txt` (xoay vòng 10MB). Dùng bởi
-pipeline upload cho sự kiện có cấu trúc.
+`app/.../FileLogger.java` — Ghi log chẩn đoán vào `{externalFilesDir}/Logs/` dạng file **theo ngày**
+`smartcare_app_log_dd.MM.yyyy.txt` (**không** phải một file `smartcare_app_log.txt` duy nhất). Khi vượt **30MB**/ngày,
+tạo part `…_2.txt`, `…_3.txt`, …. Giữ tối đa **15 ngày**; file legacy đơn không bị đổi tên/xóa.
+**Helper báo lỗi** (dùng bởi [`BugReportDialog`](module-ui-recording.md#4-bugreportdialog)): `listAvailableLogFiles()`,
+`appendUserReportToFile(file, detail, context)`, `formatBugReportUploadTimestamp(file[, uploadTimeMs])`.
 **Method:** `getInstance`, `v/d/i/w/e`, `logEvent`, `logWarningEvent`, `logCrash`, `flushToDisk`, `getFilteredLogs`,
-`getLogFilePath`. **Enum:** `LogLevel`.
+`getLogFilePath`, cùng các helper trên. **Enum:** `LogLevel`. **Inner:** `LogFileInfo`.
 
 ## 12. `AnnotationHistory`
 `app/.../AnnotationHistory.java` — UI xem/sửa/xóa ghi chú lưu cục bộ tại `Download/OximeterData/Annotation/Annotations.json`.

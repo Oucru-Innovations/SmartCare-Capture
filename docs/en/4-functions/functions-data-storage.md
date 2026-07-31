@@ -39,7 +39,7 @@
 | `isRecordingActive()` | Returns true if there is an active writer and open URI. |
 | `getCurrentOpenFileUriString()` | Returns the URI of the currently open segment, or null. |
 | `getRecordingSegmentDurationMs()` | Duration in ms elapsed since `startTimestamp`. |
-| `splitFileOnBlePause()` | Splits file on BLE pause; returns completed display name or null. |
+| `splitFileOnBlePause()` | On BLE pause: closes/finalizes the current segment **without reopening** a new file (next segment opens lazily on first packet after reconnect). Skips if segment duration &lt; `MIN_AUTO_SPLIT_MS` / `MIN_SEGMENT_MS`. Returns completed display name or null. |
 | `getFileNameFromUri(Uri)` | Resolves display name from MediaStore for the given URI. |
 | `startNewRecording(long pkgTs, String patient, boolean chunk, int interval)` | Starts a session: closes previous segment, cleans orphan `_unknown` files, opens new `_unknown` CSV, and flushes headers immediately. |
 | `writeProcessedDataPoint(OximeterDataBuffer.ProcessedData)` | Writes 1 row; triggers time-based split if needed; buffers chunks optionally. |
@@ -107,9 +107,29 @@
 |---|---|---|
 | `SPLIT_INTERVAL_HOURS` | 6 | Interval (in hours) between automatic CSV splits |
 | `SPLIT_INTERVAL_MS` | 21,600,000 | Same as above, in milliseconds — used by writer |
-| `MIN_SEGMENT_MS` | 60,000 | Minimum segment duration before it can be split |
+| `MIN_SEGMENT_MS` | 60,000 | Minimum segment duration before BLE-pause close or auto split |
+| `BYTES_PER_RECORDING_HOUR` | 10,485,760 (10 MiB) | Approximate CSV size per hour of recording — used by FileManager duration estimate |
 
 This class only contains constants (private constructor, no methods).
+
+---
+
+## AnnotationStorage
+`app/src/main/java/com/smartcare/oximetry/sample/AnnotationStorage.java`
+
+Package-private MediaStore helpers for the master annotations JSON and export files under Downloads.
+
+**Constants:** `FOLDER_NAME="OximeterData"`, `ANNOTATION_SUBDIR="Annotation"`, `MASTER_FILE_NAME="Annotations.json"`, `MIME_JSON="application/json"`, `MASTER_PATH_MARKER="OximeterData/Annotation"`.
+
+| Method (all static, package-private) | Description |
+|---|---|
+| `masterRelativePath()` | `Download/OximeterData/Annotation/` — location of master `Annotations.json`. |
+| `exportRelativePath()` | `Download/OximeterData/` — location of export `Annotation_*.json` files. |
+| `findEntry(Context, String displayName, String pathContains)` | Finds a Downloads MediaStore entry by display name; optional `pathContains` filter on `RELATIVE_PATH`; returns content URI or null. |
+| `createEntry(Context, String displayName, String relativePath, String mime)` | Inserts a new Downloads MediaStore entry; returns content URI or null. |
+| `ensureMasterEntry(Context)` | Returns URI of master `Annotations.json`, creating it under `masterRelativePath()` if missing. |
+| `readText(Context, Uri)` | Reads full UTF-8 text of an entry; null if missing/unreadable. |
+| `writeText(Context, Uri, String content)` | Overwrites (truncate) UTF-8 text into an entry; returns true on success. |
 
 ---
 

@@ -3,13 +3,13 @@
 > **Mục tiêu:** Trả lời câu hỏi **"code của chức năng này nằm ở đâu?"**. Đây là **Tầng 3** — bản đồ từ chức năng →
 > module → class. Muốn biết chi tiết từng hàm, xem **Tầng 4** ([`docs/4-functions/`](../4-functions/)).
 
-Toàn bộ **35 class** (package `com.smartcare.oximetry.sample` và sub-package) được gom thành **4 module**:
+Toàn bộ **38 class** (package `com.smartcare.oximetry.sample` và sub-package) được gom thành **4 module**:
 
 | Module | File chi tiết | Số class | Vai trò |
 |---|---|---|---|
-| UI / Recording | [module-ui-recording.md](module-ui-recording.md) | 8 | Màn hình, popup, adapter, vòng đời app |
-| Device / Bluetooth | [module-device-bluetooth.md](module-device-bluetooth.md) | 7 | Kết nối BLE, bọc SDK, service nền |
-| Data / Storage | [module-data-storage.md](module-data-storage.md) | 8 | Gom mẫu, ghi CSV, index file, khôi phục phiên |
+| UI / Recording | [module-ui-recording.md](module-ui-recording.md) | 9 | Màn hình, popup, adapter, vòng đời app |
+| Device / Bluetooth | [module-device-bluetooth.md](module-device-bluetooth.md) | 8 | Kết nối BLE, bọc SDK, service nền |
+| Data / Storage | [module-data-storage.md](module-data-storage.md) | 9 | Gom mẫu, ghi CSV, index file, khôi phục phiên |
 | Network / Upload | [module-network-upload.md](module-network-upload.md) | 12 | Upload, retry, cấu hình, lịch 17:00, log |
 
 ---
@@ -22,21 +22,24 @@ Toàn bộ **35 class** (package `com.smartcare.oximetry.sample` và sub-package
 | Nhập/đổi mã bệnh nhân | `PatientInfoPopup`, `CodeHistoryAdapter` | UI/Recording |
 | Cấu hình cắt file (chunk) | `ChunkFileConfigPopup` | UI/Recording |
 | Ghi chú sự kiện | `ShowAnnotate`, `AnnotationHistory` | UI/Recording |
+| Báo lỗi (upload log theo ngày) | `BugReportDialog` | UI/Recording |
 | Màn hình quản lý file | `FileManagerActivity` | UI/Recording |
 | Khởi tạo app, crash handler, lịch | `SmartCareApplication` | UI/Recording |
 | Kết nối/ngắt oximeter, bọc SDK | `OximeterSDKAdapter`, `IDeviceAdapter` | Device/Bluetooth |
 | Chạy nền, wake lock, khôi phục sau kill | `OximeterDataService` | Device/Bluetooth |
 | Chặn sự kiện BLE thiết bị lạ | `BluetoothEventInterceptor` | Device/Bluetooth |
+| Thống kê mất packet BLE | `PacketStatsTracker` | Device/Bluetooth |
 | Gom 100 mẫu, tính median | `OximeterDataBuffer` | Data/Storage |
 | Ghi CSV, cắt file | `OximeterDataWriterFunctions` | Data/Storage |
 | Liệt kê file pending/uploaded | `OximeterDataFileIndex`, `AppRecordingRegistry` | Data/Storage |
+| I/O MediaStore cho annotation | `AnnotationStorage` | Data/Storage |
 | Lưu phiên để khôi phục | `RecordingSessionPrefs` | Data/Storage |
 | Hằng số (chu kỳ cắt…) | `RecordingConstants` | Data/Storage |
 | Upload + retry | `PendingFileUploadCoordinator`, `FileUploader` | Network/Upload |
 | Endpoint/HTTP | `network/ApiService`, `network/RetrofitClient` | Network/Upload |
 | Cấu hình URL/token/timeout | `config/ApiConfig`, `config/NetworkConfig` | Network/Upload |
 | Lịch upload 17:00 | `AnnotationUploadScheduler`, `UploadAnnotationWorker` | Network/Upload |
-| Ghi log ra file | `FileLogger` | Network/Upload |
+| Ghi log ra file (theo ngày) | `FileLogger` | Network/Upload |
 
 ---
 
@@ -61,6 +64,7 @@ app/src/main/java/com/smartcare/oximetry/sample/
 ├── FileManagerActivity.java         # UI/Recording — quản lý file
 ├── ShowAnnotate.java                # UI/Recording — ghi chú
 ├── AnnotationHistory.java           # UI/Recording — lịch sử ghi chú
+├── BugReportDialog.java             # UI/Recording — báo lỗi / upload log
 ├── PatientInfoPopup.java            # UI/Recording — nhập mã BN
 ├── ChunkFileConfigPopup.java        # UI/Recording — cấu hình cắt file
 ├── CodeHistoryAdapter.java          # UI/Recording — adapter mã gần đây
@@ -70,12 +74,14 @@ app/src/main/java/com/smartcare/oximetry/sample/
 ├── OximeterDataService.java         # Device/Bluetooth — service nền
 ├── BluetoothAutoConnector.java      # Device/Bluetooth — (legacy, không dùng)
 ├── BluetoothEventInterceptor.java   # Device/Bluetooth — chặn sự kiện lạ
+├── PacketStatsTracker.java          # Device/Bluetooth — thống kê mất packet BLE
 │
 ├── OximeterDataBuffer.java          # Data/Storage — gom 100 mẫu
 ├── OximeterDataWriterFunctions.java # Data/Storage — ghi CSV + split
 ├── OximeterDataFileIndex.java       # Data/Storage — index file
 ├── OximeterDataTreeAccess.java      # Data/Storage — SAF tree
 ├── AppRecordingRegistry.java        # Data/Storage — sổ đăng ký file
+├── AnnotationStorage.java           # Data/Storage — I/O MediaStore annotation
 ├── RecordingSessionPrefs.java       # Data/Storage — lưu phiên
 ├── RecordingConstants.java          # Data/Storage — hằng số
 ├── MemoryDiagnostics.java           # Data/Storage — chẩn đoán RAM
@@ -83,7 +89,7 @@ app/src/main/java/com/smartcare/oximetry/sample/
 ├── PendingFileUploadCoordinator.java# Network/Upload — điều phối + retry
 ├── FileUploader.java                # Network/Upload — upload HTTP
 ├── NetworkHelper.java               # Network/Upload — kiểm tra mạng
-├── FileLogger.java                  # Network/Upload — log ra file
+├── FileLogger.java                  # Network/Upload — log theo ngày
 ├── AnnotationUploadScheduler.java   # Network/Upload — lịch 17:00
 └── UploadAnnotationWorker.java      # Network/Upload — worker 17:00
 ```

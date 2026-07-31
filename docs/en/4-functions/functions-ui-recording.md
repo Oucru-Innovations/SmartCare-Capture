@@ -15,8 +15,8 @@
 | `onResume()` | Standard resume lifecycle event (currently empty). |
 | `onStop()` | Logs screen stop (excluding configuration changes). |
 | `onDestroy()` | Cleans up handler, BLE receivers, auto-reconnect schedules, and interceptors; unbinds or retains service depending on `isRecordingSessionActive`. |
-| `onCreateOptionsMenu(Menu)` | Inflates `R.menu.main_menu`. |
-| `onOptionsItemSelected(MenuItem)` | Routes to device popup, FileManager, chunk configuration, or annotation history. |
+| `onCreateOptionsMenu(Menu)` | Inflates `R.menu.main_menu` (includes `action_bug_report`). |
+| `onOptionsItemSelected(MenuItem)` | Routes to device popup, FileManager, chunk configuration, annotation history, or `BugReportDialog.show(this, formattedCode)` for `action_bug_report`. |
 
 ### Permissions
 | Method | Description |
@@ -58,6 +58,8 @@
 | `stopAutoReconnect()` (private) | Cancels the reconnection runnable. |
 | `showConnectedDevicesPopup()` (private) | Dialog to view/rename/delete saved devices & scan/connect new ones. |
 
+**Field:** `final PacketStatsTracker packetStats = PacketStatsTracker.getInstance()` — singleton tracker for BLE packet receive/loss stats; started with recording, fed from `MESSAGE_PACKET` via `onPacketReceived`, reset on connection loss / recording end, stopped when the session ends. See [functions-device-bluetooth.md](functions-device-bluetooth.md#packetstatstracker).
+
 ### Inner Class: `SmartCareHandler extends Handler`
 Weak-ref handler receiving messages from `ConnectionManager`/`OximeterSDKAdapter`.
 - `handleMessage(Message)` — dispatches based on `msg.what`. List of messages: see [flow-02 section 3](../2-architecture/flow-02-bluetooth-connection.md#3-sdk-messages).
@@ -97,8 +99,26 @@ Weak-ref handler receiving messages from `ConnectionManager`/`OximeterSDKAdapter
 | `getOximeterDataPath()` | Returns directory path of pending files. |
 | `ensureStorageAccessThenLoad()` (private) | Loads files + requests storage permission on API 29–32. |
 | `openOximeterDataFolderPicker()` (private) | SAF tree fallback picker (`ACTION_OPEN_DOCUMENT_TREE`). |
+| `showManageAllFilesAccessRationaleDialog()` (private) | API 30+: explains All-files access, then opens Settings or declines to SAF fallback. |
+| `openManageAllFilesAccessSettings()` (private) | Opens `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` (falls back to app details). |
 
-**Inner Classes:** `CsvFileAdapter` (pending list, upload button → `PendingFileUploadCoordinator.uploadSessionFile`), `UploadedFileAdapter` (uploaded list, delete button), `CsvFile` (wrapper around `FileEntry`: `getName`, `getUploadPath`, `getContentUri`, `delete`, `getFormattedSize/Date`).
+**Inner Classes:** `CsvFileAdapter` (pending list, upload button → `PendingFileUploadCoordinator.uploadSessionFile`), `UploadedFileAdapter` (uploaded list, delete button), `CsvFile` (wrapper around `FileEntry`: `getName`, `getUploadPath`, `getContentUri`, `delete`, `getFormattedSize/Date`, `getFormattedDuration` — estimates `HH:MM:SS` from size via `RecordingConstants.BYTES_PER_RECORDING_HOUR`, ~10 MiB ≈ 1 hour).
+
+---
+
+## BugReportDialog
+`app/src/main/java/com/smartcare/oximetry/sample/BugReportDialog.java`
+
+Dialog to select one or more daily log files, append a user description, then upload them sequentially.
+
+| Method | Description |
+|---|---|
+| `show(Activity, String patientCode)` (static) | Inflates `dialog_bug_report`, lists `FileLogger.listAvailableLogFiles()`, pre-checks items whose `displayName` contains `"(today)"` (else first item), validates description/selection/network, then calls `sendReport`. |
+| `getSelectedLogFiles(ListView, List<LogFileInfo>)` (private) | Collects checked multi-choice rows. |
+| `sendReport(Activity, patientCode, description, selectedFiles, dialog)` (private) | Builds detail string (patient, app version, server, file count, user report); `appendUserReportToFile` on each selected file; `flushToDisk`; resolves upload names; starts sequential upload. |
+| `resolveBugReportUploadNames(patientCode, selectedFiles)` (private) | Server name `SmartCareLog_{patient}_{dd.MM.yyyy.HH.mm.ss}_.txt` via `FileLogger.formatBugReportUploadTimestamp`; adds `_1`, `_2`, … only when base names collide. |
+| `uploadFilesSequentially(...)` (private) | Uploads one-by-one via `FileUploader.uploadFile(Activity, path, uploadFileName, callback)`; toast for all-ok / partial / all-failed; re-enables dialog on failure. |
+| `setDialogEnabled(AlertDialog, boolean)` (private) | Enables/disables Send, description field, and log list during upload. |
 
 ---
 

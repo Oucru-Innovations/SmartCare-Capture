@@ -9,6 +9,9 @@
 - Trong lúc ghi, user mở menu **Add Note** (`ShowAnnotate`) để nhập ghi chú có cấu trúc
   (ngày, PPG/ECG, trạng thái thu, lý do…).
 - Mỗi ghi chú được lưu vào **file JSON tổng** cục bộ và **một file JSON riêng** để upload, kèm HR/SpO₂ hiện thời.
+- **`AnnotationStorage`** là helper MediaStore cho file master tại
+  `Download/OximeterData/Annotation/Annotations.json` và các file export `Annotation_*.json` dưới `Download/OximeterData/`.
+- Master giữ tối đa **5 ghi chú/bệnh nhân** (xóa ghi chú cũ nhất khi vượt).
 - Có màn hình **lịch sử ghi chú** (`AnnotationHistory`) để xem/sửa/xóa theo mã bệnh nhân.
 
 > Lưu ý đặt tên: dù có tên "annotation", **`AnnotationHistory` chỉ thao tác JSON cục bộ**, không phải tầng upload HTTP.
@@ -23,7 +26,8 @@ sequenceDiagram
     participant U as User
     participant RA as RecordActivity
     participant SA as ShowAnnotate
-    participant JSON as Annotations.json (cục bộ)
+    participant STOR as AnnotationStorage
+    participant JSON as Annotations.json (master)
     participant EXP as Annotation_{code}_{ts}_.json
     participant UP as FileUploader
 
@@ -31,12 +35,15 @@ sequenceDiagram
     RA->>SA: showAnnotateMenu(anchor)
     U->>SA: nhập nội dung + xác nhận
     SA->>SA: handleAnnotation() (validate, kèm HR/SpO₂)
-    SA->>JSON: lưu vào JSON tổng (giới hạn 5 note/bệnh nhân)
-    SA->>EXP: ghi file JSON riêng để upload
+    SA->>STOR: ensureMasterEntry / writeText (tối đa 5 note/BN; xóa cũ nhất)
+    STOR->>JSON: lưu JSON tổng
+    SA->>STOR: createEntry + writeText (export)
+    STOR->>EXP: ghi file JSON riêng để upload
     SA->>UP: uploadFile(...) đẩy lên server
     U->>RA: xem lịch sử
     RA->>SA: showAnnotationHistory()
-    SA->>JSON: đọc & hiển thị (sửa/xóa)
+    SA->>STOR: readText(master)
+    STOR->>JSON: đọc & hiển thị (sửa/xóa)
 ```
 ![alt text](flow04-annotation.png)
 ---
@@ -45,13 +52,18 @@ sequenceDiagram
 
 1. **Mở menu:** `RecordActivity` (menu Annotation) → `ShowAnnotate.showAnnotateMenu(anchorView)`.
    Dialog có validate và các trường lý do hiện theo điều kiện.
-2. **Lưu:** `handleAnnotation()` (private) nạp/ghi JSON tổng, **giới hạn 5 ghi chú/bệnh nhân**, đính kèm
-   `annotationHeartRate`/`annotationSpO2` mới nhất (giá trị vitals tại thời điểm ghi chú).
-3. **Xuất để upload:** ghi `Annotation_{code}_{timestamp}_.json` dưới `Download/OximeterData`, rồi upload qua `FileUploader`.
+2. **Lưu:** `handleAnnotation()` (private) nạp/ghi JSON tổng qua **`AnnotationStorage`**, **giới hạn 5 ghi chú/bệnh nhân**
+   (xóa ghi chú cũ nhất khi vượt), đính kèm `annotationHeartRate`/`annotationSpO2` mới nhất
+   (giá trị vitals tại thời điểm ghi chú).
+3. **Xuất để upload:** `AnnotationStorage.createEntry` ghi `Annotation_{code}_{timestamp}_.json` dưới
+   `Download/OximeterData`, rồi upload qua `FileUploader`.
 4. **Xem lịch sử:** `AnnotationHistory.showAnnotationHistory(context, patientCode)` hiện bảng theo mã BN, mới nhất trước;
    chạm dòng → sửa/xóa.
 
 **Model `AnnotationEntry`:** `timestamp`, `patientCode`, `note`, `heartRate`, `spO2`.
+
+**`AnnotationStorage`:** helper MediaStore — master tại `Download/OximeterData/Annotation/Annotations.json`;
+export tại `Download/OximeterData/Annotation_*.json`.
 
 ---
 
@@ -61,6 +73,7 @@ sequenceDiagram
 |---|---|
 | Hiện dialog thêm ghi chú | `ShowAnnotate.showAnnotateMenu(View)` |
 | Lưu/validate ghi chú | `ShowAnnotate.handleAnnotation()` (private) |
+| Đọc/ghi MediaStore (master + export) | `AnnotationStorage.ensureMasterEntry()`, `createEntry()`, `readText()`, `writeText()` |
 | Sửa/xóa ghi chú | `ShowAnnotate.updateAnnotation()/deleteAnnotation()`; `AnnotationHistory` |
 | Xem lịch sử | `AnnotationHistory.showAnnotationHistory()` |
 | Vitals dùng cho ghi chú | `RecordActivity.annotationHeartRate`, `annotationSpO2` |

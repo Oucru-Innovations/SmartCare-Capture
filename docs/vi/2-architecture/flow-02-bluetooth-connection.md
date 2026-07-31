@@ -7,11 +7,13 @@
 
 ## 1. Tóm tắt / Summary
 
-- App kết nối qua **SDK của hãng** (`ConnectionManager` trong `scolib-2.0.0.aar`), được bọc bởi **`OximeterSDKAdapter`**.
+- App kết nối qua **SDK của hãng** (`ConnectionManager` trong `scolib-2.3.0.aar`), được bọc bởi **`OximeterSDKAdapter`**.
 - SDK trả sự kiện/dữ liệu về app dưới dạng **`android.os.Message`** gửi qua **`Handler`** (`RecordActivity.SmartCareHandler`) —
   **không** dùng interface `OximeterDataListener` (lớp đó còn trong repo nhưng đã bị thay thế).
 - App có **tự quét nền** và **tự reconnect**, đồng thời **chặn các sự kiện BLE của thiết bị lạ** bằng
   `BluetoothEventInterceptor`.
+- **`PacketStatsTracker`** (trên `MESSAGE_PACKET`) theo dõi gap `KEY_DATA_COUNTER` của thiết bị, ghi tổng hợp mỗi phút
+  vào `FileLogger`, và bỏ qua gap không hợp lý trên `MAX_PLAUSIBLE_GAP = 1000`.
 
 ---
 
@@ -35,12 +37,14 @@ sequenceDiagram
     SDK-->>H: MESSAGE_RECORDING_STARTED
     CN->>ADP: startRecording()
     loop Mỗi gói dữ liệu
-        SDK-->>H: MESSAGE_PACKET (Bundle: pleth, HR, SpO₂, pin, ADC, PI)
+        SDK-->>H: MESSAGE_PACKET (Bundle: pleth, HR, SpO₂, pin, ADC, PI, counter)
         H->>RA: cập nhật đồ thị + nhãn (throttle 500ms)
+        H->>RA: PacketStatsTracker.onPacketReceived(counter)
         H->>RA: addDataPoint(...) → OximeterDataService
     end
     SDK-->>H: MESSAGE_CONNECTION_LOST (khi rớt)
     H->>RA: splitCsvOnBlePause() + scheduleAutoReconnect()
+    Note over RA: splitFileOnBlePause đóng đoạn nếu ≥ 60s;<br/>KHÔNG mở lại — CSV tiếp theo mở lười khi có packet đầu
 ```
 
 ![alt text](flow02-bluetooth-connection.png)
@@ -53,7 +57,7 @@ sequenceDiagram
 
 | Message | App làm gì |
 |---|---|
-| `MESSAGE_PACKET` | Bóc pleth/HR/SpO₂/pin/ADC/PI; vẽ đồ thị (buffer 500 mẫu); cập nhật nhãn (throttle 500ms); ghi qua service. |
+| `MESSAGE_PACKET` | Bóc pleth/HR/SpO₂/pin/ADC/PI; vẽ đồ thị (buffer 500 mẫu); cập nhật nhãn (throttle 500ms); ghi qua service; đẩy `KEY_DATA_COUNTER` vào `PacketStatsTracker`. |
 | `MESSAGE_RECORDING_STARTED` | Toast model/giờ/sample rate; bật nút Stop; ngừng quét. |
 | `MESSAGE_RECORDING_ENDED` | Toast; cắt CSV; reset nút về Start; quét lại. |
 | `MESSAGE_CONNECTION_LOST` | Toast; cắt CSV; nếu phiên còn active → `stopDisconnectExit(false)` (chỉ ngắt BLE); đánh dấu disconnected. |
@@ -69,7 +73,14 @@ sequenceDiagram
 ### Tự reconnect
 - `scheduleAutoReconnect(mac, delayMs)` — vòng lặp thử lại: **lần đầu sau 30s**, sau đó **mỗi 3 phút**.
 - `startBluetoothBackgroundScan()` — quét nền **mỗi 5s** (chỉ bật sau khi đã nhập mã BN).
-- Khi BLE rớt giữa phiên: `splitCsvOnBlePause()` đóng đoạn CSV hiện tại, rồi reconnect; phiên 24h **vẫn tiếp tục**.
+- Khi BLE rớt giữa phiên: `splitCsvOnBlePause()` → `splitFileOnBlePause()` **đóng/chốt** đoạn CSV hiện tại nếu
+  thời lượng ≥ `MIN_SEGMENT_MS` (60s); **không** mở lại file mới. CSV tiếp theo chỉ mở **lười** qua
+  `ensureRecordingActive` / `startDataCollection` khi có packet đầu sau reconnect. Phiên 24h **vẫn tiếp tục**.
+
+### PacketStatsTracker (chẩn đoán thiết bị/UI)
+- Mỗi `MESSAGE_PACKET`, `PacketStatsTracker.onPacketReceived(deviceCounter)` kiểm tra gap của `KEY_DATA_COUNTER` thiết bị.
+- Gap hợp lý (≤ `MAX_PLAUSIBLE_GAP = 1000`) được tính là packet mất; gap lớn hơn coi là reset/wrap bộ đếm (log resync, không tính mất).
+- Ghi **tổng hợp mỗi phút** vào `FileLogger` khi tracker đang chạy.
 
 ### Chặn sự kiện BLE của thiết bị lạ
 - `BluetoothEventInterceptor` là `BroadcastReceiver` ưu tiên cao (`SYSTEM_HIGH_PRIORITY`), bắt
@@ -108,7 +119,7 @@ handler.sendMessage(msg); // dispatch tới RecordActivity y như cũ
 ### Workaround đáng chú ý: reflection bỏ lọc tên thiết bị
 Trong constructor `OximeterSDKAdapter`, app dùng **reflection** ghi đè mảng tên thiết bị hardcoded của SDK
 (class obfuscated `com.smartcare.oximetry.library.a`, field `d` kiểu `String[]`), set `names[0] = ""` để **khớp mọi thiết bị**
-(hỗ trợ model mới như FC0392). Đây là *workaround phụ thuộc nội bộ SDK* — **kiểm tra lại khi nâng cấp `.aar`**.
+(hỗ trợ model mới như FC0392). Đây là *workaround phụ thuộc nội bộ SDK* — **phải kiểm tra lại sau mỗi lần nâng cấp `.aar`**.
 
 ---
 
@@ -119,6 +130,7 @@ Trong constructor `OximeterSDKAdapter`, app dùng **reflection** ghi đè mảng
 | Bắt đầu kết nối | `RecordActivity.connectToPulseOximeter()` → `ensureServiceAndConnect()` → inner `Connector` |
 | Ngắt kết nối / dừng | inner `Disconnector`, `RecordActivity.stopDisconnectExit(boolean)` |
 | Nhận dữ liệu/sự kiện SDK | `RecordActivity.SmartCareHandler.handleMessage()` |
+| Chẩn đoán gap bộ đếm packet | `PacketStatsTracker.onPacketReceived()`, tổng hợp phút → `FileLogger` |
 | Bọc SDK của hãng | `device/OximeterSDKAdapter` (`connect`, `disconnect`, `startRecording`) |
 | Hợp đồng adapter | `device/IDeviceAdapter` |
 | Chặn sự kiện BLE lạ | `BluetoothEventInterceptor` |
