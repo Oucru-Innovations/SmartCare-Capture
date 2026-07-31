@@ -69,7 +69,7 @@
 | `startDataCollection(long, String, boolean, int)` | Arms session + opens CSV for the first time when writer is inactive. |
 | `ensureRecordingActive(long, String, boolean, int)` | Reopens writer after BLE pause/recovery; returns true if writer is active. |
 | `addDataPoint(double spo2, int spo2Status, long redAdc, double battery, int hr, long irAdc, double pi, int counter, String mac, long pkgRecv, int pleth, long ts)` | Pushes sample to buffer when `isRunning`; logs drops with a throttle (once every 10s). |
-| `flushBufferedData()` | Flushes batch < 100 samples before split/close. |
+| `flushBufferedData()` | Flushes batch with fewer than 100 samples before split/close. |
 | `stopDataCollection()` | Completes: flush, `endRecording()`, releases wake lock, clears buffer; idempotent via `recordingFinalized`. |
 | `shutdownRecordingAsync(Runnable)` | Stops on IO thread, then detaches foreground + calls `stopSelf()` on main thread. |
 | `getCompletedRecordFilePath()` | Returns most recent completed file path (`endRecordFilePath`) or `null`. |
@@ -88,7 +88,7 @@
 
 | Method | Description |
 |---|---|
-| `BluetoothEventInterceptor(Context, Queue<String> macQueue)` | Registers receiver with `SYSTEM_HIGH_PRIORITY`; restores `connectedMacAddress` from prefs. |
+| `BluetoothEventInterceptor(Context, Queue&lt;String&gt; macQueue)` | Registers receiver with `SYSTEM_HIGH_PRIORITY`; restores `connectedMacAddress` from prefs. |
 | `setConnectedMacAddress(String)` | Updates MAC "our device" (in-memory + persisted). |
 | `getConnectedMacAddress()` | Returns monitored MAC. |
 | `cleanup()` | Unregisters receiver (called on activity destroy). |
@@ -122,7 +122,7 @@ Singleton that tracks packets received from the device and logs BLE gaps via `KE
 
 | Method | Description |
 |---|---|
-| `BluetoothAutoConnector(Context, Queue<String>, AutoConnectCallback)` | Registers ACL receiver, loads blocked MAC list, calls `initialize()`. |
+| `BluetoothAutoConnector(Context, Queue&lt;String&gt;, AutoConnectCallback)` | Registers ACL receiver, loads blocked MAC list, calls `initialize()`. |
 | `initialize()` | Resets state, clears blocked MACs, starts auto-connect scan loop. |
 | `manualDisconnect(String)` | Blocks MAC, closes socket, pauses reconnect 3s, restarts scanning. |
 | `manualConnect(String)` | Unblocks MAC, stops scanning, sets MAC, calls `callback.connectToDevice`. |

@@ -114,7 +114,7 @@ Dialog to select one or more daily log files, append a user description, then up
 | Method | Description |
 |---|---|
 | `show(Activity, String patientCode)` (static) | Inflates `dialog_bug_report`, lists `FileLogger.listAvailableLogFiles()`, pre-checks items whose `displayName` contains `"(today)"` (else first item), validates description/selection/network, then calls `sendReport`. |
-| `getSelectedLogFiles(ListView, List<LogFileInfo>)` (private) | Collects checked multi-choice rows. |
+| `getSelectedLogFiles(ListView, List&lt;LogFileInfo&gt;)` (private) | Collects checked multi-choice rows. |
 | `sendReport(Activity, patientCode, description, selectedFiles, dialog)` (private) | Builds detail string (patient, app version, server, file count, user report); `appendUserReportToFile` on each selected file; `flushToDisk`; resolves upload names; starts sequential upload. |
 | `resolveBugReportUploadNames(patientCode, selectedFiles)` (private) | Server name `SmartCareLog_{patient}_{dd.MM.yyyy.HH.mm.ss}_.txt` via `FileLogger.formatBugReportUploadTimestamp`; adds `_1`, `_2`, … only when base names collide. |
 | `uploadFilesSequentially(...)` (private) | Uploads one-by-one via `FileUploader.uploadFile(Activity, path, uploadFileName, callback)`; toast for all-ok / partial / all-failed; re-enables dialog on failure. |
@@ -174,10 +174,10 @@ Dialog to select one or more daily log files, append a user description, then up
 
 | Method | Description |
 |---|---|
-| `CodeHistoryAdapter(List<String>, OnCodeClickListener, OnCodeDeleteListener)` | Binds history entries + callbacks. |
+| `CodeHistoryAdapter(List&lt;String&gt;, OnCodeClickListener, OnCodeDeleteListener)` | Binds history entries + callbacks. |
 | `onCreateViewHolder/onBindViewHolder` | Inflates `item_code_history`; binds click/delete. |
 | `getItemCount()` | History size. |
-| `updateCodes(List<String>)` | Replaces history + refreshes. |
+| `updateCodes(List&lt;String&gt;)` | Replaces history + refreshes. |
 | `removeCode(int)` | Deletes entry with slide animation. |
 
 **Inner Classes/Interfaces:** `OnCodeClickListener`, `OnCodeDeleteListener`, `CodeViewHolder`.

@@ -13,13 +13,13 @@
 |---|---|
 | `OximeterDataBuffer()` | Creates empty queue, processing flags, and pre-sized batch list. |
 | `addDataPoint(double spo2, int spo2Status, long redAdc, double battery, int hr, long irAdc, double pi, int counter, String mac, long pkgRecv, int pleth, long ts)` | Enqueues a raw sample and triggers queue processing. |
-| `flushRemaining()` | Drains the queue + writes incomplete batches (< 100 samples) before closing the segment. |
+| `flushRemaining()` | Drains the queue + writes incomplete batches (fewer than 100 samples) before closing the segment. |
 | `processQueueIfNeeded()` (private) | Drains the queue under the `AtomicBoolean isProcessing` lock. |
 | `writeCurrentBatch()` (private) | When 100 samples are accumulated: calculates median HR/SpO₂, packages `ProcessedData`, and invokes the writer. |
-| `calculateMedian(List<? extends Number>)` (private) | Sorts and returns the middle element (rounded). |
+| `calculateMedian(List&lt;? extends Number&gt;)` (private) | Sorts and returns the middle element (rounded). |
 | `convertBatteryToPercentage(...)` (private) | Converts 3300–4150 mV → 0–100% (ceiling). |
 
-**Inner Classes:** `DataPoint` (raw, private), `ProcessedData` (public: `timestamp`, `deviceId`, `battery`, `hr`, `o2`, `spo2Status`, `pleth` List<Integer>, `red`/`ir` List<Long>, `perfusion` List<Double>).
+**Inner Classes:** `DataPoint` (raw, private), `ProcessedData` (public: `timestamp`, `deviceId`, `battery`, `hr`, `o2`, `spo2Status`, `pleth` `List&lt;Integer&gt;`, `red`/`ir` `List&lt;Long&gt;`, `perfusion` `List&lt;Double&gt;`).
 > Note: `addDataPoint` accepts a `timestamp` parameter, but `DataPoint` currently uses `packageReceived` as its timestamp — the `timestamp` parameter is not yet used.
 
 ---

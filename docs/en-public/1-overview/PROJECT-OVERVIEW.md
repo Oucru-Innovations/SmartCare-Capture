@@ -166,4 +166,4 @@ Before using, check the Android version of the phone and grant sufficient permis
 |---|---|
 | Understand **how the system runs**, data flows | **Tier 2** — [`docs/2-architecture/`](../2-architecture/ARCHITECTURE-OVERVIEW.md) |
 | Know **which file/class a feature is located in** | **Tier 3** — [`docs/3-modules/`](../3-modules/MODULES-INDEX.md) |
-| Look up **details of each function** | **Tier 4** — [`docs/4-functions/`](../4-functions/) |
+| Look up **details of each function** | **Tier 4** — [Function documentation](../4-functions/) |

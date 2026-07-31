@@ -41,7 +41,7 @@ sequenceDiagram
    - `timestamp` = the timestamp of the **middle** sample in the batch.
    - Purpose of batching: Reduce disk I/O operations and smooth out noise.
 
-3. **Incomplete batches are not lost.** When stopping, splitting, or when BLE drops, `flushRemaining()` flushes the remaining (< 100) samples to the CSV.
+3. **Incomplete batches are not lost.** When stopping, splitting, or when BLE drops, `flushRemaining()` flushes the remaining samples (fewer than 100) to the CSV.
 
 4. **Writing via MediaStore.** `OximeterDataWriterFunctions` writes to the `Download/OximeterData/` directory. CSV columns:
    `timestamp, device_id, battery, hr, o2, spo2_status, pleth, red, ir, perfusion`.
@@ -91,7 +91,7 @@ stateDiagram-v2
 | **`START_STICKY` + `RecordingSessionPrefs`** | If the process is killed, the service restarts with `intent == null` → `restoreSessionAfterProcessRestart()` reloads the session state and resumes recording. |
 | **`onTaskRemoved` keep-alive** | If the session is active, the service **does not stop** when the user swipes the app out of the Recents list (allowing BLE to reconnect). |
 | **Time-based file splitting** | Potential data corruption only affects the current segment, not the entire session. |
-| **Flush incomplete batches** | `flushBufferedData()` / `flushRemaining()` pushes the remaining samples (< 100) before closing the writer. |
+| **Flush incomplete batches** | `flushBufferedData()` / `flushRemaining()` pushes the remaining samples (fewer than 100) before closing the writer. |
 | **Throttled drop logging** | If samples are dropped (service not ready), warnings are logged at most once every 10s. |
 
 ---

@@ -1,6 +1,6 @@
 # Tier 3 — Modules Index
 
-> **Goal:** Answer the question **"Where is the code for this feature located?"**. This is **Tier 3** — mapping features to modules and classes. For specific function details, see **Tier 4** ([`docs/4-functions/`](../4-functions/)).
+> **Goal:** Answer the question **"Where is the code for this feature located?"**. This is **Tier 3** — mapping features to modules and classes. For specific function details, see **Tier 4** ([Function documentation](../4-functions/)).
 
 All **38 classes** (within the package `com.smartcare.oximetry.sample` and its sub-packages) are grouped into **4 modules**:
 
