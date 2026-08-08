@@ -25,25 +25,42 @@ export default defineConfig({
         items: [{ text: 'Documentation home', link: '/' }],
       },
       {
-        text: 'Tier 1 — Overview',
+        text: 'Overview',
         items: [
-          { text: 'Project overview', link: '/1-overview/PROJECT-OVERVIEW' },
+          {
+            text: 'Project overview',
+            link: '/1-overview/PROJECT-OVERVIEW',
+            items: [
+              {
+                text: 'What is this app?',
+                link: '/1-overview/PROJECT-OVERVIEW#what-is-this-app',
+              },
+              {
+                text: 'The problem it solves',
+                link: '/1-overview/PROJECT-OVERVIEW#the-problem-it-solves',
+              },
+              {
+                text: 'Who uses the app?',
+                link: '/1-overview/PROJECT-OVERVIEW#who-uses-the-app',
+              },
+            ],
+          },
         ],
       },
       {
-        text: 'Tier 2 — Architecture',
+        text: 'Architecture',
         items: [
           { text: 'Architecture overview', link: '/2-architecture/ARCHITECTURE-OVERVIEW' },
-          { text: 'Flow 01 — App startup', link: '/2-architecture/flow-01-app-startup' },
-          { text: 'Flow 02 — Bluetooth', link: '/2-architecture/flow-02-bluetooth-connection' },
-          { text: 'Flow 03 — Data recording', link: '/2-architecture/flow-03-data-recording' },
-          { text: 'Flow 04 — Annotation', link: '/2-architecture/flow-04-annotation' },
-          { text: 'Flow 05 — File upload', link: '/2-architecture/flow-05-file-upload' },
-          { text: 'Flow 06 — File management', link: '/2-architecture/flow-06-file-management' },
+          { text: '1 — App startup', link: '/2-architecture/flow-01-app-startup' },
+          { text: '2 — Bluetooth', link: '/2-architecture/flow-02-bluetooth-connection' },
+          { text: '3 — Data recording', link: '/2-architecture/flow-03-data-recording' },
+          { text: '4 — Annotation', link: '/2-architecture/flow-04-annotation' },
+          { text: '5 — File upload', link: '/2-architecture/flow-05-file-upload' },
+          { text: '6 — File management', link: '/2-architecture/flow-06-file-management' },
         ],
       },
       {
-        text: 'Tier 3 — Modules',
+        text: 'Modules',
         items: [
           { text: 'Modules index', link: '/3-modules/MODULES-INDEX' },
           { text: 'UI / Recording', link: '/3-modules/module-ui-recording' },
@@ -53,7 +70,7 @@ export default defineConfig({
         ],
       },
       {
-        text: 'Tier 4 — Functions',
+        text: 'Functions',
         items: [
           { text: 'Functions index', link: '/4-functions/' },
           { text: 'UI / Recording', link: '/4-functions/functions-ui-recording' },

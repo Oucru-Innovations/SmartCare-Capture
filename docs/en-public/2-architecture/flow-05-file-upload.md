@@ -92,7 +92,7 @@ flowchart TD
 
 ## 5. Server configuration (public)
 
-Upload uses **HTTPS multipart** requests configured at **build time** (base URL, timeouts, success message strings). Exact paths, owner fields, and authentication are **internal deployment documentation** — see [Tier 1 §8](../1-overview/PROJECT-OVERVIEW.md#8-configuration--deployment).
+Upload uses **HTTPS multipart** requests configured at **build time** (base URL, timeouts, success message strings). Exact paths, owner fields, and authentication are **internal deployment documentation** — see [Tier 1 — Configuration & deployment](../1-overview/PROJECT-OVERVIEW.md#configuration--deployment).
 
 At runtime, `RetrofitClient` applies timeouts from `NetworkConfig`; `FileUploader` treats specific success messages in the JSON response as completion before moving files to `Uploaded/`.
 

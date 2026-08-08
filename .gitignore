@@ -73,6 +73,11 @@ local.properties
 # Android Profiling
 *.hprof
 
+# Node / VitePress docs site
+node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
 # Backup files
 *~
 *.swp

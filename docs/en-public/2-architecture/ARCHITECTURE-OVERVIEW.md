@@ -125,7 +125,7 @@ This is why the architecture may seem complex. The main mechanisms (detailed in 
 ## 6. Configuration
 
 Server URL, credentials, and vendor library artifacts are supplied at **build time** via git-ignored local configuration — not documented in this public manual.
-For a summary, see [Tier 1 §8 — Configuration & deployment](../1-overview/PROJECT-OVERVIEW.md#8-configuration--deployment).
+For a summary, see [Tier 1 — Configuration & deployment](../1-overview/PROJECT-OVERVIEW.md#configuration--deployment).
 
 ---
 

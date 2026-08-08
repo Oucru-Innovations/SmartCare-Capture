@@ -1,8 +1,8 @@
 # SmartCare Capture — Documentation
 
-> **Public documentation (English).** Internal deployment URLs, API credentials, and vendor SDK artifacts are documented separately for the deployment team.
+> This documentation provides an overview of the SmartCare Capture project, it's architecture, and the main application modules.
 
-> **Documentation entry point.** The documentation is organized into **4 tiers**, from overview to detail. Please read the tiers in order depending on your goal.
+> The documentation í intended for developers who need to understand the project structure, application architecture, and the main implementation.
 
 ---
 
@@ -10,10 +10,10 @@
 
 | You are... / You want to... | Start from |
 |---|---|
-| A complete beginner, want to understand what the app does | **Tier 1** → [1-overview/PROJECT-OVERVIEW.md](1-overview/PROJECT-OVERVIEW.md) |
-| Want to understand how the system runs, its flows | **Tier 2** → [2-architecture/ARCHITECTURE-OVERVIEW.md](2-architecture/ARCHITECTURE-OVERVIEW.md) |
-| Want to know "which file/class function X is located in" | **Tier 3** → [3-modules/MODULES-INDEX.md](3-modules/MODULES-INDEX.md) |
-| Want to look up details of each function | **Tier 4** → [4-functions/](#tier-4--function-documentation) |
+| A complete beginner, want to understand what the app does | [1-overview/PROJECT-OVERVIEW.md](1-overview/PROJECT-OVERVIEW.md) |
+| Want to understand how the system runs, its flows | [2-architecture/ARCHITECTURE-OVERVIEW.md](2-architecture/ARCHITECTURE-OVERVIEW.md) |
+| Want to know "which file/class function X is located in" | [3-modules/MODULES-INDEX.md](3-modules/MODULES-INDEX.md) |
+| Want to look up details of each function | [4-functions/](#tier-4--function-documentation) |
 
 ---
 
@@ -69,4 +69,4 @@ Points to note during maintenance (consolidated from old TODOs):
 - When **architecture** changes → update Tier 2.
 - When **adding/changing classes** → update Tier 3 (MODULES-INDEX + module files).
 - When **changing function signature/behavior** → update Tier 4 + Javadoc in code.
-- Build and deployment settings → see [Tier 1 Section 7–8](1-overview/PROJECT-OVERVIEW.md#7-quick-setup--build).
+- Build and deployment settings → see [Tier 1 — Quick setup & Configuration](1-overview/PROJECT-OVERVIEW.md#quick-setup--build).

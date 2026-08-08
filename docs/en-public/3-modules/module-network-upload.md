@@ -37,4 +37,4 @@
 ## Related
 
 - Tier 2: [flow-05 — File upload](../2-architecture/flow-05-file-upload.md) · [flow-06 — File management](../2-architecture/flow-06-file-management.md)
-- Tier 1: [Configuration & deployment](../1-overview/PROJECT-OVERVIEW.md#8-configuration--deployment)
+- Tier 1: [Configuration & deployment](../1-overview/PROJECT-OVERVIEW.md#configuration--deployment)

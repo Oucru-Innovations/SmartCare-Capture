@@ -1,4 +1,8 @@
-# Tier 1 — Project Overview
+---
+outline: [2, 2]
+---
+
+# Project Overview
 
 > **Goal of this document:** Help newcomers (developers, hand-over engineers, technical researchers) understand **what this app is used for** in about 10 minutes of reading, before diving deeper into the architecture and code.
 >
@@ -6,7 +10,7 @@
 
 ---
 
-## 1. What is this app?
+### 1. What is this app? {#what-is-this-app}
 
 **SmartCare Capture** is an **Android application** (**version 1.0.10**, versionCode **19**) used in **clinical research** with the following tasks:
 
@@ -21,7 +25,7 @@ In short: **the app turns a Bluetooth oximeter into a long-term data collection 
 
 ---
 
-## 2. The problem it solves
+### 2. The problem it solves {#the-problem-it-solves}
 
 In research, patients need to be monitored **continuously from several hours to multiple days**. Specific requirements include:
 
@@ -37,14 +41,14 @@ The entire architecture (which looks more complex than a typical app) exists to 
 
 ---
 
-## 3. Who uses the app?
+### 3. Who uses the app? {#who-uses-the-app}
 
 - **Field researchers / nurses:** attach the oximeter to the patient, enter the **research code (patient code)**, press start recording, occasionally add annotations, then stop/trigger upload.
 - **Technicians / hand-over developers:** build, configure servers for each study, monitor logs, and troubleshoot issues.
 
 ---
 
-## 4. A typical session
+## 1. A typical session {#a-typical-session}
 
 ```
 1. Open app  ->  Mandatorily enter Patient/Research code
@@ -60,7 +64,7 @@ The entire architecture (which looks more complex than a typical app) exists to 
 
 ---
 
-## 5. Core concepts (glossary)
+## 2. Core concepts (glossary) {#core-concepts-glossary}
 
 | Term | Meaning in this project |
 |---|---|
@@ -81,7 +85,7 @@ The entire architecture (which looks more complex than a typical app) exists to 
 
 ---
 
-## 6. Tech stack
+## 3. Tech stack {#tech-stack}
 
 | Category | Selection |
 |---|---|
@@ -97,9 +101,9 @@ The entire architecture (which looks more complex than a typical app) exists to 
 
 ---
 
-## 7. Quick setup & build
+## 4. Quick setup & build {#quick-setup--build}
 
-> Sufficient for a new developer to run a **debug** build. Release signing and study-specific settings are handled by the deployment team (Section 8).
+> Sufficient for a new developer to run a **debug** build. Release signing and study-specific settings are handled by the deployment team ([Section 5 — Configuration & deployment](#configuration--deployment)).
 
 **Requirements:** Android Studio (latest version), JDK 8 or 11, Android SDK (API 29 or higher, recommended API 35).
 
@@ -123,7 +127,7 @@ In Android Studio: `File → Open` project folder → Sync Gradle → select dev
 
 ---
 
-## 8. Configuration & deployment
+## 5. Configuration & deployment {#configuration--deployment}
 
 **Principle:** Server URL, credentials, signing keys, and the vendor device library are **not** documented in this public manual. They are injected at **build time** via git-ignored local files and Gradle `BuildConfig`, then consumed by the network and upload layers (`ApiConfig`, `NetworkConfig`, `RetrofitClient`, `FileUploader`).
 
@@ -138,7 +142,7 @@ In Android Studio: `File → Open` project folder → Sync Gradle → select dev
 
 ---
 
-## 9. Two hardware types — important note
+## 6. Two hardware types — important note {#two-hardware-types}
 
 There are **two types of SmartCare devices** with different compatibility constraints (these are **hardware constraints, not bugs**):
 
@@ -149,7 +153,7 @@ Before using, check the Android version of the phone and grant sufficient permis
 
 ---
 
-## 10. Required permissions
+## 7. Required permissions {#required-permissions}
 
 - **Bluetooth** (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` on API 31+; legacy Bluetooth permissions on lower versions)
 - **Location** (mandatory for BLE scanning)
@@ -160,7 +164,7 @@ Before using, check the Android version of the phone and grant sufficient permis
 
 ---
 
-## 11. Where to go next
+## 8. Where to go next {#where-to-go-next}
 
 | You want to... | Read tier |
 |---|---|
