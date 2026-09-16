@@ -643,11 +643,29 @@ public class FileManagerActivity extends Activity {
 
             uploadButton.setOnClickListener(v -> {
                 String uploadPath = csvFile.getUploadPath();
-                PendingFileUploadCoordinator.uploadSessionFile(
-                        FileManagerActivity.this, FileManagerActivity.this, uploadPath);
-                Toast.makeText(FileManagerActivity.this,
-                        "Upload started (up to 3 attempts if network available)",
-                        Toast.LENGTH_SHORT).show();
+                PendingFileUploadCoordinator.EnqueueResult result =
+                        PendingFileUploadCoordinator.uploadSessionFile(
+                                FileManagerActivity.this, FileManagerActivity.this, uploadPath,
+                                (success, message) -> {
+                                    if (isFinishing()) {
+                                        return;
+                                    }
+                                    refreshFileListsQuiet();
+                                    if (!success) {
+                                        Toast.makeText(FileManagerActivity.this,
+                                                "Upload failed after 3 attempts",
+                                                Toast.LENGTH_SHORT).show();
+                                    }
+                                });
+                if (result == PendingFileUploadCoordinator.EnqueueResult.STARTED) {
+                    Toast.makeText(FileManagerActivity.this,
+                            "Upload started (up to 3 attempts if network available)",
+                            Toast.LENGTH_SHORT).show();
+                } else if (result == PendingFileUploadCoordinator.EnqueueResult.ALREADY_IN_FLIGHT) {
+                    Toast.makeText(FileManagerActivity.this,
+                            "Upload already in progress",
+                            Toast.LENGTH_SHORT).show();
+                }
                 v.setPressed(true);
             });
 

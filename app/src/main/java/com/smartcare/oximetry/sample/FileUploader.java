@@ -71,6 +71,40 @@ public class FileUploader {
     public interface UploadCallback {
         void onUploadComplete(boolean success, String message);
     }
+
+    /**
+     * Always notify the caller first so retry/in-flight state cannot get stuck if Toast throws
+     * (for example after the Activity has been destroyed).
+     */
+    private static void completeWithToast(Activity activity, UploadCallback callback,
+                                          boolean success, String callbackMessage, String toastMessage) {
+        if (callback != null) {
+            try {
+                callback.onUploadComplete(success, callbackMessage);
+            } catch (RuntimeException e) {
+                Log.e("FileUploader", "Upload callback failed", e);
+            }
+        }
+        showToastSafe(activity, toastMessage);
+    }
+
+    private static void showToastSafe(Activity activity, String message) {
+        if (activity == null || TextUtils.isEmpty(message)) {
+            return;
+        }
+        try {
+            if (activity.isFinishing()) {
+                return;
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1
+                    && activity.isDestroyed()) {
+                return;
+            }
+            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+        } catch (RuntimeException e) {
+            Log.w("FileUploader", "Skipping toast: " + e.getMessage());
+        }
+    }
     /**
      * Di chuyển file thường sang thư mục con Uploaded/ và cập nhật lại thời gian sửa đổi.
      */
@@ -104,6 +138,18 @@ public class FileUploader {
 
         return moveSuccess;
     }
+    /**
+     * MIME theo phần mở rộng: MediaStore (Android 10+) sẽ đổi tên file cho khớp MIME, nên gán cứng
+     * "text/csv" sẽ biến Annotation_*.json thành *.csv và file biến mất khỏi File Manager.
+     */
+    private static String mimeTypeForName(String fileName) {
+        String lower = fileName == null ? "" : fileName.toLowerCase(java.util.Locale.US);
+        if (lower.endsWith(".json")) {
+            return "application/json";
+        }
+        return "text/csv";
+    }
+
     // move file with MediaStore
     /**
      * Di chuyển file dạng content-URI sang Download/OximeterData/Uploaded thông qua MediaStore,
@@ -134,7 +180,7 @@ public class FileUploader {
             // Create the destination URI in the "Uploaded" subfolder
             ContentValues values = new ContentValues();
             values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
-            values.put(MediaStore.Downloads.MIME_TYPE, "text/csv");
+            values.put(MediaStore.Downloads.MIME_TYPE, mimeTypeForName(fileName));
             values.put(MediaStore.Downloads.RELATIVE_PATH, OximeterDataFileIndex.uploadedRelativePath());
 
             // Insert the new file
@@ -332,30 +378,30 @@ public static void uploadFile(Activity activity, String filePath, String uploadF
                         if (message != null && 
                             (message.equals("File uploaded successfully!") || 
                              message.equals("File uploaded successfully"))) {
-                            Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
                             Log.i("FileUploader", "File upload successful: " + message);
-                            callback.onUploadComplete(true, message);
+                            completeWithToast(activity, callback, true, message, "File upload successful");
                         } else {
                             String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
-                            Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                             Log.e("FileUploader", "File upload failed: " + errorMsg);
-                            callback.onUploadComplete(false, errorMsg);
+                            completeWithToast(activity, callback, false, errorMsg,
+                                    "File upload failed: " + errorMsg);
                         }
                     } else {
                         String errorMsg = response.message() != null ? response.message() : "Unknown error";
-                        Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
                         Log.e("FileUploader", "Response code: " + response.code());
-                        callback.onUploadComplete(false, errorMsg);
+                        completeWithToast(activity, callback, false, errorMsg,
+                                "File upload failed: " + errorMsg);
                     }
                 }
 
                 @Override
                 public void onFailure(Call<UploadResponse> call, Throwable t) {
                     tempFile.delete(); // Clean up temp file
-                    Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "Error uploading file", t);
-                    callback.onUploadComplete(false, t.getMessage() != null ? t.getMessage() : "Upload error");
+                    completeWithToast(activity, callback,
+                            false, t.getMessage() != null ? t.getMessage() : "Upload error",
+                            "Error uploading file");
                 }
             });
 
@@ -400,29 +446,29 @@ public static void uploadFile(Activity activity, String filePath, String uploadF
                     if (message != null && 
                         (message.equals("File uploaded successfully!") || 
                          message.equals("File uploaded successfully"))) {
-                        Toast.makeText(activity, "File upload successful", Toast.LENGTH_SHORT).show();
                         Log.i("FileUploader", "File upload successful: " + message);
-                        callback.onUploadComplete(true, message);
+                        completeWithToast(activity, callback, true, message, "File upload successful");
                     } else {
                         String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
-                        Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
-                        callback.onUploadComplete(false, errorMsg);
+                        completeWithToast(activity, callback, false, errorMsg,
+                                "File upload failed: " + errorMsg);
                     }
                 } else {
                     String errorMsg = response.message() != null ? response.message() : "Unknown error";
-                    Toast.makeText(activity, "File upload failed: " + errorMsg, Toast.LENGTH_SHORT).show();
                     Log.e("FileUploader", "File upload failed: " + errorMsg);
                     Log.e("FileUploader", "Response code: " + response.code());
-                    callback.onUploadComplete(false, errorMsg);
+                    completeWithToast(activity, callback, false, errorMsg,
+                            "File upload failed: " + errorMsg);
                 }
             }
 
             @Override
             public void onFailure(Call<UploadResponse> call, Throwable t) {
-                Toast.makeText(activity, "Error uploading file", Toast.LENGTH_SHORT).show();
                 Log.e("FileUploader", "Error uploading file", t);
-                callback.onUploadComplete(false, t.getMessage() != null ? t.getMessage() : "Upload error");
+                completeWithToast(activity, callback,
+                        false, t.getMessage() != null ? t.getMessage() : "Upload error",
+                        "Error uploading file");
             }
         });
     }

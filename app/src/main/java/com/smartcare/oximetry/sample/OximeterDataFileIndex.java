@@ -102,6 +102,11 @@ public final class OximeterDataFileIndex {
         if (MASTER_ANNOTATIONS_FILE.equalsIgnoreCase(name)) {
             return false;
         }
+        // Any extension: MediaStore đã từng đổi Annotation_*.json thành *.csv, vẫn phải liệt kê.
+        if (name.regionMatches(true, 0, PREFIX_ANNOTATION_EXPORT, 0,
+                PREFIX_ANNOTATION_EXPORT.length())) {
+            return true;
+        }
         String lower = name.toLowerCase(Locale.US);
         if (lower.endsWith(".csv")) {
             return name.regionMatches(true, 0, PREFIX_SMARTCARE, 0, PREFIX_SMARTCARE.length());
