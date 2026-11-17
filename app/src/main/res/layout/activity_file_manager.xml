@@ -83,6 +83,32 @@
 
                     </LinearLayout>
 
+                    <!-- Tab 3: Trash (restore only, auto-deleted after 30 days) -->
+                    <LinearLayout
+                        android:id="@+id/tab3"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical">
+
+                        <ListView
+                            android:id="@+id/trashListView"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:divider="@android:color/darker_gray"
+                            android:dividerHeight="1dp" />
+
+                        <TextView
+                            android:id="@+id/emptyTrashTextView"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:text="Trash is empty"
+                            android:textSize="18sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:visibility="gone" />
+
+                    </LinearLayout>
+
                 </FrameLayout>
 
             </LinearLayout>

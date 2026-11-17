@@ -156,63 +156,129 @@ public class FileUploader {
      * copy nội dung rồi xóa bản gốc và đánh dấu đã upload trong registry.
      */
     public static boolean moveFileToUploadedFolderFromUri(Context context, String uriPath) {
+        String fileName = moveUriToFolder(context, uriPath, OximeterDataFileIndex.uploadedRelativePath());
+        if (fileName == null) {
+            return false;
+        }
+        AppRecordingRegistry.markUploaded(context, uriPath);
+        FileRetention.clearNoAutoUpload(context, fileName);
+        return true;
+    }
+
+    /**
+     * Di chuyển file (content://, file:// hoặc SAF document) sang {@code relativePath} trong
+     * Downloads qua MediaStore: copy sang entry mới rồi xoá bản gốc. Entry mới có DATE_MODIFIED =
+     * thời điểm chuyển, dùng làm mốc tính ngày tự xoá. Lỗi giữa chừng thì xoá bản đích dở dang để
+     * không bao giờ có 2 bản. Trả về tên file, hoặc null nếu thất bại.
+     */
+    static String moveUriToFolder(Context context, String uriPath, String relativePath) {
+        if (context == null || TextUtils.isEmpty(uriPath)) {
+            return null;
+        }
+        ContentResolver resolver = context.getContentResolver();
+        Uri sourceUri = Uri.parse(uriPath);
+        String fileName = queryDisplayName(resolver, sourceUri);
+        if (fileName == null) {
+            Log.e("FileUploader", "Could not retrieve file name from URI: " + uriPath);
+            return null;
+        }
+
+        // Trùng tên ở đích thì MediaStore tự đổi thành "x (1).csv" -> không khớp tên app, file
+        // "biến mất" khỏi File Manager. Xoá bản cũ cùng tên trước.
+        deleteExistingEntry(resolver, relativePath, fileName);
+
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, mimeTypeForName(fileName));
+        values.put(MediaStore.Downloads.RELATIVE_PATH, relativePath);
+
+        Uri destinationUri = null;
         try {
-            // Get the content resolver
-            ContentResolver contentResolver = context.getContentResolver();
-
-            // Parse the URI string
-            Uri sourceUri = Uri.parse(uriPath);
-
-            // Extract file details from source URI
-            String fileName = null;
-            try (Cursor cursor = contentResolver.query(sourceUri, null, null, null, null)) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    int nameIndex = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME);
-                    fileName = cursor.getString(nameIndex);
+            destinationUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (destinationUri == null) {
+                Log.e("FileUploader", "MediaStore insert returned null for " + fileName);
+                return null;
+            }
+            try (InputStream is = resolver.openInputStream(sourceUri);
+                 OutputStream os = resolver.openOutputStream(destinationUri)) {
+                if (is == null || os == null) {
+                    throw new IOException("Could not open streams for copy operation");
+                }
+                byte[] buffer = new byte[8192];
+                int length;
+                while ((length = is.read(buffer)) > 0) {
+                    os.write(buffer, 0, length);
                 }
             }
-
-            if (fileName == null) {
-                Log.e("FileUploader", "Could not retrieve file name from URI: " + uriPath);
-                return false;
+            if (!deleteUri(context, sourceUri)) {
+                throw new IOException("Could not delete source " + sourceUri);
             }
-
-            // Create the destination URI in the "Uploaded" subfolder
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
-            values.put(MediaStore.Downloads.MIME_TYPE, mimeTypeForName(fileName));
-            values.put(MediaStore.Downloads.RELATIVE_PATH, OximeterDataFileIndex.uploadedRelativePath());
-
-            // Insert the new file
-            Uri destinationUri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-
-            if (destinationUri != null) {
-                // Copy the content from source to destination
-                try (InputStream is = contentResolver.openInputStream(sourceUri);
-                     OutputStream os = contentResolver.openOutputStream(destinationUri)) {
-
-                    if (is == null || os == null) {
-                        Log.e("FileUploader", "Could not open streams for copy operation");
-                        return false;
-                    }
-
-                    byte[] buffer = new byte[1024];
-                    int length;
-                    while ((length = is.read(buffer)) > 0) {
-                        os.write(buffer, 0, length);
-                    }
-
-                    // Delete the original file
-                    contentResolver.delete(sourceUri, null, null);
-                    AppRecordingRegistry.markUploaded(context, uriPath);
-
-                    return true;
-                }
-            }
-            return false;
+            OximeterDataFileIndex.invalidateListCache();
+            return fileName;
         } catch (Exception e) {
-            Log.e("FileUploader", "Error moving file: " + e.getMessage(), e);
+            Log.e("FileUploader", "Error moving " + uriPath + " to " + relativePath, e);
+            FileLogger.logWarningEvent("FILES", "MOVE_FAILED",
+                    "uri=" + uriPath + " to=" + relativePath + " error=" + e.getMessage());
+            if (destinationUri != null) {
+                try {
+                    resolver.delete(destinationUri, null, null);
+                } catch (Exception ignored) {
+                }
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Xoá một file theo URI bất kể nguồn: file://, SAF document (DocumentsProvider không hỗ trợ
+     * ContentResolver.delete) hoặc MediaStore.
+     */
+    static boolean deleteUri(Context context, Uri uri) {
+        if (context == null || uri == null) {
             return false;
+        }
+        try {
+            if ("file".equals(uri.getScheme())) {
+                return uri.getPath() != null && new File(uri.getPath()).delete();
+            }
+            if (android.provider.DocumentsContract.isDocumentUri(context, uri)) {
+                return android.provider.DocumentsContract.deleteDocument(
+                        context.getContentResolver(), uri);
+            }
+            return context.getContentResolver().delete(uri, null, null) > 0;
+        } catch (Exception e) {
+            Log.w("FileUploader", "deleteUri failed: " + uri, e);
+            return false;
+        }
+    }
+
+    private static String queryDisplayName(ContentResolver resolver, Uri uri) {
+        if ("file".equals(uri.getScheme())) {
+            return uri.getPath() != null ? new File(uri.getPath()).getName() : null;
+        }
+        try (Cursor cursor = resolver.query(uri,
+                new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getString(0);
+            }
+        } catch (Exception e) {
+            Log.w("FileUploader", "queryDisplayName failed: " + uri, e);
+        }
+        return null;
+    }
+
+    private static void deleteExistingEntry(ContentResolver resolver, String relativePath,
+                                            String fileName) {
+        try {
+            int rows = resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    MediaStore.Downloads.RELATIVE_PATH + "=? AND "
+                            + MediaStore.Downloads.DISPLAY_NAME + "=?",
+                    new String[]{relativePath, fileName});
+            if (rows > 0) {
+                Log.i("FileUploader", "Replaced existing " + relativePath + fileName);
+            }
+        } catch (Exception e) {
+            Log.w("FileUploader", "Could not clear existing " + relativePath + fileName, e);
         }
     }
 

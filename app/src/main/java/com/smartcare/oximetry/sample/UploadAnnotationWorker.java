@@ -42,6 +42,13 @@ public class UploadAnnotationWorker extends Worker {
         int queued = PendingFileUploadCoordinator.uploadAllPending(getApplicationContext());
         Log.i(TAG, "Queued " + queued + " pending file(s) for upload");
 
+        // Uploaded > 15 ngày, Trash > 30 ngày. Worker đã chạy nền nên gọi đồng bộ.
+        try {
+            FileRetention.purgeExpired(getApplicationContext());
+        } catch (Exception e) {
+            Log.e(TAG, "Retention purge failed", e);
+        }
+
         AnnotationUploadScheduler.scheduleDailyUpload(getApplicationContext());
 
         return Result.success();

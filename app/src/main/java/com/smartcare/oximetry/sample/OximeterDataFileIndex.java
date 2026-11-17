@@ -40,6 +40,28 @@ public final class OximeterDataFileIndex {
     /** Common manual-folder typo next to {@link #FOLDER_NAME}; scanned for listing only. */
     private static final String FOLDER_NAME_TYPO = "OximetaData";
     private static final String UPLOADED_SUBDIR = "Uploaded";
+    private static final String TRASH_SUBDIR = "Trash";
+
+    /** Thư mục logic của một file: gốc OximeterData (pending), Uploaded/ hoặc Trash/. */
+    public enum Bucket { PENDING, UPLOADED, TRASH }
+
+    /**
+     * Phân loại theo RELATIVE_PATH / document id / đường dẫn tuyệt đối. Trash ưu tiên hơn Uploaded.
+     * Thuần Java (không dùng API Android) để test JVM được.
+     */
+    static Bucket bucketOf(String path) {
+        if (path == null) {
+            return Bucket.PENDING;
+        }
+        String p = path.replace('\\', '/');
+        if (p.contains("/" + TRASH_SUBDIR + "/") || p.endsWith("/" + TRASH_SUBDIR)) {
+            return Bucket.TRASH;
+        }
+        if (p.contains("/" + UPLOADED_SUBDIR + "/") || p.endsWith("/" + UPLOADED_SUBDIR)) {
+            return Bucket.UPLOADED;
+        }
+        return Bucket.PENDING;
+    }
 
     private static final String PREFIX_SMARTCARE = "SmartCareCsv";
     /** Exported per-note JSON only; not {@code Annotation/Annotations.json}. */
@@ -64,14 +86,16 @@ public final class OximeterDataFileIndex {
         }
     }
 
-    /** Pending + uploaded lists produced in one pass (shared SAF tree walk, optional cache). */
+    /** Pending + uploaded + trash lists produced in one pass (shared SAF tree walk, optional cache). */
     public static final class FileLists {
         public final List<FileEntry> pending;
         public final List<FileEntry> uploaded;
+        public final List<FileEntry> trash;
 
-        FileLists(List<FileEntry> pending, List<FileEntry> uploaded) {
+        FileLists(List<FileEntry> pending, List<FileEntry> uploaded, List<FileEntry> trash) {
             this.pending = pending;
             this.uploaded = uploaded;
+            this.trash = trash;
         }
     }
 
@@ -127,7 +151,7 @@ public final class OximeterDataFileIndex {
 
     public static FileLists queryAllFiles(Context context, boolean bypassCache) {
         if (context == null) {
-            return new FileLists(new ArrayList<>(), new ArrayList<>());
+            return new FileLists(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         }
         long now = System.currentTimeMillis();
         if (!bypassCache) {
@@ -154,15 +178,19 @@ public final class OximeterDataFileIndex {
 
     private static FileLists buildAllFileLists(Context context) {
         List<FileEntry> diskPending = scanPendingDiskFiles(context);
-        List<FileEntry> diskUploaded = scanUploadedDiskFiles(context);
-        List<FileEntry> mediaDlPending = queryMediaStoreDownloads(context, false);
-        List<FileEntry> mediaDlUploaded = queryMediaStoreDownloads(context, true);
-        List<FileEntry> mediaFilesPending = queryMediaStoreFilesVolume(context, false);
-        List<FileEntry> mediaFilesUploaded = queryMediaStoreFilesVolume(context, true);
+        List<FileEntry> diskUploaded = scanSubdirDiskFiles(context, UPLOADED_SUBDIR);
+        List<FileEntry> diskTrash = scanSubdirDiskFiles(context, TRASH_SUBDIR);
+        List<FileEntry> mediaDlPending = queryMediaStoreDownloads(context, Bucket.PENDING);
+        List<FileEntry> mediaDlUploaded = queryMediaStoreDownloads(context, Bucket.UPLOADED);
+        List<FileEntry> mediaDlTrash = queryMediaStoreDownloads(context, Bucket.TRASH);
+        List<FileEntry> mediaFilesPending = queryMediaStoreFilesVolume(context, Bucket.PENDING);
+        List<FileEntry> mediaFilesUploaded = queryMediaStoreFilesVolume(context, Bucket.UPLOADED);
+        List<FileEntry> mediaFilesTrash = queryMediaStoreFilesVolume(context, Bucket.TRASH);
         List<FileEntry> registry = AppRecordingRegistry.queryRegistryPending(context);
         List<FileEntry> docPending = new ArrayList<>();
         List<FileEntry> docUploaded = new ArrayList<>();
-        collectDocumentTreeSplit(context, docPending, docUploaded);
+        List<FileEntry> docTrash = new ArrayList<>();
+        collectDocumentTreeSplit(context, docPending, docUploaded, docTrash);
 
         List<FileEntry> pending = new ArrayList<>();
         mergeByDisplayName(pending, diskPending);
@@ -179,6 +207,15 @@ public final class OximeterDataFileIndex {
         mergeByDisplayName(uploaded, docUploaded);
         sortByModifiedDesc(uploaded);
 
+        List<FileEntry> trash = new ArrayList<>();
+        mergeByDisplayName(trash, diskTrash);
+        mergeByDisplayName(trash, mediaDlTrash);
+        mergeByDisplayName(trash, mediaFilesTrash);
+        mergeByDisplayName(trash, docTrash);
+        sortByModifiedDesc(trash);
+        // Registry chỉ giữ file pending; phòng khi entry cũ trỏ tới file đã vào Trash.
+        removeByDisplayName(pending, trash);
+
         FileLogger.logEvent("FILES", "FILE_INDEX_SOURCE",
                 "pending diskCount=" + diskPending.size()
                         + " mediaDownloadsPending=" + mediaDlPending.size()
@@ -190,7 +227,24 @@ public final class OximeterDataFileIndex {
                         + " path=" + getPendingDirectory().getAbsolutePath());
         logEntryNames("pending", pending);
         logEntryNames("uploaded", uploaded);
-        return new FileLists(pending, uploaded);
+        logEntryNames("trash", trash);
+        return new FileLists(pending, uploaded, trash);
+    }
+
+    private static void removeByDisplayName(List<FileEntry> target, List<FileEntry> toRemove) {
+        if (toRemove.isEmpty()) {
+            return;
+        }
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (FileEntry e : toRemove) {
+            names.add(e.displayName);
+        }
+        java.util.Iterator<FileEntry> it = target.iterator();
+        while (it.hasNext()) {
+            if (names.contains(it.next().displayName)) {
+                it.remove();
+            }
+        }
     }
 
     /** One-time scan so other apps / MediaStore see new files (optional; not required for listing). */
@@ -336,7 +390,7 @@ public final class OximeterDataFileIndex {
      * Rows in {@link MediaStore.Downloads} whose name matches SmartCareCsv* / Annotation_*,
      * filtered by relative path under OximeterData (pending vs Uploaded).
      */
-    private static List<FileEntry> queryMediaStoreDownloads(Context context, boolean uploadedOnly) {
+    private static List<FileEntry> queryMediaStoreDownloads(Context context, Bucket bucket) {
         List<FileEntry> results = new ArrayList<>();
         if (context == null) {
             return results;
@@ -374,12 +428,11 @@ public final class OximeterDataFileIndex {
                     continue;
                 }
                 String relPath = pathCol >= 0 ? cursor.getString(pathCol) : null;
-                boolean inUploaded = isInUploadedRelativePath(relPath);
                 boolean underOximeter = relPath == null || relPathMentionsOximeterFolder(relPath);
                 if (!underOximeter) {
                     continue;
                 }
-                if (uploadedOnly != inUploaded) {
+                if (bucketOf(relPath) != bucket) {
                     continue;
                 }
                 long id = cursor.getLong(idCol);
@@ -393,9 +446,9 @@ public final class OximeterDataFileIndex {
                 results.add(new FileEntry(uri, name, size, modified));
             }
         } catch (Exception e) {
-            Log.e(TAG, "queryMediaStoreDownloads failed uploadedOnly=" + uploadedOnly, e);
+            Log.e(TAG, "queryMediaStoreDownloads failed bucket=" + bucket, e);
         }
-        Log.d(TAG, "MediaStore downloads uploadedOnly=" + uploadedOnly + " count=" + results.size());
+        Log.d(TAG, "MediaStore downloads bucket=" + bucket + " count=" + results.size());
         return results;
     }
 
@@ -403,7 +456,7 @@ public final class OximeterDataFileIndex {
      * Samsung/API 30: some rows appear in {@link MediaStore.Files} but not in the Downloads view.
      * Uses the same display-name rules; pending vs Uploaded from {@link MediaStore.MediaColumns#RELATIVE_PATH}.
      */
-    private static List<FileEntry> queryMediaStoreFilesVolume(Context context, boolean uploadedOnly) {
+    private static List<FileEntry> queryMediaStoreFilesVolume(Context context, Bucket bucket) {
         List<FileEntry> results = new ArrayList<>();
         if (context == null) {
             return results;
@@ -444,7 +497,7 @@ public final class OximeterDataFileIndex {
                     continue;
                 }
                 String relPath = pathCol >= 0 ? cursor.getString(pathCol) : null;
-                if (!matchesFilesQueryRow(relPath, uploadedOnly)) {
+                if (!matchesFilesQueryRow(relPath, bucket)) {
                     continue;
                 }
                 long id = cursor.getLong(idCol);
@@ -465,18 +518,10 @@ public final class OximeterDataFileIndex {
                 results.add(new FileEntry(uri, name, size, modified));
             }
         } catch (Exception e) {
-            Log.e(TAG, "queryMediaStoreFilesVolume failed uploadedOnly=" + uploadedOnly, e);
+            Log.e(TAG, "queryMediaStoreFilesVolume failed bucket=" + bucket, e);
         }
-        Log.d(TAG, "MediaStore files vol uploadedOnly=" + uploadedOnly + " count=" + results.size());
+        Log.d(TAG, "MediaStore files vol bucket=" + bucket + " count=" + results.size());
         return results;
-    }
-
-    private static boolean isInUploadedRelativePath(String relPath) {
-        if (TextUtils.isEmpty(relPath)) {
-            return false;
-        }
-        String n = relPath.replace('\\', '/');
-        return n.contains("/" + UPLOADED_SUBDIR + "/") || n.endsWith("/" + UPLOADED_SUBDIR);
     }
 
     private static boolean relPathMentionsOximeterFolder(String relPath) {
@@ -488,16 +533,15 @@ public final class OximeterDataFileIndex {
                 || p.contains(FOLDER_NAME_TYPO.toLowerCase(Locale.US));
     }
 
-    /** Pending vs uploaded split for MediaStore.Files rows. */
-    private static boolean matchesFilesQueryRow(String relPath, boolean uploadedOnly) {
-        boolean inUploaded = isInUploadedRelativePath(relPath);
-        if (uploadedOnly) {
-            return inUploaded && relPathMentionsOximeterFolder(relPath);
-        }
-        if (inUploaded) {
+    /** Pending / uploaded / trash split for MediaStore.Files rows. */
+    private static boolean matchesFilesQueryRow(String relPath, Bucket bucket) {
+        if (bucketOf(relPath) != bucket) {
             return false;
         }
-        return TextUtils.isEmpty(relPath) || relPathMentionsOximeterFolder(relPath);
+        if (bucket == Bucket.PENDING && TextUtils.isEmpty(relPath)) {
+            return true;
+        }
+        return relPathMentionsOximeterFolder(relPath);
     }
 
     private static void mergeByDisplayName(List<FileEntry> target, List<FileEntry> more) {
@@ -569,7 +613,8 @@ public final class OximeterDataFileIndex {
                 continue;
             }
             for (File child : children) {
-                if (child.isDirectory() && UPLOADED_SUBDIR.equals(child.getName())) {
+                if (child.isDirectory() && (UPLOADED_SUBDIR.equals(child.getName())
+                        || TRASH_SUBDIR.equals(child.getName()))) {
                     continue;
                 }
                 collectDiskFilesRecursive(context, child, results);
@@ -579,22 +624,23 @@ public final class OximeterDataFileIndex {
         return results;
     }
 
-    private static List<FileEntry> scanUploadedDiskFiles(Context context) {
+    /** Quét {@code OximeterData/<subdir>} (Uploaded hoặc Trash), kể cả thư mục gõ sai tên. */
+    private static List<FileEntry> scanSubdirDiskFiles(Context context, String subdir) {
         List<FileEntry> results = new ArrayList<>();
-        File mainUploaded = getUploadedDirectory();
-        if (mainUploaded.exists() && mainUploaded.isDirectory()) {
-            collectDiskFilesRecursive(context, mainUploaded, results);
+        File main = new File(getPendingDirectory(), subdir);
+        if (main.exists() && main.isDirectory()) {
+            collectDiskFilesRecursive(context, main, results);
         }
-        File typoUploaded = new File(
+        File typo = new File(
                 new File(
                         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                         FOLDER_NAME_TYPO),
-                UPLOADED_SUBDIR);
-        if (typoUploaded.exists() && typoUploaded.isDirectory()
-                && !typoUploaded.getAbsolutePath().equals(mainUploaded.getAbsolutePath())) {
-            collectDiskFilesRecursive(context, typoUploaded, results);
+                subdir);
+        if (typo.exists() && typo.isDirectory()
+                && !typo.getAbsolutePath().equals(main.getAbsolutePath())) {
+            collectDiskFilesRecursive(context, typo, results);
         }
-        Log.d(TAG, "Disk uploaded app files: " + results.size());
+        Log.d(TAG, "Disk " + subdir + " app files: " + results.size());
         return results;
     }
 
@@ -700,10 +746,11 @@ public final class OximeterDataFileIndex {
      * {@code Download/OximeterData}): fills pending vs uploaded file rows using
      * {@link android.provider.DocumentsContract} (works when {@link File} and MediaStore do not).
      */
-    private static void collectDocumentTreeSplit(Context context,
-            List<FileEntry> pendingOut, List<FileEntry> uploadedOut) {
+    private static void collectDocumentTreeSplit(Context context, List<FileEntry> pendingOut,
+            List<FileEntry> uploadedOut, List<FileEntry> trashOut) {
         pendingOut.clear();
         uploadedOut.clear();
+        trashOut.clear();
         if (context == null) {
             return;
         }
@@ -713,23 +760,23 @@ public final class OximeterDataFileIndex {
         }
         try {
             String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
-            walkDocumentTree(context, treeUri, rootDocId, false, pendingOut, uploadedOut);
-            Log.d(TAG, "Document tree split pending=" + pendingOut.size() + " uploaded=" + uploadedOut.size());
+            walkDocumentTree(context, treeUri, rootDocId, Bucket.PENDING,
+                    pendingOut, uploadedOut, trashOut);
+            Log.d(TAG, "Document tree split pending=" + pendingOut.size()
+                    + " uploaded=" + uploadedOut.size() + " trash=" + trashOut.size());
         } catch (Exception e) {
             Log.e(TAG, "collectDocumentTreeSplit failed for " + treeUri, e);
         }
     }
 
-    private static boolean documentIdInUploadedBranch(String documentId) {
-        if (documentId == null) {
-            return false;
-        }
-        return documentId.contains("/" + UPLOADED_SUBDIR + "/")
-                || documentId.endsWith("/" + UPLOADED_SUBDIR);
+    /** Bucket "sâu" hơn thắng: đã ở Trash thì giữ Trash; đã ở Uploaded chỉ có thể lên Trash. */
+    private static Bucket deeperBucket(Bucket a, Bucket b) {
+        return a.ordinal() >= b.ordinal() ? a : b;
     }
 
     private static void walkDocumentTree(Context context, Uri treeUri, String docId,
-            boolean inUploadedSubtree, List<FileEntry> pendingOut, List<FileEntry> uploadedOut) {
+            Bucket parentBucket, List<FileEntry> pendingOut, List<FileEntry> uploadedOut,
+            List<FileEntry> trashOut) {
         if (context == null || treeUri == null || docId == null) {
             return;
         }
@@ -759,15 +806,21 @@ public final class OximeterDataFileIndex {
                 String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : null;
                 long size = sizeCol >= 0 ? cursor.getLong(sizeCol) : 0L;
                 long lastMod = dateCol >= 0 ? cursor.getLong(dateCol) : 0L;
-                boolean idInUploaded = documentIdInUploadedBranch(childDocId);
-                boolean inUp = inUploadedSubtree || idInUploaded;
+                Bucket b = deeperBucket(parentBucket, bucketOf(childDocId));
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                    boolean nextUploaded = inUploadedSubtree || UPLOADED_SUBDIR.equals(name) || idInUploaded;
-                    walkDocumentTree(context, treeUri, childDocId, nextUploaded, pendingOut, uploadedOut);
+                    if (UPLOADED_SUBDIR.equals(name)) {
+                        b = deeperBucket(b, Bucket.UPLOADED);
+                    } else if (TRASH_SUBDIR.equals(name)) {
+                        b = Bucket.TRASH;
+                    }
+                    walkDocumentTree(context, treeUri, childDocId, b,
+                            pendingOut, uploadedOut, trashOut);
                 } else if (isAppDataFileName(name)) {
                     Uri fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId);
                     FileEntry row = new FileEntry(fileUri, name, size, lastMod);
-                    if (inUp) {
+                    if (b == Bucket.TRASH) {
+                        trashOut.add(row);
+                    } else if (b == Bucket.UPLOADED) {
                         uploadedOut.add(row);
                     } else {
                         pendingOut.add(row);
@@ -787,6 +840,11 @@ public final class OximeterDataFileIndex {
     /** {@code Download/OximeterData/Uploaded/} — canonical MediaStore relative path after upload. */
     public static String uploadedRelativePath() {
         return pendingRelativePath() + UPLOADED_SUBDIR + "/";
+    }
+
+    /** {@code Download/OximeterData/Trash/} — file pending bị người dùng xoá. */
+    public static String trashRelativePath() {
+        return pendingRelativePath() + TRASH_SUBDIR + "/";
     }
 
     /**

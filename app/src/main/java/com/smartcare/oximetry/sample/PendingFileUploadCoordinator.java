@@ -102,6 +102,10 @@ public final class PendingFileUploadCoordinator {
             if (shouldSkipPendingEntry(entry, uriStr, openUri)) {
                 continue;
             }
+            // Khôi phục từ Trash: chỉ upload khi người dùng bấm upload tay.
+            if (FileRetention.isNoAutoUpload(app, entry.displayName)) {
+                continue;
+            }
             if (startFreshUpload(app, null, uriStr, false, null) == EnqueueResult.STARTED) {
                 queued++;
             }
@@ -109,6 +113,10 @@ public final class PendingFileUploadCoordinator {
         FileLogger.logEvent("UPLOAD", "PENDING_BATCH_QUEUED",
                 "queued=" + queued + " totalListed=" + pending.size());
         return queued;
+    }
+
+    public static boolean isInFlight(String fileUri) {
+        return fileUri != null && IN_FLIGHT.contains(fileUri);
     }
 
     /**

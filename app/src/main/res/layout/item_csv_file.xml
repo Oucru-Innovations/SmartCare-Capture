@@ -53,4 +53,16 @@
         android:scaleType="centerInside"
         android:src="@drawable/upload" />
 
+    <ImageButton
+        android:id="@+id/trashButton"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginStart="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@android:drawable/ic_menu_delete"
+        android:contentDescription="Move to Trash"
+        android:tint="@android:color/holo_red_dark" />
+
 </LinearLayout>

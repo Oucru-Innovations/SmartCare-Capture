@@ -188,8 +188,8 @@ public final class AppRecordingRegistry {
 
     private static boolean isUploadedUri(Context context, Uri uri) {
         if ("file".equalsIgnoreCase(uri.getScheme())) {
-            String path = uri.getPath();
-            return path != null && path.contains("Uploaded");
+            return OximeterDataFileIndex.bucketOf(uri.getPath())
+                    != OximeterDataFileIndex.Bucket.PENDING;
         }
         OximeterDataFileIndex.FileEntry entry = OximeterDataFileIndex.lookupDownloadEntry(context, uri);
         if (entry == null) {
@@ -202,8 +202,8 @@ public final class AppRecordingRegistry {
             if (c != null && c.moveToFirst()) {
                 int col = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH);
                 if (col >= 0) {
-                    String path = c.getString(col);
-                    return path != null && path.contains("Uploaded");
+                    return OximeterDataFileIndex.bucketOf(c.getString(col))
+                            != OximeterDataFileIndex.Bucket.PENDING;
                 }
             }
         } catch (Exception ignored) {

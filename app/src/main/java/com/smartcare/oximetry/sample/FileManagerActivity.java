@@ -57,8 +57,12 @@ public class FileManagerActivity extends Activity {
     private TabHost tabHost;
     private ListView fileListView;
     private ListView uploadedListView;
+    private ListView trashListView;
     private TextView emptyTextView;
     private TextView emptyUploadedTextView;
+    private TextView emptyTrashTextView;
+    /** Dọn file hết hạn (Uploaded 15 ngày, Trash 30 ngày) một lần mỗi lần mở màn hình. */
+    private boolean retentionPurgeDone;
     private Button refreshButton;
     private Button backButton;
     private Button folderAccessButton;
@@ -83,8 +87,10 @@ public class FileManagerActivity extends Activity {
 
     private final ArrayList<CsvFile> csvFiles = new ArrayList<>();
     private final ArrayList<CsvFile> uploadedFiles = new ArrayList<>();
+    private final ArrayList<CsvFile> trashFiles = new ArrayList<>();
     private CsvFileAdapter adapter;
     private UploadedFileAdapter uploadedAdapter;
+    private UploadedFileAdapter trashAdapter;
 
     /** Fires when the recording flow inserts/renames/deletes a MediaStore Downloads entry. */
     private ContentObserver downloadsObserver;
@@ -110,8 +116,11 @@ public class FileManagerActivity extends Activity {
         adapter = new CsvFileAdapter();
         fileListView.setAdapter(adapter);
 
-        uploadedAdapter = new UploadedFileAdapter();
+        uploadedAdapter = new UploadedFileAdapter(uploadedFiles, false);
         uploadedListView.setAdapter(uploadedAdapter);
+
+        trashAdapter = new UploadedFileAdapter(trashFiles, true);
+        trashListView.setAdapter(trashAdapter);
 
         FileLogger.getInstance(this);
         FileLogger.logEvent("USER", "FILE_MANAGER_OPENED",
@@ -190,6 +199,8 @@ public class FileManagerActivity extends Activity {
         uploadedListView = findViewById(R.id.uploadedListView);
         emptyTextView = findViewById(R.id.emptyTextView);
         emptyUploadedTextView = findViewById(R.id.emptyUploadedTextView);
+        trashListView = findViewById(R.id.trashListView);
+        emptyTrashTextView = findViewById(R.id.emptyTrashTextView);
         refreshButton = findViewById(R.id.refreshButton);
         backButton = findViewById(R.id.backButton);
         folderAccessButton = findViewById(R.id.folderAccessButton);
@@ -424,6 +435,11 @@ public class FileManagerActivity extends Activity {
         tabSpec2.setIndicator("Uploaded Files");
         tabHost.addTab(tabSpec2);
 
+        TabHost.TabSpec tabSpec3 = tabHost.newTabSpec("trash");
+        tabSpec3.setContent(R.id.tab3);
+        tabSpec3.setIndicator("Trash");
+        tabHost.addTab(tabSpec3);
+
         tabHost.setCurrentTab(0);
     }
 
@@ -451,6 +467,16 @@ public class FileManagerActivity extends Activity {
         setLoadingVisible(true);
         fileQueryExecutor.execute(() -> {
             try {
+                if (!retentionPurgeDone) {
+                    // Trước lần nạp đầu để không hiện file sắp bị xoá; purge tự quét và để lại
+                    // cache mới nên query bên dưới không phải quét lại.
+                    retentionPurgeDone = true;
+                    try {
+                        FileRetention.purgeExpired(this);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Retention purge failed", e);
+                    }
+                }
                 if (forceMediaRefresh) {
                     OximeterDataFileIndex.invalidateListCache();
                     OximeterDataFileIndex.refreshMediaStoreDeep(this);
@@ -460,7 +486,7 @@ public class FileManagerActivity extends Activity {
                 OximeterDataFileIndex.FileLists lists =
                         OximeterDataFileIndex.queryAllFiles(this, forceMediaRefresh || bypassCache);
                 mainHandler.post(() -> applyLoadedEntries(
-                        generation, lists.pending, lists.uploaded, showToast));
+                        generation, lists.pending, lists.uploaded, lists.trash, showToast));
             } catch (Exception e) {
                 Log.e(TAG, "Failed to refresh file lists", e);
                 mainHandler.post(() -> {
@@ -492,6 +518,7 @@ public class FileManagerActivity extends Activity {
     private void applyLoadedEntries(int generation,
                                     List<OximeterDataFileIndex.FileEntry> pendingEntries,
                                     List<OximeterDataFileIndex.FileEntry> uploadedEntries,
+                                    List<OximeterDataFileIndex.FileEntry> trashEntries,
                                     boolean showToast) {
         if (generation != refreshGeneration || isFinishing()) {
             return;
@@ -510,6 +537,10 @@ public class FileManagerActivity extends Activity {
         for (OximeterDataFileIndex.FileEntry entry : uploadedEntries) {
             uploadedFiles.add(new CsvFile(entry));
         }
+        trashFiles.clear();
+        for (OximeterDataFileIndex.FileEntry entry : trashEntries) {
+            trashFiles.add(new CsvFile(entry));
+        }
 
         if (pendingEntries.isEmpty()) {
             emptyTextView.setText("No files found. Expected SmartCareCsv*.csv or Annotation_*.json under Download/OximeterData (spelling: Oximeter). "
@@ -521,6 +552,7 @@ public class FileManagerActivity extends Activity {
 
         updateActiveFileList();
         updateUploadedFileList();
+        updateTrashFileList();
         scheduleAutoFolderAccessIfStillEmpty();
         if (showToast) {
             Toast.makeText(this, "File lists refreshed", Toast.LENGTH_SHORT).show();
@@ -558,6 +590,68 @@ public class FileManagerActivity extends Activity {
 
         uploadedListView.setOnItemClickListener((parent, view, position, id) ->
                 openCsvFile(uploadedFiles.get(position)));
+    }
+
+    private void updateTrashFileList() {
+        trashAdapter.notifyDataSetChanged();
+        boolean empty = trashFiles.isEmpty();
+        trashListView.setVisibility(empty ? View.GONE : View.VISIBLE);
+        emptyTrashTextView.setVisibility(empty ? View.VISIBLE : View.GONE);
+        trashListView.setOnItemClickListener((parent, view, position, id) ->
+                openCsvFile(trashFiles.get(position)));
+    }
+
+    /** Hỏi xác nhận rồi chuyển file pending vào Trash (tự xoá sau 30 ngày, khôi phục được). */
+    private void confirmMoveToTrash(CsvFile csvFile) {
+        new AlertDialog.Builder(this)
+                .setTitle("Move to Trash")
+                .setMessage("Move '" + csvFile.getName() + "' to Trash?\n\nYou can restore it from the "
+                        + "Trash tab. Files in Trash are deleted automatically after "
+                        + FileRetention.TRASH_RETENTION_DAYS + " days.")
+                .setPositiveButton("Move", (dialog, which) -> {
+                    String uri = csvFile.getUploadPath();
+                    setLoadingVisible(true);
+                    fileQueryExecutor.execute(() -> {
+                        FileRetention.TrashResult result = FileRetention.moveToTrash(this, uri);
+                        mainHandler.post(() -> {
+                            if (isFinishing()) {
+                                return;
+                            }
+                            String msg;
+                            if (result == FileRetention.TrashResult.MOVED) {
+                                msg = "Moved to Trash";
+                            } else if (result == FileRetention.TrashResult.BUSY) {
+                                msg = "File is being recorded or uploaded, try again later";
+                            } else {
+                                msg = "Failed to move file to Trash";
+                            }
+                            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+                            refreshFileListsInternal(false, false, true);
+                        });
+                    });
+                })
+                .setNegativeButton("Cancel", null)
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show();
+    }
+
+    /** Khôi phục file từ Trash về Pending; file này sẽ không tự upload, chỉ upload tay. */
+    private void restoreFromTrash(CsvFile csvFile) {
+        String uri = csvFile.getUploadPath();
+        setLoadingVisible(true);
+        fileQueryExecutor.execute(() -> {
+            boolean ok = FileRetention.restoreFromTrash(this, uri);
+            mainHandler.post(() -> {
+                if (isFinishing()) {
+                    return;
+                }
+                Toast.makeText(this,
+                        ok ? "Restored to Pending (upload manually when ready)"
+                                : "Failed to restore file",
+                        Toast.LENGTH_SHORT).show();
+                refreshFileListsInternal(false, false, true);
+            });
+        });
     }
 
     /** Hỏi xác nhận rồi xoá file đã upload khỏi thiết bị và cập nhật lại danh sách Uploaded. */
@@ -669,6 +763,9 @@ public class FileManagerActivity extends Activity {
                 v.setPressed(true);
             });
 
+            ImageButton trashButton = convertView.findViewById(R.id.trashButton);
+            trashButton.setOnClickListener(v -> confirmMoveToTrash(csvFile));
+
             fileNameText.setOnClickListener(v -> {
                 openCsvFile(csvFile);
                 v.setPressed(true);
@@ -678,16 +775,27 @@ public class FileManagerActivity extends Activity {
         }
     }
 
-    /** Adapter cho tab "Uploaded": mỗi dòng hiển thị tên/ngày upload kèm nút xoá file. */
+    /**
+     * Adapter cho tab "Uploaded" (nút xoá) và tab "Trash" (chỉ nút khôi phục, không xoá được).
+     * Cả hai hiển thị số ngày còn lại trước khi bị tự xoá.
+     */
     private class UploadedFileAdapter extends BaseAdapter {
+        private final List<CsvFile> files;
+        private final boolean trash;
+
+        UploadedFileAdapter(List<CsvFile> files, boolean trash) {
+            this.files = files;
+            this.trash = trash;
+        }
+
         @Override
         public int getCount() {
-            return uploadedFiles.size();
+            return files.size();
         }
 
         @Override
         public CsvFile getItem(int position) {
-            return uploadedFiles.get(position);
+            return files.get(position);
         }
 
         @Override
@@ -711,12 +819,23 @@ public class FileManagerActivity extends Activity {
 
             fileNameText.setText(csvFile.getName());
             bindFileEstimate(fileEstimateText, csvFile);
-            fileDateText.setText(String.format("Uploaded: %s", csvFile.getFormattedDate()));
+            int days = trash ? FileRetention.TRASH_RETENTION_DAYS
+                    : FileRetention.UPLOADED_RETENTION_DAYS;
+            int left = FileRetention.daysLeft(
+                    csvFile.getLastModifiedMs(), System.currentTimeMillis(), days);
+            fileDateText.setText(String.format(Locale.US, "%s: %s · auto-delete in %d day(s)",
+                    trash ? "Trashed" : "Uploaded", csvFile.getFormattedDate(), left));
 
-            deleteButton.setOnClickListener(v -> {
-                deleteUploadedFile(csvFile, position);
-                v.setPressed(true);
-            });
+            if (trash) {
+                deleteButton.setImageResource(android.R.drawable.ic_menu_revert);
+                deleteButton.setContentDescription("Restore file");
+                deleteButton.setOnClickListener(v -> restoreFromTrash(csvFile));
+            } else {
+                deleteButton.setOnClickListener(v -> {
+                    deleteUploadedFile(csvFile, position);
+                    v.setPressed(true);
+                });
+            }
 
             fileNameText.setOnClickListener(v -> {
                 openCsvFile(csvFile);
@@ -768,12 +887,11 @@ public class FileManagerActivity extends Activity {
         }
 
         boolean delete(Activity activity) {
-            if ("content".equals(entry.uri.getScheme())) {
-                int rows = activity.getContentResolver().delete(entry.uri, null, null);
-                return rows > 0;
-            }
-            File file = new File(entry.uri.getPath());
-            return file.delete();
+            return FileUploader.deleteUri(activity, entry.uri);
+        }
+
+        long getLastModifiedMs() {
+            return entry.lastModifiedMs;
         }
 
         boolean isCsvFile() {
