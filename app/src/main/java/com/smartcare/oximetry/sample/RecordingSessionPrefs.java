@@ -15,6 +15,7 @@ public final class RecordingSessionPrefs {
     private static final String KEY_CHUNK = "chunk_enabled";
     private static final String KEY_INTERVAL = "chunk_interval";
     private static final String KEY_COLLECTION_START = "collection_start_ms";
+    private static final String KEY_LAST_MAC = "last_device_mac";
 
     /** Ảnh chụp (snapshot) bất biến của phiên ghi đã lưu, dùng để khôi phục sau khi tiến trình bị kill. */
     public static final class Session {
@@ -65,6 +66,18 @@ public final class RecordingSessionPrefs {
             return;
         }
         prefs(context).edit().clear().apply();
+    }
+
+    /** MAC của oximeter đang ghi, để service tự kết nối lại sau khi process bị restart. */
+    public static void saveLastMac(Context context, String mac) {
+        if (context == null || TextUtils.isEmpty(mac)) {
+            return;
+        }
+        prefs(context).edit().putString(KEY_LAST_MAC, mac).apply();
+    }
+
+    public static String loadLastMac(Context context) {
+        return context == null ? null : prefs(context).getString(KEY_LAST_MAC, null);
     }
 
     /** True nếu đang có phiên ghi được đánh dấu active cần khôi phục. */

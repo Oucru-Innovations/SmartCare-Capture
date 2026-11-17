@@ -26,11 +26,15 @@ import android.os.Binder;
 
 import android.os.Build;
 
+import android.os.Bundle;
+
 import android.os.Handler;
 
 import android.os.IBinder;
 
 import android.os.Looper;
+
+import android.os.Message;
 
 import android.os.PowerManager;
 
@@ -41,6 +45,12 @@ import android.util.Log;
 
 
 import androidx.core.app.NotificationCompat;
+
+import com.smartcare.oximetry.library.ConnectionManager;
+
+import com.smartcare.oximetry.sample.device.IDeviceAdapter;
+
+import com.smartcare.oximetry.sample.device.OximeterSDKAdapter;
 
 
 
@@ -87,6 +97,36 @@ public class OximeterDataService extends Service {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private final AtomicBoolean shutdownInProgress = new AtomicBoolean(false);
+
+
+
+    /** Bundle key added to forwarded MESSAGE_PACKETs: samples lost over BLE just before this one. */
+    public static final String KEY_MISSING_PACKETS = "com.smartcare.oximetry.MISSING_PACKETS";
+
+    /** Retry cadence for reconnecting the oximeter while no Record screen is attached. */
+    private static final long BACKGROUND_RECONNECT_INTERVAL_MS = 30_000L;
+
+    /**
+     * The BLE connection lives in the service, not in RecordActivity: SDK messages are handled here
+     * (samples written to CSV) and only forwarded to the UI. Closing / swiping away the Record screen
+     * therefore no longer stops data from reaching the CSV file.
+     */
+    private OximeterSDKAdapter device;
+
+    private final Handler sdkHandler = new Handler(Looper.getMainLooper(), this::onSdkMessage);
+
+    /** RecordActivity's handler while it is alive; null when no UI is attached. */
+    private volatile Handler uiHandler;
+
+    private String lastDeviceMac;
+
+    private final PacketStatsTracker packetStats = PacketStatsTracker.getInstance();
+
+    private final ExecutorService connectExecutor = Executors.newSingleThreadExecutor();
+
+    private final AtomicBoolean connectInProgress = new AtomicBoolean(false);
+
+    private final Runnable backgroundReconnect = this::attemptBackgroundReconnect;
 
 
 
@@ -322,6 +362,12 @@ public class OximeterDataService extends Service {
         if (dataBuffer == null) {
             dataBuffer = new OximeterDataBuffer();
         }
+
+        // New process: no Activity exists, so the service itself reconnects the last oximeter.
+        RecordActivity.isRecordingSessionActive = true;
+        lastDeviceMac = RecordingSessionPrefs.loadLastMac(getApplicationContext());
+        packetStats.start();
+        scheduleBackgroundReconnect(BACKGROUND_RECONNECT_INTERVAL_MS);
 
         if (!isRunning) {
 
@@ -846,6 +892,18 @@ public class OximeterDataService extends Service {
 
         releaseWakeLockQuietly();
 
+        mainHandler.removeCallbacks(backgroundReconnect);
+
+        connectExecutor.shutdownNow();
+
+        if (device != null) {
+
+            device.onDestroy();
+
+            device = null;
+
+        }
+
         ioExecutor.shutdown();
 
         Log.i(TAG, "Oximeter Data Service destroyed");
@@ -860,6 +918,154 @@ public class OximeterDataService extends Service {
 
         return isRunning;
 
+    }
+
+
+
+    /** The oximeter connection owned by this service (created on first use). */
+    public IDeviceAdapter getDevice() {
+        if (device == null) {
+            device = new OximeterSDKAdapter(getApplicationContext(), sdkHandler);
+        }
+        return device;
+    }
+
+    public boolean isConnectInProgress() {
+        return connectInProgress.get();
+    }
+
+    /**
+     * RecordActivity attaches its handler while alive and detaches (null) when destroyed. While
+     * detached the service reconnects the oximeter by itself so a BLE drop does not end capture.
+     */
+    public void setUiHandler(Handler handler) {
+        uiHandler = handler;
+        if (handler != null) {
+            mainHandler.removeCallbacks(backgroundReconnect);
+        } else {
+            scheduleBackgroundReconnect(BACKGROUND_RECONNECT_INTERVAL_MS);
+        }
+    }
+
+    private boolean onSdkMessage(Message msg) {
+        switch (msg.what) {
+            case ConnectionManager.MESSAGE_PACKET:
+                onPacket(msg.getData());
+                break;
+            case ConnectionManager.MESSAGE_RECORDING_STARTED:
+                lastDeviceMac = device != null ? device.getMacAddress() : lastDeviceMac;
+                RecordingSessionPrefs.saveLastMac(this, lastDeviceMac);
+                mainHandler.removeCallbacks(backgroundReconnect);
+                break;
+            case ConnectionManager.MESSAGE_CONNECTION_LOST:
+                onBlePause("CONNECTION_LOST");
+                break;
+            case ConnectionManager.MESSAGE_RECORDING_ENDED:
+                onBlePause("RECORDING_ENDED");
+                break;
+            default:
+                break;
+        }
+        Handler ui = uiHandler;
+        if (ui != null) {
+            Message copy = Message.obtain(ui, msg.what, msg.arg1, msg.arg2, msg.obj);
+            copy.setData(msg.getData());
+            ui.sendMessage(copy);
+        } else if (msg.what == ConnectionManager.MESSAGE_DEVICE_NOT_FOUND) {
+            scheduleBackgroundReconnect(BACKGROUND_RECONNECT_INTERVAL_MS);
+        }
+        return true;
+    }
+
+    /** Writes one sample to CSV; opens the session / segment lazily on the first sample. */
+    private void onPacket(Bundle data) {
+        int counter = data.getInt(ConnectionManager.KEY_DATA_COUNTER);
+        data.putInt(KEY_MISSING_PACKETS, packetStats.onPacketReceived(counter));
+        long packageReceived = data.getLong(ConnectionManager.KEY_DATA_PACKAGE_RECEIVED);
+
+        if (!RecordActivity.isRecordingSessionActive) {
+            startDataCollection(packageReceived, patientCode, enableChunkFile, timeInterval);
+            RecordActivity.isRecordingSessionActive = true;
+            RecordingSessionPrefs.markActive(this, patientCode, enableChunkFile, timeInterval,
+                    packageReceived);
+            RecordingSessionPrefs.saveLastMac(this, lastDeviceMac);
+            packetStats.start();
+            FileLogger.logEvent("SERVICE", "CSV_RECORDING_STARTED",
+                    "first sample received; collectionStartMs=" + packageReceived);
+        } else if (!OximeterDataWriterFunctions.isRecordingActive()) {
+            ensureRecordingActive(packageReceived, patientCode, enableChunkFile, timeInterval);
+            FileLogger.logEvent("SERVICE", "WRITER_RESUMED_AFTER_RECONNECT",
+                    "Opened new CSV writer; session was still active");
+        }
+
+        addDataPoint(
+                data.getDouble(ConnectionManager.KEY_DATA_SPO2),
+                data.getInt(ConnectionManager.KEY_DATA_SPO2STATUS),
+                data.getLong(ConnectionManager.KEY_DATA_REDADC),
+                data.getDouble(ConnectionManager.KEY_DATA_BATTERY),
+                data.getInt(ConnectionManager.KEY_DATA_PULSE),
+                data.getLong(ConnectionManager.KEY_DATA_IRADC),
+                data.getDouble(ConnectionManager.KEY_DATA_PERFUSIONINDEX),
+                counter,
+                lastDeviceMac,
+                packageReceived,
+                data.getInt(ConnectionManager.KEY_DATA_PLETH),
+                System.currentTimeMillis());
+    }
+
+    /** BLE dropped without the user pressing Stop: close the segment (tail flushed) and reconnect. */
+    private void onBlePause(String reason) {
+        if (RecordActivity.isRecordingSessionActive && !recordingFinalized) {
+            flushBufferedDataQuietly();
+            String completed = OximeterDataWriterFunctions.splitFileOnBlePause();
+            if (completed != null) {
+                RecordingSessionPrefs.markActive(this, patientCode, enableChunkFile, timeInterval,
+                        System.currentTimeMillis());
+                FileLogger.logEvent("BLUETOOTH", "BLE_PAUSE_SPLIT",
+                        "Closed CSV segment on BLE pause: " + completed);
+            }
+        }
+        packetStats.onConnectionReset(reason);
+        if (uiHandler == null) {
+            scheduleBackgroundReconnect(BACKGROUND_RECONNECT_INTERVAL_MS);
+        }
+    }
+
+    private void scheduleBackgroundReconnect(long delayMs) {
+        mainHandler.removeCallbacks(backgroundReconnect);
+        mainHandler.postDelayed(backgroundReconnect, delayMs);
+    }
+
+    /** Runs only while no Record screen is attached (the Activity has its own reconnect logic). */
+    private void attemptBackgroundReconnect() {
+        if (uiHandler != null || !RecordActivity.isRecordingSessionActive || recordingFinalized
+                || TextUtils.isEmpty(lastDeviceMac)) {
+            return;
+        }
+        IDeviceAdapter dev = getDevice();
+        if (dev.isRecording() || !connectInProgress.compareAndSet(false, true)) {
+            return;
+        }
+        final String mac = lastDeviceMac;
+        FileLogger.logEvent("BLUETOOTH", "BG_RECONNECT_ATTEMPT", "mac=" + mac);
+        connectExecutor.execute(() -> {
+            boolean ok = false;
+            try {
+                ok = dev.connect(mac);
+            } catch (RuntimeException e) {
+                FileLogger.w(TAG, "Background reconnect failed: " + e.getMessage());
+            }
+            final boolean connected = ok;
+            mainHandler.post(() -> {
+                connectInProgress.set(false);
+                if (connected) {
+                    dev.startRecording();
+                    FileLogger.logEvent("BLUETOOTH", "BG_RECONNECT_OK", "mac=" + mac);
+                } else {
+                    scheduleBackgroundReconnect(BACKGROUND_RECONNECT_INTERVAL_MS);
+                }
+            });
+        });
     }
 
 }
