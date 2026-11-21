@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Device List"
+        android:text="Danh sách thiết bị"
         android:textSize="18sp"
         android:textColor="#333333"
         android:layout_marginBottom="12dp"
@@ -41,7 +41,7 @@
             android:src="@android:drawable/ic_menu_delete"
             android:background="@null"
             android:tint="@android:color/holo_red_dark"
-            android:contentDescription="Delete device 1" />
+            android:contentDescription="Xóa thiết bị 1" />
     </LinearLayout>
 
     <!-- Second device layout with drawable background for TextView -->
@@ -70,14 +70,14 @@
             android:src="@android:drawable/ic_menu_delete"
             android:background="@null"
             android:tint="@android:color/holo_red_dark"
-            android:contentDescription="Delete device 2" />
+            android:contentDescription="Xóa thiết bị 2" />
     </LinearLayout>
 
     <Button
         android:id="@+id/scanNewDeviceBtn"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Scan new device"
+        android:text="Quét thiết bị mới"
         android:textColor="@android:color/white"
         android:backgroundTint="#FF9800"
         android:layout_marginTop="8dp"/>

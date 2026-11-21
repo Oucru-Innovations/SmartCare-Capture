@@ -399,11 +399,11 @@ public class OximeterDataService extends Service {
 
                     CHANNEL_ID,
 
-                    "Oximeter Data Collection",
+                    "Thu thập dữ liệu SpO₂",
 
                     NotificationManager.IMPORTANCE_LOW);
 
-            channel.setDescription("Continuous SmartCare oximeter recording");
+            channel.setDescription("Ghi dữ liệu máy đo SpO₂ SmartCare liên tục");
 
 
 
@@ -439,7 +439,7 @@ public class OximeterDataService extends Service {
 
                 .setContentTitle("SmartCare Capture")
 
-                .setContentText("Recording " + (patientCode != null ? patientCode : "…")
+                .setContentText("Đang ghi " + (patientCode != null ? patientCode : "…")
 
                         + " · split every " + RecordingConstants.SPLIT_INTERVAL_HOURS + "h")
 

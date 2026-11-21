@@ -13,7 +13,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Chunk File Configuration"
+        android:text="Cấu hình chia tệp"
         android:textSize="@dimen/title_text_size"
         android:textStyle="bold"
         android:textColor="@android:color/black"
@@ -30,7 +30,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Enable Chunk File Creation"
+        android:text="Bật chia nhỏ tệp"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
         android:paddingBottom="4dp" />
@@ -45,7 +45,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Time Interval (minutes)"
+        android:text="Khoảng thời gian (phút)"
         android:textColor="#000000"
         android:textSize="@dimen/label_text_size"
         android:paddingBottom="4dp" />
@@ -54,7 +54,7 @@
         android:id="@+id/timeEditText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter time in minutes"
+        android:hint="Nhập số phút"
         android:background="@drawable/edit_text_background"
         android:padding="@dimen/input_padding"
         android:inputType="number"
@@ -65,7 +65,7 @@
         android:id="@+id/submitButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Save Configuration"
+        android:text="Lưu cấu hình"
         android:background="@drawable/rounded_button_selector"
         android:textColor="@android:color/white"
         android:padding="@dimen/button_padding"

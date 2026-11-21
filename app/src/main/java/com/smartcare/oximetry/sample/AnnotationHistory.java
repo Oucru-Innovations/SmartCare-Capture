@@ -44,7 +44,7 @@ public class AnnotationHistory {
      */
     public static void showAnnotationHistory(Context context, String patientCode) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Annotation");
+        builder.setTitle("Ghi chú");
 
         // Inflate a layout for displaying annotations in a table
         View view = LayoutInflater.from(context).inflate(R.layout.annotation_history_layout, null);
@@ -55,7 +55,7 @@ public class AnnotationHistory {
 
         if (annotations.isEmpty()) {
             TextView emptyText = new TextView(context);
-            emptyText.setText("No notes for this patient");
+            emptyText.setText("Chưa có ghi chú cho bệnh nhân này");
             emptyText.setPadding(20, 20, 20, 20);
             builder.setView(emptyText);
         } else {
@@ -77,7 +77,7 @@ public class AnnotationHistory {
 
             if (filteredAnnotations.isEmpty()) {
                 TextView emptyText = new TextView(context);
-                emptyText.setText("No notes for this patient");
+                emptyText.setText("Chưa có ghi chú cho bệnh nhân này");
                 emptyText.setPadding(20, 20, 20, 20);
                 builder.setView(emptyText);
             } else {
@@ -115,7 +115,7 @@ public class AnnotationHistory {
             }
         }
 
-        builder.setPositiveButton("Close", null);
+        builder.setPositiveButton("Đóng", null);
         // Dismiss any existing main dialog before showing new one
         if (activeMainDialog != null && activeMainDialog.isShowing()) {
             activeMainDialog.dismiss();
@@ -144,10 +144,10 @@ public class AnnotationHistory {
 
     private static void showAnnotationOptions(final Context context, final String patientCode,
                                               final ShowAnnotate.AnnotationEntry entry) {
-        String[] options = {"Edit", "Delete", "Cancel"};
+        String[] options = {"Sửa", "Xóa", "Hủy"};
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Options");
+        builder.setTitle("Tùy chọn");
         builder.setItems(options, (dialog, which) -> {
             // Dismiss the options dialog
             if (activeOptionsDialog != null && activeOptionsDialog.isShowing()) {
@@ -173,7 +173,7 @@ public class AnnotationHistory {
     private static void showEditDialog(final Context context, final String patientCode,
                                        final ShowAnnotate.AnnotationEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Edit Note");
+        builder.setTitle("Sửa ghi chú");
 
         final EditText input = new EditText(context);
         input.setText(entry.getNote());
@@ -182,7 +182,7 @@ public class AnnotationHistory {
         input.setMaxLines(5);
         builder.setView(input);
 
-        builder.setPositiveButton("Save", (dialog, which) -> {
+        builder.setPositiveButton("Lưu", (dialog, which) -> {
             String newNote = input.getText().toString();
             if (!newNote.isEmpty()) {
                 ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
@@ -196,7 +196,7 @@ public class AnnotationHistory {
             }
         });
 
-        builder.setNegativeButton("Cancel", (dialog, which) -> {
+        builder.setNegativeButton("Hủy", (dialog, which) -> {
             // Dismiss the edit dialog when canceled
             if (activeEditDialog != null && activeEditDialog.isShowing()) {
                 activeEditDialog.dismiss();
@@ -212,10 +212,10 @@ public class AnnotationHistory {
 
     private static void showDeleteConfirmation(final Context context, final String patientCode, final ShowAnnotate.AnnotationEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Delete Note");
-        builder.setMessage("Are you sure you want to delete this note?");
+        builder.setTitle("Xóa ghi chú");
+        builder.setMessage("Bạn có chắc muốn xóa ghi chú này?");
 
-        builder.setPositiveButton("Delete", (dialog, which) -> {
+        builder.setPositiveButton("Xóa", (dialog, which) -> {
             ShowAnnotate annotate = new ShowAnnotate(context, patientCode);
             annotate.deleteAnnotation(entry);
             // Dismiss the delete dialog
@@ -226,7 +226,7 @@ public class AnnotationHistory {
             showAnnotationHistory(context, patientCode);
         });
 
-        builder.setNegativeButton("Cancel", (dialog, which) -> {
+        builder.setNegativeButton("Hủy", (dialog, which) -> {
             // Dismiss the delete dialog when canceled
             if (activeDeleteDialog != null && activeDeleteDialog.isShowing()) {
                 activeDeleteDialog.dismiss();

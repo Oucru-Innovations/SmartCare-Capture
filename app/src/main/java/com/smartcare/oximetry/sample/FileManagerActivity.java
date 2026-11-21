@@ -215,7 +215,7 @@ public class FileManagerActivity extends Activity {
         folderAccessButton.setOnLongClickListener(v -> {
             OximeterDataTreeAccess.clearPersistedTreeUri(this);
             autoSafDeclinedThisSession = false;
-            Toast.makeText(this, "Saved folder access cleared", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Đã xóa quyền truy cập thư mục đã lưu", Toast.LENGTH_SHORT).show();
             refreshFileListsInternal(false, false, true);
             return true;
         });
@@ -262,14 +262,14 @@ public class FileManagerActivity extends Activity {
         } catch (SecurityException e) {
             Log.e(TAG, "takePersistableUriPermission failed", e);
             Toast.makeText(this,
-                    "Could not keep folder access. Open the picker again from the app.",
+                    "Không giữ được quyền truy cập thư mục. Hãy mở lại trình chọn thư mục từ ứng dụng.",
                     Toast.LENGTH_LONG).show();
             return;
         }
         OximeterDataTreeAccess.persistTreeUri(this, treeUri);
         FileLogger.logEvent("FILES", "FILE_MANAGER_SAF_TREE", "uri=" + treeUri, this);
         autoSafDeclinedThisSession = false;
-        Toast.makeText(this, "Folder access saved. Refreshing…", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Đã lưu quyền truy cập thư mục. Đang làm mới…", Toast.LENGTH_SHORT).show();
         refreshFileLists();
     }
 
@@ -415,7 +415,7 @@ public class FileManagerActivity extends Activity {
                 OximeterDataFileIndex.refreshMediaStoreDeep(this);
             } else {
                 Toast.makeText(this,
-                        "Storage not granted: listing uses MediaStore only; tap Refresh after granting in Settings.",
+                        "Chưa cấp quyền bộ nhớ: chỉ liệt kê qua MediaStore; nhấn Làm mới sau khi cấp quyền trong Cài đặt.",
                         Toast.LENGTH_LONG).show();
             }
             refreshFileListsInternal(false, false, true);
@@ -427,17 +427,17 @@ public class FileManagerActivity extends Activity {
 
         TabHost.TabSpec tabSpec1 = tabHost.newTabSpec("active");
         tabSpec1.setContent(R.id.tab1);
-        tabSpec1.setIndicator("Pending Files");
+        tabSpec1.setIndicator("Chờ tải lên");
         tabHost.addTab(tabSpec1);
 
         TabHost.TabSpec tabSpec2 = tabHost.newTabSpec("uploaded");
         tabSpec2.setContent(R.id.tab2);
-        tabSpec2.setIndicator("Uploaded Files");
+        tabSpec2.setIndicator("Đã tải lên");
         tabHost.addTab(tabSpec2);
 
         TabHost.TabSpec tabSpec3 = tabHost.newTabSpec("trash");
         tabSpec3.setContent(R.id.tab3);
-        tabSpec3.setIndicator("Trash");
+        tabSpec3.setIndicator("Thùng rác");
         tabHost.addTab(tabSpec3);
 
         tabHost.setCurrentTab(0);
@@ -455,7 +455,7 @@ public class FileManagerActivity extends Activity {
     private void refreshFileListsInternal(boolean forceMediaRefresh, boolean showToast,
                                           boolean bypassCache) {
         if (showToast) {
-            Toast.makeText(this, "Refreshing files...", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Đang làm mới tệp...", Toast.LENGTH_SHORT).show();
         }
         final int generation = ++refreshGeneration;
         if (refreshInProgress) {
@@ -495,7 +495,7 @@ public class FileManagerActivity extends Activity {
                         setLoadingVisible(false);
                     }
                     if (showToast) {
-                        Toast.makeText(this, "Refresh failed", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Làm mới thất bại", Toast.LENGTH_SHORT).show();
                     }
                 });
             }
@@ -543,11 +543,11 @@ public class FileManagerActivity extends Activity {
         }
 
         if (pendingEntries.isEmpty()) {
-            emptyTextView.setText("No files found. Expected SmartCareCsv*.csv or Annotation_*.json under Download/OximeterData (spelling: Oximeter). "
+            emptyTextView.setText("Không tìm thấy tệp. Cần có SmartCareCsv*.csv hoặc Annotation_*.json trong Download/OximeterData. "
                     + getString(R.string.file_manager_grant_folder_hint));
         }
         if (uploadedEntries.isEmpty()) {
-            emptyUploadedTextView.setText("No uploaded SmartCareCsv / Annotation files found");
+            emptyUploadedTextView.setText("Không có tệp SmartCareCsv / Annotation đã tải lên");
         }
 
         updateActiveFileList();
@@ -555,7 +555,7 @@ public class FileManagerActivity extends Activity {
         updateTrashFileList();
         scheduleAutoFolderAccessIfStillEmpty();
         if (showToast) {
-            Toast.makeText(this, "File lists refreshed", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Đã làm mới danh sách tệp", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -604,11 +604,11 @@ public class FileManagerActivity extends Activity {
     /** Hỏi xác nhận rồi chuyển file pending vào Trash (tự xoá sau 30 ngày, khôi phục được). */
     private void confirmMoveToTrash(CsvFile csvFile) {
         new AlertDialog.Builder(this)
-                .setTitle("Move to Trash")
-                .setMessage("Move '" + csvFile.getName() + "' to Trash?\n\nYou can restore it from the "
-                        + "Trash tab. Files in Trash are deleted automatically after "
-                        + FileRetention.TRASH_RETENTION_DAYS + " days.")
-                .setPositiveButton("Move", (dialog, which) -> {
+                .setTitle("Chuyển vào thùng rác")
+                .setMessage("Chuyển '" + csvFile.getName() + "' vào thùng rác?\n\nBạn có thể khôi phục từ "
+                        + "tab Thùng rác. Tệp trong thùng rác sẽ tự động bị xóa sau "
+                        + FileRetention.TRASH_RETENTION_DAYS + " ngày.")
+                .setPositiveButton("Chuyển", (dialog, which) -> {
                     String uri = csvFile.getUploadPath();
                     setLoadingVisible(true);
                     fileQueryExecutor.execute(() -> {
@@ -619,18 +619,18 @@ public class FileManagerActivity extends Activity {
                             }
                             String msg;
                             if (result == FileRetention.TrashResult.MOVED) {
-                                msg = "Moved to Trash";
+                                msg = "Đã chuyển vào thùng rác";
                             } else if (result == FileRetention.TrashResult.BUSY) {
-                                msg = "File is being recorded or uploaded, try again later";
+                                msg = "Tệp đang được ghi hoặc tải lên, hãy thử lại sau";
                             } else {
-                                msg = "Failed to move file to Trash";
+                                msg = "Không chuyển được tệp vào thùng rác";
                             }
                             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
                             refreshFileListsInternal(false, false, true);
                         });
                     });
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Hủy", null)
                 .setIcon(android.R.drawable.ic_dialog_alert)
                 .show();
     }
@@ -646,8 +646,8 @@ public class FileManagerActivity extends Activity {
                     return;
                 }
                 Toast.makeText(this,
-                        ok ? "Restored to Pending (upload manually when ready)"
-                                : "Failed to restore file",
+                        ok ? "Đã khôi phục về Chờ tải lên (tải lên thủ công khi sẵn sàng)"
+                                : "Khôi phục tệp thất bại",
                         Toast.LENGTH_SHORT).show();
                 refreshFileListsInternal(false, false, true);
             });
@@ -657,22 +657,22 @@ public class FileManagerActivity extends Activity {
     /** Hỏi xác nhận rồi xoá file đã upload khỏi thiết bị và cập nhật lại danh sách Uploaded. */
     private void deleteUploadedFile(CsvFile csvFile, int position) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete File")
-                .setMessage("Are you sure you want to delete '" + csvFile.getName() + "'?\n\nThis action cannot be undone.")
-                .setPositiveButton("Delete", (dialog, which) -> {
+                .setTitle("Xóa tệp")
+                .setMessage("Bạn có chắc muốn xóa '" + csvFile.getName() + "'?\n\nKhông thể hoàn tác thao tác này.")
+                .setPositiveButton("Xóa", (dialog, which) -> {
                     boolean deleted = csvFile.delete(this);
                     if (deleted) {
                         uploadedFiles.remove(position);
                         uploadedAdapter.notifyDataSetChanged();
                         updateUploadedFileList();
-                        Toast.makeText(this, "File deleted successfully", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Đã xóa tệp", Toast.LENGTH_SHORT).show();
                         Log.d(TAG, "File deleted: " + csvFile.getName());
                     } else {
-                        Toast.makeText(this, "Failed to delete file", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Xóa tệp thất bại", Toast.LENGTH_SHORT).show();
                         Log.e(TAG, "Failed to delete file: " + csvFile.getName());
                     }
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Hủy", null)
                 .setIcon(android.R.drawable.ic_dialog_alert)
                 .show();
     }
@@ -686,7 +686,7 @@ public class FileManagerActivity extends Activity {
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(intent);
         } catch (Exception e) {
-            Toast.makeText(this, "Unable to open file: " + e.getMessage(),
+            Toast.makeText(this, "Không mở được tệp: " + e.getMessage(),
                     Toast.LENGTH_SHORT).show();
             Log.e(TAG, "Error opening file: " + csvFile.getName(), e);
         }
@@ -733,7 +733,7 @@ public class FileManagerActivity extends Activity {
             fileNameText.setText(csvFile.getName());
             // fileSizeText.setText(String.format("Size: %s", csvFile.getFormattedSize()));
             bindFileEstimate(fileSizeText, csvFile);
-            fileDateText.setText(String.format("Modified: %s", csvFile.getFormattedDate()));
+            fileDateText.setText(String.format("Sửa đổi: %s", csvFile.getFormattedDate()));
 
             uploadButton.setOnClickListener(v -> {
                 String uploadPath = csvFile.getUploadPath();
@@ -747,17 +747,17 @@ public class FileManagerActivity extends Activity {
                                     refreshFileListsQuiet();
                                     if (!success) {
                                         Toast.makeText(FileManagerActivity.this,
-                                                "Upload failed after 3 attempts",
+                                                "Tải lên thất bại sau 3 lần thử",
                                                 Toast.LENGTH_SHORT).show();
                                     }
                                 });
                 if (result == PendingFileUploadCoordinator.EnqueueResult.STARTED) {
                     Toast.makeText(FileManagerActivity.this,
-                            "Upload started (up to 3 attempts if network available)",
+                            "Đã bắt đầu tải lên (tối đa 3 lần thử nếu có mạng)",
                             Toast.LENGTH_SHORT).show();
                 } else if (result == PendingFileUploadCoordinator.EnqueueResult.ALREADY_IN_FLIGHT) {
                     Toast.makeText(FileManagerActivity.this,
-                            "Upload already in progress",
+                            "Đang tải lên",
                             Toast.LENGTH_SHORT).show();
                 }
                 v.setPressed(true);
@@ -823,12 +823,12 @@ public class FileManagerActivity extends Activity {
                     : FileRetention.UPLOADED_RETENTION_DAYS;
             int left = FileRetention.daysLeft(
                     csvFile.getLastModifiedMs(), System.currentTimeMillis(), days);
-            fileDateText.setText(String.format(Locale.US, "%s: %s · auto-delete in %d day(s)",
-                    trash ? "Trashed" : "Uploaded", csvFile.getFormattedDate(), left));
+            fileDateText.setText(String.format(Locale.US, "%s: %s · tự xóa sau %d ngày",
+                    trash ? "Đã xóa" : "Đã tải lên", csvFile.getFormattedDate(), left));
 
             if (trash) {
                 deleteButton.setImageResource(android.R.drawable.ic_menu_revert);
-                deleteButton.setContentDescription("Restore file");
+                deleteButton.setContentDescription("Khôi phục tệp");
                 deleteButton.setOnClickListener(v -> restoreFromTrash(csvFile));
             } else {
                 deleteButton.setOnClickListener(v -> {

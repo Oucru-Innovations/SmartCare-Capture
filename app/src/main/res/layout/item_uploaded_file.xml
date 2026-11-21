@@ -17,7 +17,7 @@
             android:id="@+id/uploadedFileNameText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="File Name"
+            android:text="Tên tệp"
             android:textSize="16sp"
             android:textStyle="bold"
             android:textColor="@android:color/black"
@@ -29,7 +29,7 @@
             android:id="@+id/uploadedFileEstimateText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Estimate: 00:00:01 (time)"
+            android:text="Ước tính: 00:00:01 (thời gian)"
             android:textSize="12sp"
             android:textColor="@android:color/darker_gray"
             android:layout_marginTop="4dp" />
@@ -38,7 +38,7 @@
             android:id="@+id/uploadedFileDateText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Date"
+            android:text="Ngày"
             android:textSize="14sp"
             android:textColor="@android:color/darker_gray"
             android:layout_marginTop="4dp" />
@@ -54,7 +54,7 @@
         android:layout_marginStart="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_delete"
-        android:contentDescription="Delete file"
+        android:contentDescription="Xóa tệp"
         android:tint="@android:color/holo_red_dark" />
 
 </LinearLayout>

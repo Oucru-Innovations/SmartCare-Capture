@@ -31,7 +31,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="12sp"
-            android:text="Estimate: 00:00:01 (time)"
+            android:text="Ước tính: 00:00:01 (thời gian)"
             android:textColor="@android:color/darker_gray"/>
 
         <TextView
@@ -39,7 +39,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="12sp"
-            android:text="Modified: 2024-01-15"
+            android:text="Sửa đổi: 2024-01-15"
             android:textColor="@android:color/darker_gray"/>
     </LinearLayout>
 
@@ -62,7 +62,7 @@
         android:padding="8dp"
         android:scaleType="centerInside"
         android:src="@android:drawable/ic_menu_delete"
-        android:contentDescription="Move to Trash"
+        android:contentDescription="Chuyển vào thùng rác"
         android:tint="@android:color/holo_red_dark" />
 
 </LinearLayout>

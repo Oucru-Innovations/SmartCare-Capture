@@ -445,19 +445,19 @@ public static void uploadFile(Activity activity, String filePath, String uploadF
                             (message.equals("File uploaded successfully!") || 
                              message.equals("File uploaded successfully"))) {
                             Log.i("FileUploader", "File upload successful: " + message);
-                            completeWithToast(activity, callback, true, message, "File upload successful");
+                            completeWithToast(activity, callback, true, message, "Tải tệp lên thành công");
                         } else {
                             String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
                             Log.e("FileUploader", "File upload failed: " + errorMsg);
                             completeWithToast(activity, callback, false, errorMsg,
-                                    "File upload failed: " + errorMsg);
+                                    "Tải tệp lên thất bại: " + errorMsg);
                         }
                     } else {
                         String errorMsg = response.message() != null ? response.message() : "Unknown error";
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
                         Log.e("FileUploader", "Response code: " + response.code());
                         completeWithToast(activity, callback, false, errorMsg,
-                                "File upload failed: " + errorMsg);
+                                "Tải tệp lên thất bại: " + errorMsg);
                     }
                 }
 
@@ -467,7 +467,7 @@ public static void uploadFile(Activity activity, String filePath, String uploadF
                     Log.e("FileUploader", "Error uploading file", t);
                     completeWithToast(activity, callback,
                             false, t.getMessage() != null ? t.getMessage() : "Upload error",
-                            "Error uploading file");
+                            "Lỗi khi tải tệp lên");
                 }
             });
 
@@ -513,19 +513,19 @@ public static void uploadFile(Activity activity, String filePath, String uploadF
                         (message.equals("File uploaded successfully!") || 
                          message.equals("File uploaded successfully"))) {
                         Log.i("FileUploader", "File upload successful: " + message);
-                        completeWithToast(activity, callback, true, message, "File upload successful");
+                        completeWithToast(activity, callback, true, message, "Tải tệp lên thành công");
                     } else {
                         String errorMsg = "Server response: " + (message != null ? message : "Unknown error");
                         Log.e("FileUploader", "File upload failed: " + errorMsg);
                         completeWithToast(activity, callback, false, errorMsg,
-                                "File upload failed: " + errorMsg);
+                                "Tải tệp lên thất bại: " + errorMsg);
                     }
                 } else {
                     String errorMsg = response.message() != null ? response.message() : "Unknown error";
                     Log.e("FileUploader", "File upload failed: " + errorMsg);
                     Log.e("FileUploader", "Response code: " + response.code());
                     completeWithToast(activity, callback, false, errorMsg,
-                            "File upload failed: " + errorMsg);
+                            "Tải tệp lên thất bại: " + errorMsg);
                 }
             }
 
@@ -534,7 +534,7 @@ public static void uploadFile(Activity activity, String filePath, String uploadF
                 Log.e("FileUploader", "Error uploading file", t);
                 completeWithToast(activity, callback,
                         false, t.getMessage() != null ? t.getMessage() : "Upload error",
-                        "Error uploading file");
+                        "Lỗi khi tải tệp lên");
             }
         });
     }

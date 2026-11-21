@@ -218,8 +218,8 @@ public class PatientInfoPopup {
 
                 // Show explanation dialog
                 AlertDialog.Builder builder = new AlertDialog.Builder(context);
-                builder.setTitle("Patient Code Required")
-                        .setMessage("Please select a previous code or enter a new one to continue.")
+                builder.setTitle("Cần mã bệnh nhân")
+                        .setMessage("Vui lòng chọn mã trước đó hoặc nhập mã mới để tiếp tục.")
                         .setPositiveButton("OK", null)
                         .show();
             }
@@ -269,10 +269,10 @@ public class PatientInfoPopup {
             (code, position) -> {
                 // Show confirmation dialog before deleting
                 new AlertDialog.Builder(context)
-                    .setTitle("Delete code")
-                    .setMessage("Are you sure you want to delete the code")
+                    .setTitle("Xóa mã")
+                    .setMessage("Bạn có chắc muốn xóa mã này?")
                     .setPositiveButton("OK", (dialog, which) -> deleteCodeFromHistory(code, position))
-                    .setNegativeButton("Cancel", null)
+                    .setNegativeButton("Hủy", null)
                     .show();
             }
         );
@@ -489,11 +489,11 @@ public class PatientInfoPopup {
 
     private void validateResearchCode(String code) {
         if (code.isEmpty()) {
-            researchCodeEditText.setError("Research code is required");
+            researchCodeEditText.setError("Bắt buộc nhập mã nghiên cứu");
             return;
         }
         if (!isResearchCodeValid(code)) {
-            researchCodeEditText.setError("Invalid format (e.g., 12AB or 12ABc)");
+            researchCodeEditText.setError("Sai định dạng (vd. 12AB hoặc 12ABc)");
             return;
         }
         researchCodeEditText.setError(null);
@@ -501,11 +501,11 @@ public class PatientInfoPopup {
     //location -> ten benh nha
     private void validateLocationCode(String code) {
         if (code.isEmpty()) {
-            locationCodeEditText.setError("Name is required");
+            locationCodeEditText.setError("Bắt buộc nhập tên");
             return;
         }
         if (!isLocationCodeValid(code)) {
-            locationCodeEditText.setError("Must be exactly 3 digits");
+            locationCodeEditText.setError("Phải gồm đúng 3 chữ số");
             return;
         }
         locationCodeEditText.setError(null);
@@ -513,11 +513,11 @@ public class PatientInfoPopup {
     //Serial -> vi tri so giuong
     private void validateSerialNumber(String number) {
         if (number.isEmpty()) {
-            serialNumberEditText.setError("Location is required");
+            serialNumberEditText.setError("Bắt buộc nhập vị trí");
             return;
         }
         if (!isSerialNumberValid(number)) {
-            serialNumberEditText.setError("Must be 3-6 alphanumeric characters");
+            serialNumberEditText.setError("Phải gồm 3-6 ký tự chữ hoặc số");
             return;
         }
         serialNumberEditText.setError(null);

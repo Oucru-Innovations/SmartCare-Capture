@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
         android:id="@+id/action_show_devices"
-        android:title="Device Manager"
+        android:title="Quản lý thiết bị"
         android:orderInCategory="100"
         app:showAsAction="never" />
     <item
@@ -13,7 +13,7 @@
         app:showAsAction="never" />
     <item
         android:id="@+id/action_patient_info"
-        android:title="User Information"
+        android:title="Thông tin người dùng"
         android:orderInCategory="300"
         android:visible="false"
         app:showAsAction="never" />
@@ -26,7 +26,7 @@
 
     <item
         android:id="@+id/action_show_history"
-        android:title="Annotation"
+        android:title="Ghi chú"
         android:orderInCategory="500"
         app:showAsAction="never" />
 

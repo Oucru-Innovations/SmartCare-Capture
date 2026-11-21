@@ -18,14 +18,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:padding="10dp"
-                android:text="Time"
+                android:text="Thời gian"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:padding="10dp"
-                android:text="Note"
+                android:text="Ghi chú"
                 android:textStyle="bold" />
 
             <!-- Patient ID column removed -->
