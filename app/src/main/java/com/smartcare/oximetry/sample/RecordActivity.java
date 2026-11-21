@@ -154,6 +154,9 @@ public class RecordActivity extends Activity {
     private TextView mSpo2Label;
     private SimpleXYSeries mSeries;
     private SmartCareHandler mHandler;
+    /** Phiên đo 20 phút (protocol); null khi chưa bắt đầu / đã kết thúc. */
+    private MeasurementSession measurement;
+    private final Runnable measurementTick = this::onMeasurementTick;
     // Counts packets received from the device, packets lost in transit (BLE gaps), and logs
     // per-minute / total figures to FileLogger. Singleton so figures survive activity recreation.
     final PacketStatsTracker packetStats = PacketStatsTracker.getInstance();
@@ -315,6 +318,9 @@ public class RecordActivity extends Activity {
                     //store the latest HR and SpO2 values for annotation
                     annotationHeartRate = latestHeartRateValue;
                     annotationSpO2 = latestSpO2Value;
+                    if (target.measurement != null) {
+                        target.measurement.onData(System.currentTimeMillis());
+                    }
                     //double latestPerfusionIndexValue = -1;
 
                     //new code add
@@ -401,7 +407,7 @@ public class RecordActivity extends Activity {
                             //convert battery to persentage
                             double percentage = Math.min(Math.max((latestBatteryValue - 3300.0) / 850.0, 0.0), 1.0) * 100.0;
                             String batteryString = String.valueOf(Math.ceil(percentage));
-                            String battery = String.format(Locale.US, "Battery: %s%%", batteryString );
+                            String battery = String.format(Locale.US, "Pin: %s%%", batteryString );
                             target.batteryText.setText(battery);
 
                             target.mHrDisplay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50);
@@ -418,20 +424,20 @@ public class RecordActivity extends Activity {
                     }
                     break;
                 case ConnectionManager.MESSAGE_NO_DATA_AVAILABLE:
-                    Toast.makeText(target, "No data available from oximeter", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Không có dữ liệu từ máy đo", Toast.LENGTH_SHORT).show();
                     break;
                 case ConnectionManager.MESSAGE_UNKNOWN_OXIMETER:
-                    Toast.makeText(target, "Unknown pulse oximeter", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Máy đo SpO₂ không xác định", Toast.LENGTH_SHORT).show();
                     break;
                 case ConnectionManager.MESSAGE_BLUETOOTH_OFF:
-                    Toast.makeText(target, "Bluetooth is off", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Bluetooth đang tắt", Toast.LENGTH_SHORT).show();
                     break;
                 case ConnectionManager.MESSAGE_BLUETOOTH_UNAVAILABLE:
-                    Toast.makeText(target, "Bluetooth is unavailable", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Bluetooth không khả dụng", Toast.LENGTH_SHORT).show();
                     break;
                 // smartcare turn off when it is connected
                 case ConnectionManager.MESSAGE_CONNECTION_LOST:
-                    Toast.makeText(target, "Bluetooth connection lost", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Mất kết nối Bluetooth", Toast.LENGTH_SHORT).show();
                     FileLogger.logWarningEvent("BLUETOOTH", "CONNECTION_LOST",
                             "BLE drop — split CSV if needed; session + reconnect continue | "
                                     + MemoryDiagnostics.formatSnapshot(target));
@@ -450,10 +456,10 @@ public class RecordActivity extends Activity {
 
                     DateFormat timeFormat = android.text.format.DateFormat.getTimeFormat(target.getApplicationContext());
 
-                    String str = "Connected to " + target.connectionManager.getOximeterModelNumber()
-                        + " oximeter at " + timeFormat.format(new Date(recordingStarted)) + "."
-                        + "\nSampling at " + Integer.toString(target.connectionManager.getSampleRate())
-                        + " samples per second.";
+                    String str = "Đã kết nối máy đo " + target.connectionManager.getOximeterModelNumber()
+                        + " lúc " + timeFormat.format(new Date(recordingStarted)) + "."
+                        + "\nTần số lấy mẫu " + Integer.toString(target.connectionManager.getSampleRate())
+                        + " mẫu/giây.";
                     Toast.makeText(target, str, Toast.LENGTH_LONG).show();
 
                     FileLogger.i(TAG, "Successfully connected to MAC:" + target.connectionManager.getMacAddress());
@@ -493,9 +499,9 @@ public class RecordActivity extends Activity {
                     // Create and show the Toast
 
 //                    Toast.makeText(target, "Disconnected. " +totalMessagesSent +" messages sent", Toast.LENGTH_SHORT).show();
-//                    Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT).show();
+//                    Toast.makeText(target, "Đã ngắt kết nối máy đo", Toast.LENGTH_SHORT).show();
 
-                    final Toast toast = Toast.makeText(target, "Disconnected from oximetry", Toast.LENGTH_SHORT);
+                    final Toast toast = Toast.makeText(target, "Đã ngắt kết nối máy đo", Toast.LENGTH_SHORT);
                     toast.show();
                     new Handler().postDelayed(toast::cancel, 1000); // 1000 milliseconds = 1 second
 
@@ -523,13 +529,13 @@ public class RecordActivity extends Activity {
                     //target.mPlot.redraw();
                     break;
                 case ConnectionManager.MESSAGE_CLOCATION_PERMISSION_REQUIRED:
-                    Toast.makeText(target, "Coarse location permission missing", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Thiếu quyền vị trí gần đúng", Toast.LENGTH_SHORT).show();
                     break;
                 case ConnectionManager.MESSAGE_FLOCATION_PERMISSION_REQUIRED:
-                    Toast.makeText(target, "Fine location permission missing", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Thiếu quyền vị trí chính xác", Toast.LENGTH_SHORT).show();
                     break;
                 case ConnectionManager.MESSAGE_DEVICE_NOT_FOUND:
-                    Toast.makeText(target, "No oximeter device found", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(target, "Không tìm thấy máy đo SpO₂", Toast.LENGTH_SHORT).show();
                     target.isConnected = false;
                     target.isDisconnectFlowInProgress = false;
                     target.startBluetoothDiscoveryIfPermitted();
@@ -1162,7 +1168,7 @@ public class RecordActivity extends Activity {
                         patientCodeTextView.setTextColor(Color.BLACK);
 
                         FileLogger.i(TAG, "Patient code confirmed: " + formattedCode);
-//                        new ShowAnnotate(RecordActivity.this, formattedCode);
+                        startMeasurement();
                     });
                 } else {
                     // Try again later if the window token isn't ready
@@ -1172,6 +1178,55 @@ public class RecordActivity extends Activity {
                 Log.e(TAG, "Error showing patient info popup", e);
             }
         });
+    }
+
+    /** Bắt đầu phiên đo 20 phút ngay khi xác nhận mã bệnh nhân; đồng hồ chỉ chạy khi có dữ liệu. */
+    private void startMeasurement() {
+        measurement = new MeasurementSession(System.currentTimeMillis());
+        FileLogger.logEvent("SESSION", "MEASUREMENT_STARTED", "code=" + formattedCode);
+        mHandler.removeCallbacks(measurementTick);
+        mHandler.post(measurementTick);
+    }
+
+    /** Mỗi giây: cập nhật đếm ngược trên ActionBar; hết phiên (đủ 20' hoặc mất kết nối quá lâu) → khảo sát. */
+    private void onMeasurementTick() {
+        if (measurement == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        MeasurementSession.Status status = measurement.tick(now);
+        long left = Math.max(0, MeasurementSession.TARGET_MS - measurement.dataMs()) / 1000;
+        String remaining = String.format(Locale.US, "%d:%02d", left / 60, left % 60);
+        String subtitle;
+        switch (status) {
+            case WAITING:
+                subtitle = "Phiên đo: chờ dữ liệu từ máy đo…";
+                break;
+            case RUNNING:
+                subtitle = "Phiên đo: còn " + remaining;
+                break;
+            case PAUSED:
+                long wait = Math.max(0, MeasurementSession.GRACE_MS - measurement.silentMs(now)) / 1000;
+                subtitle = String.format(Locale.US,
+                        "Mất kết nối – tạm dừng (còn %s). Tự hủy sau %d:%02d", remaining, wait / 60, wait % 60);
+                break;
+            default: // COMPLETED / INCOMPLETE
+                boolean done = status == MeasurementSession.Status.COMPLETED;
+                FileLogger.logEvent("SESSION", "MEASUREMENT_" + status, "dataMs=" + measurement.dataMs());
+                Toast.makeText(this, done ? "Đã đủ 20 phút đo" : "Phiên đo bị gián đoạn quá lâu",
+                        Toast.LENGTH_LONG).show();
+                if (getActionBar() != null) {
+                    getActionBar().setSubtitle(done ? "Phiên đo: hoàn thành" : "Phiên đo: không đủ thời gian");
+                }
+                Map<String, Object> result = measurement.toJson();
+                measurement = null;
+                SessionSurveyDialog.show(this, formattedCode, result);
+                return;
+        }
+        if (getActionBar() != null) {
+            getActionBar().setSubtitle(subtitle);
+        }
+        mHandler.postDelayed(measurementTick, 1000);
     }
 
     //menu
@@ -1206,7 +1261,7 @@ public class RecordActivity extends Activity {
 //                return true;
             case R.id.action_config_info:
                 if(isRecordingSessionActive){
-                    Toast.makeText(this, "Please stop recording before change configuration", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Vui lòng dừng ghi trước khi đổi cấu hình", Toast.LENGTH_SHORT).show();
                     return true;
                 }
                 ChunkFileConfigPopup chunkFileConfigPopup = new ChunkFileConfigPopup(this);
@@ -1558,7 +1613,7 @@ public class RecordActivity extends Activity {
 //        });
         patientCodeTextView.setOnClickListener(v -> {
             if(isRecordingSessionActive){
-                Toast.makeText(this, "Please stop recording before change code", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Vui lòng dừng ghi trước khi đổi mã", Toast.LENGTH_SHORT).show();
                 return ;
             }
             patientInfoPopup.show(findViewById(android.R.id.content));
@@ -1602,7 +1657,7 @@ public class RecordActivity extends Activity {
             if (!mac.isEmpty()) {
                 macAddressQueue.offer(mac);
                 // Load the device name for this MAC address
-                String name = sharedPreferences.getString(mac, "Unknown Device");
+                String name = sharedPreferences.getString(mac, "Thiết bị không xác định");
                 deviceNames.put(mac, name);
             }
         }
@@ -1669,7 +1724,7 @@ public class RecordActivity extends Activity {
             scanList.setVisibility(View.VISIBLE);
             scannedDevices.clear();
             adapter.notifyDataSetChanged();
-            scanBtn.setText("Scanning...");
+            scanBtn.setText("Đang quét...");
             if (bluetoothAdapter != null) {
                 if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
                     return;
@@ -1694,7 +1749,7 @@ public class RecordActivity extends Activity {
                     updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
                 }
 
-                Toast.makeText(this, "Connecting to device...", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Đang kết nối thiết bị...", Toast.LENGTH_SHORT).show();
 
                 // Stop scanning before attempting to connect to ensure clean bandwidth
                 if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
@@ -1715,10 +1770,10 @@ public class RecordActivity extends Activity {
                 if (BluetoothDevice.ACTION_FOUND.equals(intent.getAction())) {
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                     if (device != null) {
-                        String name = "Unknown Device";
+                        String name = "Thiết bị không xác định";
                         try {
                             if (ActivityCompat.checkSelfPermission(RecordActivity.this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                                name = device.getName() != null ? device.getName() : "Unknown Device";
+                                name = device.getName() != null ? device.getName() : "Thiết bị không xác định";
                             }
                         } catch (Exception e) { }
                         String mac = device.getAddress();
@@ -1730,7 +1785,7 @@ public class RecordActivity extends Activity {
                         }
                     }
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(intent.getAction())) {
-                    if (scanBtn != null) scanBtn.setText("Scan new device");
+                    if (scanBtn != null) scanBtn.setText("Quét thiết bị mới");
                 }
             }
         };
@@ -1742,7 +1797,7 @@ public class RecordActivity extends Activity {
 
         builder.setView(popupView);
 //        builder.setTitle("Connected Devices");
-        builder.setPositiveButton("Close", (dialog, which) -> {
+        builder.setPositiveButton("Đóng", (dialog, which) -> {
             if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
                 bluetoothAdapter.cancelDiscovery();
             }
@@ -1797,7 +1852,7 @@ public class RecordActivity extends Activity {
         }
 
         if (macs.length == 0) {
-            device1TextView.setText("No divices");
+            device1TextView.setText("Không có thiết bị");
             device1TextView.setTextColor(Color.BLACK);
             device1TextView.setVisibility(View.VISIBLE);
             device1DeleteButton.setVisibility(View.GONE);
@@ -1807,7 +1862,7 @@ public class RecordActivity extends Activity {
     //
     private void showRenameDeviceDialog(String macAddress) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Rename Device");
+        builder.setTitle("Đổi tên thiết bị");
 
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
@@ -1821,7 +1876,7 @@ public class RecordActivity extends Activity {
             saveMacAddressQueueAndDeviceNames();
             updatePopupMacAddressDisplay(device1MacTextView, device2MacTextView, device1DeleteButton, device2DeleteButton);
         });
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.setNegativeButton("Hủy", (dialog, which) -> dialog.cancel());
 
         builder.show();
     }
@@ -1848,7 +1903,7 @@ public class RecordActivity extends Activity {
                 String[] macs = macAddressQueue.toArray(new String[0]);
 
                 if (macs.length > 0) {
-                    device1MacTextView.setText("Device 1: " + macs[0]);
+                    device1MacTextView.setText("Thiết bị 1: " + macs[0]);
                     device1MacTextView.setTextColor(macs[0].equals(connectedMac) ? Color.GREEN : Color.BLACK);
                     device1MacTextView.setVisibility(View.VISIBLE);
                     device1DeleteButton.setVisibility(View.VISIBLE);
@@ -1858,7 +1913,7 @@ public class RecordActivity extends Activity {
                 }
 
                 if (macs.length > 1) {
-                    device2MacTextView.setText("Device 2: " + macs[1]);
+                    device2MacTextView.setText("Thiết bị 2: " + macs[1]);
                     device2MacTextView.setTextColor(macs[1].equals(connectedMac) ? Color.GREEN : Color.BLACK);
                     device2MacTextView.setVisibility(View.VISIBLE);
                     device2DeleteButton.setVisibility(View.VISIBLE);
@@ -1868,7 +1923,7 @@ public class RecordActivity extends Activity {
                 }
 
                 if (macs.length == 0) {
-                    device1MacTextView.setText("No devices saved");
+                    device1MacTextView.setText("Chưa lưu thiết bị nào");
                     device1MacTextView.setTextColor(Color.BLACK);
                     device1MacTextView.setVisibility(View.VISIBLE);
                 }
@@ -1925,7 +1980,7 @@ public class RecordActivity extends Activity {
         }
         if (!macAddressQueue.contains(newMac)) {
             macAddressQueue.offer(newMac);
-            deviceNames.putIfAbsent(newMac, "Unknown Device");
+            deviceNames.putIfAbsent(newMac, "Thiết bị không xác định");
         }
         connectedMac = newMac;
         saveMacAddressQueueAndDeviceNames();
@@ -1962,27 +2017,27 @@ public class RecordActivity extends Activity {
         String[] macs = macAddressQueue.toArray(new String[0]);
 
         // Get device names or use MAC addresses as fallback
-        String device1Label = deviceNames.containsKey(macs[0]) && !deviceNames.get(macs[0]).equals("Unknown Device")
+        String device1Label = deviceNames.containsKey(macs[0]) && !deviceNames.get(macs[0]).equals("Thiết bị không xác định")
                 ? deviceNames.get(macs[0])
-                : "Device " + macs[0];
+                : "Thiết bị " + macs[0];
 
-        String device2Label = deviceNames.containsKey(macs[1]) && !deviceNames.get(macs[1]).equals("Unknown Device")
+        String device2Label = deviceNames.containsKey(macs[1]) && !deviceNames.get(macs[1]).equals("Thiết bị không xác định")
                 ? deviceNames.get(macs[1])
-                : "Device " + macs[1];
+                : "Thiết bị " + macs[1];
 
-        builder.setTitle("Maximum Devices Reached")
-                .setMessage("You have already saved two devices. Please delete one to add a new device.")
-                .setPositiveButton("Delete " + device1Label, new DialogInterface.OnClickListener() {
+        builder.setTitle("Đã đạt số thiết bị tối đa")
+                .setMessage("Bạn đã lưu hai thiết bị. Vui lòng xóa một thiết bị để thêm thiết bị mới.")
+                .setPositiveButton("Xóa " + device1Label, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         deleteDevice(0);
                     }
                 })
-                .setNegativeButton("Delete " + device2Label, new DialogInterface.OnClickListener() {
+                .setNegativeButton("Xóa " + device2Label, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         deleteDevice(1);
                     }
                 })
-                .setNeutralButton("Cancel", new DialogInterface.OnClickListener() {
+                .setNeutralButton("Hủy", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
                         // User cancelled the dialog
                     }
@@ -2189,6 +2244,9 @@ public class RecordActivity extends Activity {
         // when no recording session needs it.
         if (dataService != null) {
             dataService.setUiHandler(null);
+        }
+        if (mHandler != null) {
+            mHandler.removeCallbacks(measurementTick);
         }
         if (connectionManager != null && !isRecordingSessionActive && connectionManager.isRecording()) {
             connectionManager.disconnect();
@@ -2416,7 +2474,7 @@ public class RecordActivity extends Activity {
                 if (0 == grantResults.length) {
                     // Request was cancelled.
                     Log.w(TAG, "Permission request cancelled by user.");
-                    Toast.makeText(this, "Permissions request cancelled.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Đã hủy yêu cầu cấp quyền.", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 boolean allPermissionsGranted = true;
@@ -2435,7 +2493,7 @@ public class RecordActivity extends Activity {
                     connectToPulseOximeter();
                 } else {
                     Log.e(TAG, "Not all permissions granted. Denied permissions: " + TextUtils.join(", ", deniedPermissions));
-                    Toast.makeText(this, "Not all permissions granted - can't connect. Denied: " + TextUtils.join(", ", deniedPermissions), Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Chưa cấp đủ quyền - không thể kết nối. Bị từ chối: " + TextUtils.join(", ", deniedPermissions), Toast.LENGTH_LONG).show();
                 }
                 break;
             default:

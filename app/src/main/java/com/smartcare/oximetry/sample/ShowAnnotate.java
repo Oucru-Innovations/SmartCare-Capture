@@ -88,7 +88,7 @@ public class ShowAnnotate {
      */
     public void showAnnotateMenu(View anchorView) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Add Note");
+        builder.setTitle("Thêm ghi chú");
 
         // Inflate custom layout
         View dialogView = LayoutInflater.from(context).inflate(R.layout.annotation_dialog, null);
@@ -163,13 +163,13 @@ public class ShowAnnotate {
         yesRadioButton.setChecked(true);
         invalidDataLayout.setVisibility(View.VISIBLE);
 
-        builder.setPositiveButton("Save", null); // We'll override this below
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.setPositiveButton("Lưu", null); // We'll override this below
+        builder.setNegativeButton("Hủy", (dialog, which) -> dialog.cancel());
 
         final AlertDialog dialog = builder.create();
         dialog.show();
 
-        // Override the "Save" button to handle validation
+        // Override the "Lưu" button to handle validation
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String recordingTime = recordingTimeEdit.getText().toString().trim();
             boolean isCollectedAsScheduled = yesRadioButton.isChecked();
@@ -178,7 +178,7 @@ public class ShowAnnotate {
 
             // Validate recording time format
             if (!isValidDateFormat(recordingTime)) {
-                Toast.makeText(context, "Please enter a valid date (DD/MM/YYYY)", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Vui lòng nhập ngày hợp lệ (DD/MM/YYYY)", Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -188,7 +188,7 @@ public class ShowAnnotate {
             } else {
                 reason = notCollectingReasonEdit.getText().toString().trim();
                 if (reason.isEmpty()) {
-                    Toast.makeText(context, "Please provide a reason for not collecting data", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "Vui lòng nhập lý do không thu thập dữ liệu", Toast.LENGTH_SHORT).show();
                     return;
                 }
             }
@@ -303,35 +303,12 @@ public class ShowAnnotate {
                 serverNote.put("reason_invalid_data", "");
             }
 
-            String exportJson = gson.toJson(serverNote);
-            Uri exportUri = AnnotationStorage.createEntry(
-                    context, singleFileName, AnnotationStorage.exportRelativePath(),
-                    AnnotationStorage.MIME_JSON);
-            if (exportUri == null) {
-                throw new IOException("Failed to create annotation export in Download/OximeterData");
-            }
-            if (!AnnotationStorage.writeText(context, exportUri, exportJson)) {
-                throw new IOException("Failed to write annotation export");
-            }
-            OximeterDataFileIndex.notifyRecordingSaved(context, exportUri, singleFileName);
+            AnnotationStorage.exportAndUpload(context, singleFileName, gson.toJson(serverNote));
 
-            final String exportUriStr = exportUri.toString();
-            FileUploader.uploadFile(exportUriStr, new FileUploader.UploadCallback() {
-                @Override
-                public void onUploadComplete(boolean success, String message) {
-                    if (success) {
-                        FileUploader.moveFileToUploadedFolderFromUri(context, exportUriStr);
-                        Log.i(TAG, "Note file uploaded successfully");
-                    } else {
-                        Log.e(TAG, "Failed to upload note file: " + message);
-                    }
-                }
-            });
-
-            Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Đã lưu ghi chú", Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
             Log.e(TAG, "Error saving annotation", e);
-            Toast.makeText(context, "Failed to save note", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Lưu ghi chú thất bại", Toast.LENGTH_SHORT).show();
         }
     }
     // Load annotations from JSON file
@@ -387,11 +364,11 @@ public class ShowAnnotate {
             if (index >= 0 && index < annotations.size()) {
                 annotations.get(index).setNote(newContent);
                 saveAnnotations(annotations);
-                Toast.makeText(context, "Note updated", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Đã cập nhật ghi chú", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             Log.e(TAG, "Error updating annotation", e);
-            Toast.makeText(context, "Failed to update note", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Cập nhật ghi chú thất bại", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -412,13 +389,13 @@ public class ShowAnnotate {
             }
             if (updated) {
                 saveAnnotations(annotations);
-                Toast.makeText(context, "Note updated", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Đã cập nhật ghi chú", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(context, "Note not found", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Không tìm thấy ghi chú", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             Log.e(TAG, "Error updating annotation", e);
-            Toast.makeText(context, "Failed to update note", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Cập nhật ghi chú thất bại", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -431,11 +408,11 @@ public class ShowAnnotate {
             if (index >= 0 && index < annotations.size()) {
                 annotations.remove(index);
                 saveAnnotations(annotations);
-                Toast.makeText(context, "Note deleted", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Đã xóa ghi chú", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             Log.e(TAG, "Error deleting annotation", e);
-            Toast.makeText(context, "Failed to delete note", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Xóa ghi chú thất bại", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -457,13 +434,13 @@ public class ShowAnnotate {
 
             if (removed) {
                 saveAnnotations(annotations);
-                Toast.makeText(context, "Note deleted", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Đã xóa ghi chú", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(context, "Note not found", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "Không tìm thấy ghi chú", Toast.LENGTH_SHORT).show();
             }
         } catch (IOException e) {
             Log.e(TAG, "Error deleting annotation", e);
-            Toast.makeText(context, "Failed to delete note", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Xóa ghi chú thất bại", Toast.LENGTH_SHORT).show();
         }
 
     }

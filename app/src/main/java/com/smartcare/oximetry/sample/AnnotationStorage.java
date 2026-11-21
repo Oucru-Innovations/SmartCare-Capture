@@ -134,6 +134,31 @@ final class AnnotationStorage {
         }
     }
 
+    /**
+     * Ghi {@code json} ra {@code Download/OximeterData/<fileName>} và upload ngay. Thành công thì
+     * chuyển sang Uploaded; thất bại thì file ở lại pending để worker 17h gửi lại.
+     */
+    static void exportAndUpload(Context context, String fileName, String json) throws java.io.IOException {
+        Uri exportUri = createEntry(context, fileName, exportRelativePath(), MIME_JSON);
+        if (exportUri == null) {
+            throw new java.io.IOException("Failed to create " + fileName + " in Download/OximeterData");
+        }
+        if (!writeText(context, exportUri, json)) {
+            throw new java.io.IOException("Failed to write " + fileName);
+        }
+        OximeterDataFileIndex.notifyRecordingSaved(context, exportUri, fileName);
+
+        final String exportUriStr = exportUri.toString();
+        FileUploader.uploadFile(exportUriStr, (success, message) -> {
+            if (success) {
+                FileUploader.moveFileToUploadedFolderFromUri(context, exportUriStr);
+                Log.i(TAG, "Uploaded " + fileName);
+            } else {
+                Log.e(TAG, "Failed to upload " + fileName + ": " + message);
+            }
+        });
+    }
+
     /** Ghi đè (truncate) nội dung text UTF-8 vào entry; trả về true nếu thành công. */
     static boolean writeText(Context context, Uri uri, String content) {
         if (context == null || uri == null) {
